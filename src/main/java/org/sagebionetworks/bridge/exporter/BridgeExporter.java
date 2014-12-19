@@ -32,35 +32,57 @@ public class BridgeExporter {
     private static final String S3_BUCKET_UPLOAD = "org-sagebridge-upload-dwaynejeng";
     private static final String S3_BUCKET_EXPORT = "org-sagebridge-export-dwaynejeng";
 
-    public static void main(String[] args) throws IOException, InterruptedException {
+    public static void main(String[] args) throws InterruptedException, IOException {
+        new BridgeExporter().run();
+        System.exit(0);
+    }
+
+    private DynamoDB ddbClient;
+    private DynamoDbHelper ddbHelper;
+    private TransferManager s3TransferManager;
+    private LocalDate todaysDate;
+    private String todaysDateString;
+    private File tempDir;
+
+    public void run() throws InterruptedException, IOException {
+        init();
+        exportUploads();
+        exportTables();
+        cleanUp();
+    }
+
+    private void init() throws IOException {
         // Dynamo DB client - move to Spring
         // This gets credentials from the default credential chain. For developer desktops, this is ~/.aws/credentials.
         // For EC2 instances, this happens transparently.
         // See http://docs.aws.amazon.com/AWSSdkDocsJava/latest/DeveloperGuide/credentials.html and
         // http://docs.aws.amazon.com/AWSSdkDocsJava/latest/DeveloperGuide/java-dg-setup.html#set-up-creds for more
         // info.
-        DynamoDB ddbClient = new DynamoDB(new AmazonDynamoDBClient());
-        DynamoDbHelper ddbHelper = new DynamoDbHelper(ddbClient);
+        ddbClient = new DynamoDB(new AmazonDynamoDBClient());
+        ddbHelper = new DynamoDbHelper(ddbClient);
 
         // S3 client - move to Spring
-        TransferManager s3TransferManager = new TransferManager();
+        s3TransferManager = new TransferManager();
 
-        // query DDB
         // TODO: If we globalize Bridge, we'll need to make this timezone configurable.
-        //LocalDate todaysDate = LocalDate.now(DateTimeZone.forID("America/Los_Angeles"));
-        LocalDate todaysDate = LocalDate.parse("2014-12-15", ISODateTimeFormat.date());
-        String todaysDateString = todaysDate.toString(ISODateTimeFormat.date());
-        ItemCollection<QueryOutcome> ddbResultColl = ddbHelper.getUploadsForDate(todaysDate);
+        //todaysDate = LocalDate.now(DateTimeZone.forID("America/Los_Angeles"));
+        todaysDate = LocalDate.parse("2014-12-15", ISODateTimeFormat.date());
+        todaysDateString = todaysDate.toString(ISODateTimeFormat.date());
 
         // set up temp dir we want to write to
         String tempDirName = String.format("%s/Bridge-Exporter-%s", System.getProperty("java.io.tmpdir"),
                 UUID.randomUUID().toString());
-        File tempDir = new File(tempDirName);
+        tempDir = new File(tempDirName);
         if (!tempDir.mkdirs()) {
             throw new IOException(String.format("failed to create temp dir %s", tempDirName));
         }
         System.out.format("Tempdir: %s", tempDirName);
         System.out.println();
+    }
+
+    private void exportUploads() throws InterruptedException, IOException {
+        // query DDB
+        ItemCollection<QueryOutcome> ddbResultColl = ddbHelper.getUploadsForDate(todaysDate);
 
         // download files
         List<Download> downloadList = new ArrayList<>();
@@ -138,10 +160,13 @@ public class BridgeExporter {
         for (Upload oneUpload : uploadList) {
             oneUpload.waitForCompletion();
         }
+    }
 
-        // cleanup
+    private void exportTables() {
+    }
+
+    private void cleanUp() {
         ddbClient.shutdown();
         s3TransferManager.shutdownNow();
-        System.exit(0);
     }
 }

@@ -9,6 +9,7 @@
     <version>1.0</version>
 
     <properties>
+        <jackson.version>2.4.4</jackson.version>
         <maven.compiler.source>1.7</maven.compiler.source>
         <maven.compiler.target>1.7</maven.compiler.target>
     </properties>
@@ -25,10 +26,26 @@
             <version>1.9.10</version>
         </dependency>
         <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-annotations</artifactId>
+            <version>${jackson.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-core</artifactId>
+            <version>${jackson.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>${jackson.version}</version>
+        </dependency>
+        <dependency>
             <groupId>com.google.guava</groupId>
             <artifactId>guava</artifactId>
             <version>18.0</version>
-        </dependency>        <dependency>
+        </dependency>
+        <dependency>
             <groupId>joda-time</groupId>
             <artifactId>joda-time</artifactId>
             <version>2.6</version>
@@ -49,7 +66,7 @@
                     </execution>
                 </executions>
                 <configuration>
-                    <mainClass>org.sagebionetworks.bridge.exporter.BridgeExporter</mainClass>
+                    <mainClass>org.sagebionetworks.bridge.unpacker.BridgeUploadUnpacker</mainClass>
                 </configuration>
             </plugin>
         </plugins>
