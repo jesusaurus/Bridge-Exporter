@@ -1,54 +1,67 @@
 package org.sagebionetworks.bridge.exporter;
 
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.util.ArrayList;
+import java.io.PrintWriter;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
-import java.util.UUID;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClient;
 import com.amazonaws.services.dynamodbv2.document.DynamoDB;
+import com.amazonaws.services.dynamodbv2.document.Index;
 import com.amazonaws.services.dynamodbv2.document.Item;
-import com.amazonaws.services.dynamodbv2.document.ItemCollection;
-import com.amazonaws.services.dynamodbv2.document.QueryOutcome;
 import com.amazonaws.services.dynamodbv2.document.Table;
-import com.amazonaws.services.s3.transfer.Download;
-import com.amazonaws.services.s3.transfer.TransferManager;
-import com.amazonaws.services.s3.transfer.Upload;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.base.Joiner;
+import com.google.common.base.Stopwatch;
 import com.google.common.base.Strings;
-import com.google.common.hash.Hashing;
-import com.google.common.hash.HashingOutputStream;
-import com.google.common.io.BaseEncoding;
-import com.google.common.io.Files;
+import org.joda.time.DateTime;
 import org.joda.time.LocalDate;
 import org.joda.time.format.ISODateTimeFormat;
 
 public class BridgeExporter {
-    private static final String S3_BUCKET_UPLOAD = "org-sagebridge-upload-dwaynejeng";
-    private static final String S3_BUCKET_EXPORT = "org-sagebridge-export-dwaynejeng";
+    private static ObjectMapper JSON_MAPPER = new ObjectMapper();
 
-    public static void main(String[] args) throws InterruptedException, IOException {
-        new BridgeExporter().run();
-        System.exit(0);
+    public static void main(String[] args) throws IOException {
+        try {
+            BridgeExporter bridgeExporter = new BridgeExporter();
+            bridgeExporter.setDate(args[0]);
+            bridgeExporter.run();
+        } catch (Throwable t) {
+            t.printStackTrace();
+        } finally {
+            System.exit(0);
+        }
     }
 
     private DynamoDB ddbClient;
-    private DynamoDbHelper ddbHelper;
-    private TransferManager s3TransferManager;
-    private LocalDate todaysDate;
-    private String todaysDateString;
+    //private DynamoDbHelper ddbHelper;
+    //private TransferManager s3TransferManager;
+    private LocalDate date;
+    private String dateString;
     private File tempDir;
+    private UploadSchemaHelper schemaHelper;
 
-    public void run() throws InterruptedException, IOException {
-        init();
-        exportUploads();
-        exportTables();
-        cleanUp();
+    public void run() throws IOException, ExecutionException {
+        Stopwatch stopwatch = Stopwatch.createStarted();
+        try {
+            init();
+            downloadHealthDataRecords();
+        } finally {
+            if (schemaHelper != null) {
+                schemaHelper.closeAllFileHandlers();
+            }
+        }
+        stopwatch.stop();
+        System.out.println("Took " + stopwatch.elapsed(TimeUnit.SECONDS) + " seconds");
+    }
+
+    public void setDate(String dateString) {
+        this.dateString = dateString;
+        this.date = LocalDate.parse(dateString);
     }
 
     private void init() throws IOException {
@@ -59,114 +72,173 @@ public class BridgeExporter {
         // http://docs.aws.amazon.com/AWSSdkDocsJava/latest/DeveloperGuide/java-dg-setup.html#set-up-creds for more
         // info.
         ddbClient = new DynamoDB(new AmazonDynamoDBClient());
-        ddbHelper = new DynamoDbHelper(ddbClient);
+        //ddbHelper = new DynamoDbHelper(ddbClient);
 
         // S3 client - move to Spring
-        s3TransferManager = new TransferManager();
-
-        // TODO: If we globalize Bridge, we'll need to make this timezone configurable.
-        //todaysDate = LocalDate.now(DateTimeZone.forID("America/Los_Angeles"));
-        todaysDate = LocalDate.parse("2014-12-15", ISODateTimeFormat.date());
-        todaysDateString = todaysDate.toString(ISODateTimeFormat.date());
+        //s3TransferManager = new TransferManager();
 
         // set up temp dir we want to write to
-        String tempDirName = String.format("%s/Bridge-Exporter-%s", System.getProperty("java.io.tmpdir"),
-                UUID.randomUUID().toString());
+        String tempDirName = System.getProperty("java.io.tmpdir") + "Bridge-Exporter/" + dateString;
         tempDir = new File(tempDirName);
-        if (!tempDir.mkdirs()) {
-            throw new IOException(String.format("failed to create temp dir %s", tempDirName));
+        if (!tempDir.exists()) {
+            if (!tempDir.mkdirs()) {
+                throw new IOException(String.format("failed to create temp dir %s", tempDirName));
+            }
         }
         System.out.format("Tempdir: %s", tempDirName);
         System.out.println();
+
+        Table uploadSchemaTable = ddbClient.getTable("prod-heroku-UploadSchema");
+        schemaHelper = new UploadSchemaHelper();
+        schemaHelper.setSchemaTable(uploadSchemaTable);
+        schemaHelper.setTmpDir(tempDir);
+        schemaHelper.init();
     }
 
-    private void exportUploads() throws InterruptedException, IOException {
-        // query DDB
-        ItemCollection<QueryOutcome> ddbResultColl = ddbHelper.getUploadsForDate(todaysDate);
+    private void downloadHealthDataRecords() throws ExecutionException, IOException {
+        // get key objects by querying uploadDate index
+        Table recordTable = ddbClient.getTable("prod-heroku-HealthDataRecord3");
+        Index recordTableUploadDateIndex = recordTable.getIndex("uploadDate-index");
+        Iterable<Item> recordKeyIter = recordTableUploadDateIndex.query("uploadDate", dateString);
 
-        // download files
-        List<Download> downloadList = new ArrayList<>();
-        Set<String> studySet = new HashSet<>();
-        for (Item oneItem : ddbResultColl) {
-            String s3Key = oneItem.getString("objectId");
-            String originalFilename = oneItem.getString("name");
-            String fileBaseName = Files.getNameWithoutExtension(originalFilename);
-            String fileExtension = Files.getFileExtension(originalFilename);
-            String uploadId = oneItem.getString("uploadId");
-            String newFilename;
-            if (Strings.isNullOrEmpty(fileExtension)) {
-                newFilename = String.format("%s.%s", fileBaseName, uploadId);
+        // re-query table to get values
+        int numNonSurveys = 0;
+        int numSurveys = 0;
+        int numNotShared = 0;
+        Set<String> schemasNotFound = new HashSet<>();
+        for (Item oneRecordKey : recordKeyIter) {
+            Item oneRecord = recordTable.getItem("id", oneRecordKey.get("id"));
+
+            String userSharingScope = oneRecord.getString("userSharingScope");
+            if (Strings.isNullOrEmpty(userSharingScope) || userSharingScope.equalsIgnoreCase("no_sharing")) {
+                // must not be exported
+                numNotShared++;
+                continue;
+            }
+
+            String schemaId = oneRecord.getString("schemaId");
+
+            String metadataString = oneRecord.getString("metadata");
+            JsonNode metadataJson = !Strings.isNullOrEmpty(metadataString) ? JSON_MAPPER.readTree(metadataString)
+                    : null;
+            JsonNode taskRunNode = metadataJson != null ? metadataJson.get("taskRun") : null;
+            String taskRunId = taskRunNode != null ? taskRunNode.textValue() : null;
+
+            JsonNode dataJson = JSON_MAPPER.readTree(oneRecord.getString("data"));
+
+            if ("ios-survey".equals(schemaId)) {
+                // TODO
+                numSurveys++;
             } else {
-                newFilename = String.format("%s.%s.%s", fileBaseName, uploadId, fileExtension);
-            }
+                UploadSchemaKey schemaKey = new UploadSchemaKey(oneRecord.getString("studyId"),
+                        oneRecord.getString("schemaId"), oneRecord.getInt("schemaRevision"));
 
-            String healthCode = oneItem.getString("healthCode");
-            String studyId = ddbHelper.getStudyForHealthcode(healthCode);
-            studySet.add(studyId);
+                Item schema = schemaHelper.getSchema(schemaKey);
+                if (schema == null) {
+                    // No schema. Skip.
+                    schemasNotFound.add(schemaKey.getStudyId() + ":" + schemaKey.getSchemaId() + "-v"
+                            + schemaKey.getRev());
+                    continue;
+                }
 
-            File studyDir = new File(tempDir, studyId);
-            if (!studyDir.exists()) {
-                if (!studyDir.mkdir()) {
-                    throw new IOException(String.format("failed to create study dir for %s", studyId));
+                PrintWriter writer = schemaHelper.getExportWriter(schemaKey);
+                writer.print(oneRecord.getString("healthCode"));
+                writer.print("\t");
+                writer.print(dateString);
+                writer.print("\t");
+                writer.print(new DateTime(oneRecord.getLong("createdOn")).toString(ISODateTimeFormat.dateTime()));
+                writer.print("\t");
+                writer.print(oneRecord.getString("metadata").replaceAll("\t+", " "));
+                writer.print("\t");
+                writer.print(userSharingScope);
+                writer.print("\t");
+                writer.print(taskRunId);
+
+                JsonNode fieldDefList = JSON_MAPPER.readTree(schema.getString("fieldDefinitions"));
+                for (JsonNode oneFieldDef : fieldDefList) {
+                    String name = oneFieldDef.get("name").textValue();
+
+                    String value = null;
+                    if (dataJson.hasNonNull(name)) {
+                        JsonNode valueNode = dataJson.get(name);
+
+                        String type = oneFieldDef.get("type").textValue();
+                        if (Strings.isNullOrEmpty(type)) {
+                            type = "inline_json_blob";
+                        }
+                        type = type.toLowerCase();
+
+                        switch (type) {
+                            case "attachment_blob":
+                            case "attachment_csv":
+                            case "attachment_json_blob":
+                            case "attachment_json_table":
+                                // TODO:
+                                value = "TODO";
+                                break;
+                            case "calendar_date":
+                                // sanity check
+                                String dateStr = valueNode.textValue();
+                                try {
+                                    LocalDate date = LocalDate.parse(dateStr);
+                                    value = dateStr;
+                                } catch (RuntimeException ex) {
+                                    // fall back to verbatim JSON
+                                    value = valueNode.toString();
+                                }
+                                break;
+                            case "timestamp":
+                                if (valueNode.isTextual()) {
+                                    try {
+                                        DateTime dateTime = DateTime.parse(valueNode.textValue());
+                                        value = dateTime.toString(ISODateTimeFormat.dateTime());
+                                    } catch (RuntimeException ex) {
+                                        // fall back to verbatim JSON
+                                        value = valueNode.toString();
+                                    }
+                                } else if (valueNode.isNumber()) {
+                                    DateTime dateTime = new DateTime(valueNode.longValue());
+                                    value = dateTime.toString(ISODateTimeFormat.dateTime());
+                                } else {
+                                        // fall back to verbatim JSON
+                                        value = valueNode.toString();
+                                }
+                                break;
+                            case "boolean":
+                            case "float":
+                            case "inline_json_blob":
+                            case "int":
+                            case "string":
+                            default:
+                                // verbatim JSON value
+                                value = valueNode.toString();
+                                break;
+                        }
+
+                        // replace tabs
+                        if (value != null) {
+                            value = value.replaceAll("\t+", " ");
+                        }
+                    }
+
+                    writer.print("\t");
+                    writer.print(value);
+                }
+                writer.println();
+
+                numNonSurveys++;
+                if (numNonSurveys >= 100) {
+                    break;
                 }
             }
-            File localFile = new File(studyDir, newFilename);
-            Download s3Download = s3TransferManager.download(S3_BUCKET_UPLOAD, s3Key,localFile);
-            downloadList.add(s3Download);
         }
 
-        // Files are downloaded asynchronously. Wait for the files to complete downloading.
-        for (Download oneDownload : downloadList) {
-            oneDownload.waitForCompletion();
+        System.out.println("Non-surveys: " + numNonSurveys);
+        System.out.println("Surveys: " + numSurveys);
+        System.out.println("Not shared: " + numNotShared);
+        if (!schemasNotFound.isEmpty()) {
+            System.out.println("The following schemas were referenced but not found: "
+                    + Joiner.on(", ").join(schemasNotFound));
         }
-
-        // Zip files per study
-        List<Upload> uploadList = new ArrayList<>();
-        for (String oneStudyId : studySet) {
-            File studyDir = new File(tempDir, oneStudyId);
-            File[] studyFileArr = studyDir.listFiles();
-
-            String zipFileName = String.format("%s-%s.zip", oneStudyId, todaysDateString);
-            File studyZipFile = new File(tempDir, zipFileName);
-            String base64EncodedMd5;
-            try (HashingOutputStream hashOut = new HashingOutputStream(Hashing.md5(),
-                    new FileOutputStream(studyZipFile));
-                    ZipOutputStream zipOut = new ZipOutputStream(hashOut)) {
-                for (File oneStudyFile : studyFileArr) {
-                    zipOut.putNextEntry(new ZipEntry(oneStudyFile.getName()));
-                    Files.copy(oneStudyFile, zipOut);
-                    zipOut.closeEntry();
-                }
-                zipOut.finish();
-
-                byte[] md5Bytes = hashOut.hash().asBytes();
-                base64EncodedMd5 = BaseEncoding.base64().encode(md5Bytes);
-            }
-
-            // upload zip files to S3
-            String exportObjectId = UUID.randomUUID().toString();
-            Upload s3Upload = s3TransferManager.upload(S3_BUCKET_EXPORT, exportObjectId,  studyZipFile);
-            uploadList.add(s3Upload);
-
-            // write to exports table
-            Table exportsTable = ddbClient.getTable("local-DwayneJeng-Exports");
-            Item exportItem = new Item().withPrimaryKey("s3ObjectId", exportObjectId)
-                    .withLong("contentLength", studyZipFile.length()).withString("contentMd5", base64EncodedMd5)
-                    .withString("contentType", "application/zip").withString("filename", zipFileName)
-                    .withString("studyId", oneStudyId).withString("uploadDate", todaysDateString);
-            exportsTable.putItem(exportItem);
-        }
-
-        for (Upload oneUpload : uploadList) {
-            oneUpload.waitForCompletion();
-        }
-    }
-
-    private void exportTables() {
-    }
-
-    private void cleanUp() {
-        ddbClient.shutdown();
-        s3TransferManager.shutdownNow();
     }
 }
