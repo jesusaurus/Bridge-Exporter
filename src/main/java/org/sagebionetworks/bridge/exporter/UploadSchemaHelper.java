@@ -18,13 +18,18 @@ import com.google.common.base.Charsets;
 import com.google.common.io.Closeables;
 
 public class UploadSchemaHelper {
-    private static ObjectMapper JSON_MAPPER = new ObjectMapper();
+    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
     private final Map<UploadSchemaKey, Item> schemaMap = new HashMap<>();
     private final Map<UploadSchemaKey, PrintWriter> exportWriterMap = new HashMap<>();
 
+    private String dateString;
     private Table schemaTable;
     private File tmpDir;
+
+    public void setDateString(String dateString) {
+        this.dateString = dateString;
+    }
 
     public void setSchemaTable(Table schemaTable) {
         this.schemaTable = schemaTable;
@@ -61,7 +66,7 @@ public class UploadSchemaHelper {
 
         // init new writer
         String filename = schemaKey.getStudyId() + "-" + schemaKey.getSchemaId() + "-v" + schemaKey.getRev()
-                + "-metadata.tsv";
+                + "-" + dateString + ".tsv";
         File file = new File(tmpDir, filename);
         OutputStream stream = new FileOutputStream(file);
         writer = new PrintWriter(new BufferedWriter(new OutputStreamWriter(stream, Charsets.UTF_8)));
@@ -69,11 +74,11 @@ public class UploadSchemaHelper {
 
         // write header files
         Item schema = getSchema(schemaKey);
-        writer.print("healthCode\tuploadDate\tcreatedOn\tmetadata\tuserSharingScope\ttaskRunId");
+        writer.print("recordId\thealthCode\tuploadDate\tcreatedOn\tmetadata\tuserSharingScope\ttaskRunId");
 
         JsonNode fieldDefList = JSON_MAPPER.readTree(schema.getString("fieldDefinitions"));
         for (JsonNode oneFieldDef : fieldDefList) {
-            String name = oneFieldDef.get("name").textValue();
+            String name = oneFieldDef.get("name").textValue().replace('.', '_');
             writer.print("\t");
             writer.print(name);
         }
