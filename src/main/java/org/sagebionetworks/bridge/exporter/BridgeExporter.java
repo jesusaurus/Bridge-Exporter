@@ -125,9 +125,9 @@ public class BridgeExporter {
             if (numTotal % 100 == 0) {
                 System.out.println("Saw " + numTotal + " files so far...");
             }
-            if (numTotal > 100) {
-                break;
-            }
+            //if (numTotal > 100) {
+            //    break;
+            //}
 
             Item oneRecord = recordTable.getItem("id", oneRecordKey.get("id"));
 
