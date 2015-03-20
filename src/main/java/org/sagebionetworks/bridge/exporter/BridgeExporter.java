@@ -232,6 +232,7 @@ public class BridgeExporter {
                     }
 
                     // answer
+                    // TODO: Hey, this should really be a Map<String, String>, not a big switch statement
                     JsonNode answerAnswerNode = null;
                     switch (questionTypeName) {
                         case "Boolean":
@@ -258,6 +259,9 @@ public class BridgeExporter {
                             break;
                         case "TimeInterval":
                             answerAnswerNode = oneAnswerNode.get("intervalAnswer");
+                            break;
+                        case "TimeOfDay":
+                            answerAnswerNode = oneAnswerNode.get("dateComponentsAnswer");
                             break;
                         default:
                             System.out.println("Survey record ID " + recordId + " answer " + i
