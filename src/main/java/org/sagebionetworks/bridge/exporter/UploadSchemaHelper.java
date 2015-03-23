@@ -74,7 +74,7 @@ public class UploadSchemaHelper {
 
         // write header files
         Item schema = getSchema(schemaKey);
-        writer.print("recordId\thealthCode\tuploadDate\tcreatedOn\tmetadata\tuserSharingScope\ttaskRunId");
+        writer.print("recordId\thealthCode\tuploadDate\tcreatedOn\tmetadata");
 
         JsonNode fieldDefList = JSON_MAPPER.readTree(schema.getString("fieldDefinitions"));
         for (JsonNode oneFieldDef : fieldDefList) {

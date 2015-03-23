@@ -307,10 +307,6 @@ public class BridgeExporter {
             writer.print("\t");
             // TODO: metadata
             writer.print("(TODO: link to file)");
-            writer.print("\t");
-            writer.print(userSharingScope);
-            writer.print("\t");
-            writer.print(taskRunId);
 
             JsonNode fieldDefList = JSON_MAPPER.readTree(schema.getString("fieldDefinitions"));
             for (JsonNode oneFieldDef : fieldDefList) {
