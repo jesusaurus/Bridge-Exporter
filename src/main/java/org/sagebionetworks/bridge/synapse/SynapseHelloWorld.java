@@ -56,7 +56,7 @@ public class SynapseHelloWorld {
         for (ColumnModel oneColumn : createdColumnList) {
             columnIdList.add(oneColumn.getId());
         }
-
+/*
         // create table
         TableEntity table = new TableEntity();
         table.setName("DJeng test table");
@@ -65,16 +65,29 @@ public class SynapseHelloWorld {
         TableEntity createdTable = synapseClient.createEntity(table);
         String tableId = createdTable.getId();
         System.out.println("Table ID " + tableId);
+*/
+        String tableId = "syn3372863";
+
+        List<ColumnModel> colummns = synapseClient.getColumnModelsForTableEntity(tableId);
+        String columnJson = JSON_OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(colummns);
+        System.out.println(columnJson);
 
         // create row
         Row row = new Row();
         row.setValues(ImmutableList.of("foo", "42", "false"));
 
         List<SelectColumn> headerList = new ArrayList<>();
-        for (String oneColumnId : columnIdList) {
-            SelectColumn oneHeader = new SelectColumn();
-            oneHeader.setId(oneColumnId);
-            headerList.add(oneHeader);
+        //for (String oneColumnId : columnIdList) {
+        //    SelectColumn oneHeader = new SelectColumn();
+        //    oneHeader.setId(oneColumnId);
+        //    headerList.add(oneHeader);
+        //}
+        for (ColumnModel column : colummns) {
+            SelectColumn header = new SelectColumn();
+            header.setId(column.getId());
+            //header.setColumnType(column.getColumnType());
+            header.setName(column.getName());
+            headerList.add(header);
         }
         System.out.println("headers.size(): " + headerList.size());
 
@@ -82,6 +95,7 @@ public class SynapseHelloWorld {
         rowSet.setHeaders(headerList);
         rowSet.setRows(Collections.singletonList(row));
         rowSet.setTableId(tableId);
+        System.out.println(rowSet);
 
         RowReferenceSet appendedRowSet = synapseClient.appendRowsToTable(rowSet, 30 * 1000, tableId);
         System.out.println("Wrote " + appendedRowSet.getRows().size() + " rows");

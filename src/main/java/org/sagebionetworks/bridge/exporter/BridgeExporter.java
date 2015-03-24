@@ -3,6 +3,7 @@ package org.sagebionetworks.bridge.exporter;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -23,6 +24,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Joiner;
 import com.google.common.base.Stopwatch;
 import com.google.common.base.Strings;
+import com.google.common.collect.Multimap;
+import com.google.common.collect.TreeMultimap;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
 import org.joda.time.LocalDate;
@@ -120,14 +123,15 @@ public class BridgeExporter {
 
         // re-query table to get values
         Set<String> schemasNotFound = new TreeSet<>();
+        Multimap<String, String> appVersionsByStudy = TreeMultimap.create();
         for (Item oneRecordKey : recordKeyIter) {
             int numTotal = incrementCounter("numTotal");
             if (numTotal % 100 == 0) {
                 System.out.println("Saw " + numTotal + " files so far...");
             }
-            //if (numTotal > 100) {
-            //    break;
-            //}
+            if (numTotal > 100) {
+                break;
+            }
 
             Item oneRecord = recordTable.getItem("id", oneRecordKey.get("id"));
 
@@ -151,12 +155,6 @@ public class BridgeExporter {
 
             String healthCode = oneRecord.getString("healthCode");
             incrementSetCounter("uniqueHealthCodes[" + studyId + "]", healthCode);
-
-            String metadataString = oneRecord.getString("metadata");
-            JsonNode metadataJson = !Strings.isNullOrEmpty(metadataString) ? JSON_MAPPER.readTree(metadataString)
-                    : null;
-            JsonNode taskRunNode = metadataJson != null ? metadataJson.get("taskRun") : null;
-            String taskRunId = taskRunNode != null ? taskRunNode.textValue() : null;
 
             JsonNode dataJson;
             if ("ios-survey".equals(schemaId)) {
@@ -295,6 +293,18 @@ public class BridgeExporter {
                 continue;
             }
 
+            // get phone and app info
+            String metadataString = oneRecord.getString("metadata");
+            JsonNode metadataJson = !Strings.isNullOrEmpty(metadataString) ? JSON_MAPPER.readTree(metadataString)
+                    : null;
+            String appName = removeTabs(getJsonString(metadataJson, "appName"));
+            String appVersion = removeTabs(getJsonString(metadataJson, "appVersion"));
+            String phoneInfo = removeTabs(getJsonString(metadataJson, "phoneInfo"));
+
+            // app version bookkeeping
+            appVersionsByStudy.put(studyId, appVersion);
+
+            // write record
             PrintWriter writer = schemaHelper.getExportWriter(schemaKey);
             writer.print(recordId);
             writer.print("\t");
@@ -307,6 +317,14 @@ public class BridgeExporter {
             writer.print("\t");
             // TODO: metadata
             writer.print("(TODO: link to file)");
+
+            // TODO: ResearchKit-specific
+            writer.print("\t");
+            writer.print(appName);
+            writer.print("\t");
+            writer.print(appVersion);
+            writer.print("\t");
+            writer.print(phoneInfo);
 
             JsonNode fieldDefList = JSON_MAPPER.readTree(schema.getString("fieldDefinitions"));
             for (JsonNode oneFieldDef : fieldDefList) {
@@ -344,7 +362,7 @@ public class BridgeExporter {
                             // sanity check
                             String dateStr = valueNode.textValue();
                             try {
-                                LocalDate date = LocalDate.parse(dateStr);
+                                LocalDate.parse(dateStr);
                                 value = dateStr;
                             } catch (RuntimeException ex) {
                                 // throw out malformatted dates
@@ -382,7 +400,7 @@ public class BridgeExporter {
 
                     // replace tabs
                     if (value != null) {
-                        value = value.replaceAll("\t+", " ");
+                        value = removeTabs(value);
                     }
                 }
 
@@ -390,6 +408,8 @@ public class BridgeExporter {
                 writer.print(value != null ? value : "");
             }
             writer.println();
+
+            // TODO: PhoneAppInfo table
         }
 
         for (Map.Entry<String, Integer> oneCounter : counterMap.entrySet()) {
@@ -401,6 +421,10 @@ public class BridgeExporter {
         if (!schemasNotFound.isEmpty()) {
             System.out.println("The following schemas were referenced but not found: "
                     + Joiner.on(", ").join(schemasNotFound));
+        }
+        for (Map.Entry<String, Collection<String>> appVersionEntry : appVersionsByStudy.asMap().entrySet()) {
+            System.out.println("App versions for " + appVersionEntry.getKey() + ": "
+                    + Joiner.on(", ").join(appVersionEntry.getValue()));
         }
     }
 
@@ -426,5 +450,21 @@ public class BridgeExporter {
             setCounterMap.put(name, set);
         }
         set.add(value);
+    }
+
+    private String getJsonString(JsonNode node, String key) {
+        if (node.hasNonNull(key)) {
+            return node.get(key).textValue();
+        } else {
+            return null;
+        }
+    }
+
+    private String removeTabs(String in) {
+        if (!Strings.isNullOrEmpty(in)) {
+            return in.replaceAll("\t+", " ");
+        } else {
+            return in;
+        }
     }
 }
