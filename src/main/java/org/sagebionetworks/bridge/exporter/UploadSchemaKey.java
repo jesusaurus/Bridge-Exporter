@@ -54,4 +54,9 @@ public class UploadSchemaKey {
         result = 31 * result + rev;
         return result;
     }
+
+    @Override
+    public String toString() {
+        return studyId + "-" + schemaId + "-v" + rev;
+    }
 }

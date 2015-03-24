@@ -1,11 +1,12 @@
 package org.sagebionetworks.bridge.exporter;
 
-import java.io.File;
 import java.io.IOException;
-import java.io.PrintWriter;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -26,16 +27,16 @@ import com.google.common.base.Stopwatch;
 import com.google.common.base.Strings;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.TreeMultimap;
-import org.joda.time.DateTime;
-import org.joda.time.DateTimeZone;
 import org.joda.time.LocalDate;
-import org.joda.time.format.ISODateTimeFormat;
+import org.sagebionetworks.client.exceptions.SynapseException;
+import org.sagebionetworks.repo.model.table.Row;
+import org.sagebionetworks.repo.model.table.RowSet;
+import org.sagebionetworks.repo.model.table.SelectColumn;
 
 import org.sagebionetworks.bridge.s3.S3Helper;
 
 public class BridgeExporter {
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
-    private static final DateTimeZone LOCAL_TIME_ZONE = DateTimeZone.forID("America/Los_Angeles");
     private static final String S3_BUCKET_ATTACHMENTS = "org-sagebridge-attachment-prod";
 
     public static void main(String[] args) throws IOException {
@@ -60,18 +61,13 @@ public class BridgeExporter {
     private String dateString;
     private UploadSchemaHelper schemaHelper;
     private S3Helper s3Helper;
-    private File tempDir;
 
-    public void run() throws IOException, ExecutionException {
+    public void run() throws IOException, ExecutionException, SynapseException, InterruptedException {
         Stopwatch stopwatch = Stopwatch.createStarted();
-        try {
-            init();
-            downloadHealthDataRecords();
-        } finally {
-            if (schemaHelper != null) {
-                schemaHelper.closeAllFileHandlers();
-            }
-        }
+
+        init();
+        downloadHealthDataRecords();
+
         stopwatch.stop();
         System.out.println("Took " + stopwatch.elapsed(TimeUnit.SECONDS) + " seconds");
     }
@@ -96,26 +92,16 @@ public class BridgeExporter {
         s3Helper = new S3Helper();
         s3Helper.setS3Client(s3Client);
 
-        // set up temp dir we want to write to
-        String tempDirName = System.getProperty("user.home") + "/Bridge-Exporter/" + dateString;
-        tempDir = new File(tempDirName);
-        if (!tempDir.exists()) {
-            if (!tempDir.mkdirs()) {
-                throw new IOException(String.format("failed to create temp dir %s", tempDirName));
-            }
-        }
-        System.out.format("Tempdir: %s", tempDirName);
-        System.out.println();
-
         Table uploadSchemaTable = ddbClient.getTable("prod-heroku-UploadSchema");
+        Table synapseTablesTable = ddbClient.getTable("prod-exporter-SynapseTables");
         schemaHelper = new UploadSchemaHelper();
-        schemaHelper.setDateString(dateString);
         schemaHelper.setSchemaTable(uploadSchemaTable);
-        schemaHelper.setTmpDir(tempDir);
+        schemaHelper.setSynapseTablesTable(synapseTablesTable);
         schemaHelper.init();
     }
 
-    private void downloadHealthDataRecords() throws ExecutionException, IOException {
+    private void downloadHealthDataRecords()
+            throws ExecutionException, IOException, SynapseException, InterruptedException {
         // get key objects by querying uploadDate index
         Table recordTable = ddbClient.getTable("prod-heroku-HealthDataRecord3");
         Index recordTableUploadDateIndex = recordTable.getIndex("uploadDate-index");
@@ -287,9 +273,8 @@ public class BridgeExporter {
             Item schema = schemaHelper.getSchema(schemaKey);
             if (schema == null) {
                 // No schema. Skip.
-                String fullSchemaId = studyId + ":" + schemaId + "-v" + schemaRev;
-                System.out.println("Schema " + fullSchemaId + " not found for record " + recordId);
-                schemasNotFound.add(fullSchemaId);
+                System.out.println("Schema " + schemaKey.toString() + " not found for record " + recordId);
+                schemasNotFound.add(schemaKey.toString());
                 continue;
             }
 
@@ -297,117 +282,63 @@ public class BridgeExporter {
             String metadataString = oneRecord.getString("metadata");
             JsonNode metadataJson = !Strings.isNullOrEmpty(metadataString) ? JSON_MAPPER.readTree(metadataString)
                     : null;
-            String appName = removeTabs(getJsonString(metadataJson, "appName"));
-            String appVersion = removeTabs(getJsonString(metadataJson, "appVersion"));
-            String phoneInfo = removeTabs(getJsonString(metadataJson, "phoneInfo"));
+            String appVersion = trimToLengthAndWarn(removeTabs(getJsonString(metadataJson, "appVersion")), 48);
+            String phoneInfo = trimToLengthAndWarn(removeTabs(getJsonString(metadataJson, "phoneInfo")), 48);
 
             // app version bookkeeping
             appVersionsByStudy.put(studyId, appVersion);
 
             // write record
-            PrintWriter writer = schemaHelper.getExportWriter(schemaKey);
-            writer.print(recordId);
-            writer.print("\t");
-            writer.print(healthCode);
-            writer.print("\t");
-            writer.print(dateString);
-            writer.print("\t");
-            writer.print(new DateTime(oneRecord.getLong("createdOn")).withZone(LOCAL_TIME_ZONE)
-                    .toString(ISODateTimeFormat.dateTime()));
-            writer.print("\t");
+            String synapseTableId = schemaHelper.getSynapseTableId(schemaKey);
+            List<SelectColumn> headerList = schemaHelper.getSynapseAppendRowHeaders(synapseTableId);
+            List<String> rowValueList = new ArrayList<>();
+
+            // common values
+            rowValueList.add(recordId);
+            rowValueList.add(healthCode);
+            rowValueList.add(dateString);
+
+            // createdOn as a long epoch millis
+            rowValueList.add(String.valueOf(oneRecord.getLong("createdOn")));
+
             // TODO: metadata
-            writer.print("(TODO: link to file)");
+            rowValueList.add(null);
 
-            // TODO: ResearchKit-specific
-            writer.print("\t");
-            writer.print(appName);
-            writer.print("\t");
-            writer.print(appVersion);
-            writer.print("\t");
-            writer.print(phoneInfo);
+            rowValueList.add(appVersion);
+            rowValueList.add(phoneInfo);
 
+            // schema-specific columns
             JsonNode fieldDefList = JSON_MAPPER.readTree(schema.getString("fieldDefinitions"));
             for (JsonNode oneFieldDef : fieldDefList) {
+                // TODO
+                // The following fields in the following schemas need special casing to convert from strings to
+                // attachments
+                // Breast Cancer
+                // * Daily Journal
+                //   * content_data.APHMoodLogNoteText
+                //   * DailyJournalStep103_data.content
+                // * Exercise Journal
+                //   * exercisesurvey101_data.result through exercisesurvey106_data.result
+
                 String name = oneFieldDef.get("name").textValue();
-
-                String value = null;
-                if (dataJson.hasNonNull(name)) {
-                    JsonNode valueNode = dataJson.get(name);
-
-                    String type = oneFieldDef.get("type").textValue();
-                    if (Strings.isNullOrEmpty(type)) {
-                        type = "inline_json_blob";
-                    }
-                    type = type.toLowerCase();
-
-                    // TODO
-                    // The following fields in the following schemas need special casing to convert from strings to
-                    // attachments
-                    // Breast Cancer
-                    // * Daily Journal
-                    //   * content_data.APHMoodLogNoteText
-                    //   * DailyJournalStep103_data.content
-                    // * Exercise Journal
-                    //   * exercisesurvey101_data.result through exercisesurvey106_data.result
-
-                    switch (type) {
-                        case "attachment_blob":
-                        case "attachment_csv":
-                        case "attachment_json_blob":
-                        case "attachment_json_table":
-                            // TODO:
-                            value = "(TODO: link to file)";
-                            break;
-                        case "calendar_date":
-                            // sanity check
-                            String dateStr = valueNode.textValue();
-                            try {
-                                LocalDate.parse(dateStr);
-                                value = dateStr;
-                            } catch (RuntimeException ex) {
-                                // throw out malformatted dates
-                                value = null;
-                            }
-                            break;
-                        case "timestamp":
-                            if (valueNode.isTextual()) {
-                                try {
-                                    DateTime dateTime = DateTime.parse(valueNode.textValue())
-                                            .withZone(LOCAL_TIME_ZONE);
-                                    value = dateTime.toString(ISODateTimeFormat.dateTime());
-                                } catch (RuntimeException ex) {
-                                    // throw out malformatted timestamps
-                                    value = null;
-                                }
-                            } else if (valueNode.isNumber()) {
-                                DateTime dateTime = new DateTime(valueNode.longValue()).withZone(LOCAL_TIME_ZONE);
-                                value = dateTime.toString(ISODateTimeFormat.dateTime());
-                            } else {
-                                // throw out malformatted timestamps
-                                value = null;
-                            }
-                            break;
-                        case "boolean":
-                        case "float":
-                        case "inline_json_blob":
-                        case "int":
-                        case "string":
-                        default:
-                            // verbatim JSON value
-                            value = valueNode.toString();
-                            break;
-                    }
-
-                    // replace tabs
-                    if (value != null) {
-                        value = removeTabs(value);
-                    }
-                }
-
-                writer.print("\t");
-                writer.print(value != null ? value : "");
+                String bridgeType = oneFieldDef.get("type").textValue().toLowerCase();
+                JsonNode valueNode = dataJson.get(name);
+                String value = schemaHelper.serializeToSynapseType(bridgeType, valueNode);
+                rowValueList.add(value);
             }
-            writer.println();
+
+            Row row = new Row();
+            row.setValues(rowValueList);
+
+            // row set
+            // TODO: batch rows?
+            RowSet rowSet = new RowSet();
+            rowSet.setHeaders(headerList);
+            rowSet.setRows(Collections.singletonList(row));
+            rowSet.setTableId(synapseTableId);
+
+            // call Synapse
+            schemaHelper.appendSynapseRows(rowSet, synapseTableId);
 
             // TODO: PhoneAppInfo table
         }
@@ -452,7 +383,7 @@ public class BridgeExporter {
         set.add(value);
     }
 
-    private String getJsonString(JsonNode node, String key) {
+    private static String getJsonString(JsonNode node, String key) {
         if (node.hasNonNull(key)) {
             return node.get(key).textValue();
         } else {
@@ -460,9 +391,18 @@ public class BridgeExporter {
         }
     }
 
-    private String removeTabs(String in) {
-        if (!Strings.isNullOrEmpty(in)) {
+    private static String removeTabs(String in) {
+        if (in != null) {
             return in.replaceAll("\t+", " ");
+        } else {
+            return null;
+        }
+    }
+
+    public static String trimToLengthAndWarn(String in, int maxLength) {
+        if (in != null && in.length() > maxLength) {
+            System.out.println("Trunacting string " + in + " to length " + maxLength);
+            return in.substring(0, maxLength);
         } else {
             return in;
         }
