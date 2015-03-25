@@ -18,16 +18,13 @@ import org.sagebionetworks.client.SynapseClientImpl;
 import org.sagebionetworks.client.exceptions.SynapseException;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
-import org.sagebionetworks.repo.model.table.RowSet;
-import org.sagebionetworks.repo.model.table.SelectColumn;
 import org.sagebionetworks.repo.model.table.TableEntity;
 
+// TODO: unspaghetti this code and move Synapse stuff to SynapseHelper
 public class UploadSchemaHelper {
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
-    private static final long SYNAPSE_APPEND_ROW_TIMEOUT_MILLISECONDS = 5000L;   // 5 seconds
 
     private final Map<UploadSchemaKey, Item> schemaMap = new HashMap<>();
-    private final Map<String, List<SelectColumn>> synapseAppendRowHeaderMap = new HashMap<>();
     private final Map<UploadSchemaKey, String> synapseTableIdMap = new HashMap<>();
 
     private Map<String, ColumnType> bridgeTypeToSynapseType;
@@ -224,29 +221,6 @@ public class UploadSchemaHelper {
         return synapseTableId;
     }
 
-    public List<SelectColumn> getSynapseAppendRowHeaders(String tableId) throws SynapseException {
-        // check cache
-        List<SelectColumn> headerList = synapseAppendRowHeaderMap.get(tableId);
-        if (headerList != null) {
-            return headerList;
-        }
-
-        // call Synapse
-        List<ColumnModel> columnList = synapseClient.getColumnModelsForTableEntity(tableId);
-        headerList = new ArrayList<>();
-        for (ColumnModel oneColumn : columnList) {
-            SelectColumn oneHeader = new SelectColumn();
-            oneHeader.setId(oneColumn.getId());
-            oneHeader.setName(oneColumn.getName());
-            headerList.add(oneHeader);
-        }
-
-        // write back to cache
-        synapseAppendRowHeaderMap.put(tableId, headerList);
-
-        return headerList;
-    }
-
     public String serializeToSynapseType(String recordId, String bridgeType, JsonNode node) {
         if (node == null || node.isNull()) {
             return null;
@@ -313,9 +287,5 @@ public class UploadSchemaHelper {
                         + recordId);
                 return null;
         }
-    }
-
-    public void appendSynapseRows(RowSet rowSet, String tableId) throws SynapseException, InterruptedException {
-        synapseClient.appendRowsToTable(rowSet, SYNAPSE_APPEND_ROW_TIMEOUT_MILLISECONDS, tableId);
     }
 }

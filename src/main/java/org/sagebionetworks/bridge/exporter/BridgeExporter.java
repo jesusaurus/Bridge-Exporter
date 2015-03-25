@@ -34,6 +34,7 @@ import org.sagebionetworks.repo.model.table.RowSet;
 import org.sagebionetworks.repo.model.table.SelectColumn;
 
 import org.sagebionetworks.bridge.s3.S3Helper;
+import org.sagebionetworks.bridge.synapse.SynapseHelper;
 
 public class BridgeExporter {
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
@@ -67,6 +68,7 @@ public class BridgeExporter {
     private String dateString;
     private UploadSchemaHelper schemaHelper;
     private S3Helper s3Helper;
+    private SynapseHelper synapseHelper;
 
     public void run() throws IOException {
         Stopwatch stopwatch = Stopwatch.createStarted();
@@ -105,6 +107,11 @@ public class BridgeExporter {
         schemaHelper.setSchemaTable(uploadSchemaTable);
         schemaHelper.setSynapseTablesTable(synapseTablesTable);
         schemaHelper.init();
+
+        // synapse helper
+        synapseHelper = new SynapseHelper();
+        synapseHelper.setDdbClient(ddbClient);
+        synapseHelper.init();
     }
 
     private void downloadHealthDataRecords() {
@@ -152,6 +159,7 @@ public class BridgeExporter {
                 incrementCounter("numSharingSparsely");
             } else {
                 System.out.println("Unknown sharing scope: " + userSharingScope);
+                continue;
             }
 
             // basic record data
@@ -326,16 +334,6 @@ public class BridgeExporter {
                 }
             }
 
-            // get schema
-            UploadSchemaKey schemaKey = new UploadSchemaKey(studyId, schemaId, schemaRev);
-            Item schema = schemaHelper.getSchema(schemaKey);
-            if (schema == null) {
-                // No schema. Skip.
-                System.out.println("Schema " + schemaKey.toString() + " not found for record " + recordId);
-                schemasNotFound.add(schemaKey.toString());
-                continue;
-            }
-
             // get phone and app info
             String appVersion = null;
             String phoneInfo = null;
@@ -354,82 +352,10 @@ public class BridgeExporter {
             // app version bookkeeping
             appVersionsByStudy.put(studyId, appVersion);
 
-            // write record
-            String synapseTableId;
-            try {
-                synapseTableId = schemaHelper.getSynapseTableId(schemaKey);
-            } catch (IOException | SynapseException ex) {
-                System.out.println("Error getting/creating Synapse table for schemaKey " + schemaKey.toString()
-                        + ", record ID " + recordId);
-                continue;
-            }
-            List<SelectColumn> headerList;
-            try {
-                headerList = schemaHelper.getSynapseAppendRowHeaders(synapseTableId);
-            } catch (SynapseException ex) {
-                System.out.println("Error getting Synapse table columns for synapse table ID " + synapseTableId
-                        + ", record ID " + recordId);
-                continue;
-            }
-            List<String> rowValueList = new ArrayList<>();
+            writeHealthDataToSynapse(recordId, healthCode, studyId, schemaId, schemaRev, appVersion, phoneInfo,
+                    oneRecord, dataJson, schemasNotFound);
 
-            // common values
-            rowValueList.add(recordId);
-            rowValueList.add(healthCode);
-            rowValueList.add(dateString);
-
-            // createdOn as a long epoch millis
-            rowValueList.add(String.valueOf(oneRecord.getLong("createdOn")));
-
-            rowValueList.add(appVersion);
-            rowValueList.add(phoneInfo);
-
-            // schema-specific columns
-            JsonNode fieldDefList;
-            try {
-                fieldDefList = JSON_MAPPER.readTree(schema.getString("fieldDefinitions"));
-            } catch (IOException ex) {
-                System.out.println("Error parsing field def list for schema " + schemaKey.toString() + ", record ID "
-                        + recordId);
-                continue;
-            }
-            for (JsonNode oneFieldDef : fieldDefList) {
-                // TODO
-                // The following fields in the following schemas need special casing to convert from strings to
-                // attachments
-                // Breast Cancer
-                // * Daily Journal
-                //   * content_data.APHMoodLogNoteText
-                //   * DailyJournalStep103_data.content
-                // * Exercise Journal
-                //   * exercisesurvey101_data.result through exercisesurvey106_data.result
-
-                String name = oneFieldDef.get("name").textValue();
-                String bridgeType = oneFieldDef.get("type").textValue().toLowerCase();
-                JsonNode valueNode = dataJson.get(name);
-                String value = schemaHelper.serializeToSynapseType(recordId, bridgeType, valueNode);
-                rowValueList.add(value);
-            }
-
-            Row row = new Row();
-            row.setValues(rowValueList);
-
-            // row set
-            // TODO: batch rows?
-            RowSet rowSet = new RowSet();
-            rowSet.setHeaders(headerList);
-            rowSet.setRows(Collections.singletonList(row));
-            rowSet.setTableId(synapseTableId);
-
-            // call Synapse
-            try {
-                schemaHelper.appendSynapseRows(rowSet, synapseTableId);
-            } catch (InterruptedException | SynapseException ex) {
-                System.out.println("Error writing Synapse row for record " + recordId);
-                continue;
-            }
-
-            // TODO: PhoneAppInfo table
+            writeAppVersionToSynapse(recordId, healthCode, studyId, schemaId, schemaRev, appVersion, phoneInfo);
         }
 
         for (Map.Entry<String, Integer> oneCounter : counterMap.entrySet()) {
@@ -445,6 +371,143 @@ public class BridgeExporter {
         for (Map.Entry<String, Collection<String>> appVersionEntry : appVersionsByStudy.asMap().entrySet()) {
             System.out.println("App versions for " + appVersionEntry.getKey() + ": "
                     + Joiner.on(", ").join(appVersionEntry.getValue()));
+        }
+    }
+
+    private void writeHealthDataToSynapse(String recordId, String healthCode, String studyId, String schemaId,
+            int schemaRev, String appVersion, String phoneInfo, Item oneRecord, JsonNode dataJson,
+            Set<String> schemasNotFound) {
+        // get schema
+        UploadSchemaKey schemaKey = new UploadSchemaKey(studyId, schemaId, schemaRev);
+        Item schema = schemaHelper.getSchema(schemaKey);
+        if (schema == null) {
+            // No schema. Skip.
+            System.out.println("Schema " + schemaKey.toString() + " not found for record " + recordId);
+            schemasNotFound.add(schemaKey.toString());
+            return;
+        }
+
+        // write record
+        String synapseTableId;
+        try {
+            synapseTableId = schemaHelper.getSynapseTableId(schemaKey);
+        } catch (IOException | RuntimeException | SynapseException ex) {
+            System.out.println("Error getting/creating Synapse table for schemaKey " + schemaKey.toString()
+                    + ", record ID " + recordId);
+            return;
+        }
+        List<SelectColumn> headerList;
+        try {
+            headerList = synapseHelper.getSynapseAppendRowHeaders(synapseTableId);
+        } catch (SynapseException ex) {
+            System.out.println("Error getting Synapse table columns for synapse table ID " + synapseTableId
+                    + ", record ID " + recordId);
+            return;
+        }
+        List<String> rowValueList = new ArrayList<>();
+
+        // common values
+        rowValueList.add(recordId);
+        rowValueList.add(healthCode);
+        rowValueList.add(dateString);
+
+        // createdOn as a long epoch millis
+        rowValueList.add(String.valueOf(oneRecord.getLong("createdOn")));
+
+        rowValueList.add(appVersion);
+        rowValueList.add(phoneInfo);
+
+        // schema-specific columns
+        JsonNode fieldDefList;
+        try {
+            fieldDefList = JSON_MAPPER.readTree(schema.getString("fieldDefinitions"));
+        } catch (IOException ex) {
+            System.out.println("Error parsing field def list for schema " + schemaKey.toString() + ", record ID "
+                    + recordId);
+            return;
+        }
+        for (JsonNode oneFieldDef : fieldDefList) {
+            // TODO
+            // The following fields in the following schemas need special casing to convert from strings to
+            // attachments
+            // Breast Cancer
+            // * Daily Journal
+            //   * content_data.APHMoodLogNoteText
+            //   * DailyJournalStep103_data.content
+            // * Exercise Journal
+            //   * exercisesurvey101_data.result through exercisesurvey106_data.result
+
+            String name = oneFieldDef.get("name").textValue();
+            String bridgeType = oneFieldDef.get("type").textValue().toLowerCase();
+            JsonNode valueNode = dataJson.get(name);
+            String value = schemaHelper.serializeToSynapseType(recordId, bridgeType, valueNode);
+            rowValueList.add(value);
+        }
+
+        Row row = new Row();
+        row.setValues(rowValueList);
+
+        // row set
+        // TODO: batch rows?
+        RowSet rowSet = new RowSet();
+        rowSet.setHeaders(headerList);
+        rowSet.setRows(Collections.singletonList(row));
+        rowSet.setTableId(synapseTableId);
+
+        // call Synapse
+        try {
+            synapseHelper.appendSynapseRows(rowSet, synapseTableId);
+        } catch (InterruptedException | SynapseException ex) {
+            System.out.println("Error writing Synapse row for record " + recordId);
+        }
+    }
+
+    private void writeAppVersionToSynapse(String recordId, String healthCode, String studyId, String schemaId,
+            int schemaRev, String appVersion, String phoneInfo) {
+        UploadSchemaKey schemaKey = new UploadSchemaKey(studyId, schemaId, schemaRev);
+
+        // table ID
+        String synapseTableId;
+        try {
+            synapseTableId = synapseHelper.getSynapseAppVersionTableForStudy(studyId);
+        } catch (RuntimeException | SynapseException ex) {
+            System.out.println("Error getting/creating appVersion table for study " + studyId);
+            return;
+        }
+
+        // column headers
+        List<SelectColumn> headerList;
+        try {
+            headerList = synapseHelper.getSynapseAppendRowHeaders(synapseTableId);
+        } catch (SynapseException ex) {
+            System.out.println("Error getting Synapse table columns for synapse table ID " + synapseTableId
+                    + ", record ID " + recordId);
+            return;
+        }
+
+        // column values
+        List<String> rowValueList = new ArrayList<>();
+        rowValueList.add(recordId);
+        rowValueList.add(healthCode);
+        rowValueList.add(schemaKey.toString());
+        rowValueList.add(appVersion);
+        rowValueList.add(phoneInfo);
+
+        Row row = new Row();
+        row.setValues(rowValueList);
+
+        // row set
+        // TODO: batch rows?
+        RowSet rowSet = new RowSet();
+        rowSet.setHeaders(headerList);
+        rowSet.setRows(Collections.singletonList(row));
+        rowSet.setTableId(synapseTableId);
+
+        // call Synapse
+        try {
+            synapseHelper.appendSynapseRows(rowSet, synapseTableId);
+        } catch (InterruptedException | SynapseException ex) {
+            System.out.println("Error writing Synapse row for record " + recordId);
         }
     }
 
