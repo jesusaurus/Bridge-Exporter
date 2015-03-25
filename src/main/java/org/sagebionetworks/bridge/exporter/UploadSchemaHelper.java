@@ -150,11 +150,6 @@ public class UploadSchemaHelper {
         createdOnColumn.setColumnType(ColumnType.DATE);
         columnList.add(createdOnColumn);
 
-        ColumnModel metadataColumn = new ColumnModel();
-        metadataColumn.setName("metadata");
-        metadataColumn.setColumnType(ColumnType.FILEHANDLEID);
-        columnList.add(metadataColumn);
-
         ColumnModel appVersionColumn = new ColumnModel();
         appVersionColumn.setName("appVersion");
         appVersionColumn.setColumnType(ColumnType.STRING);
@@ -252,14 +247,14 @@ public class UploadSchemaHelper {
         return headerList;
     }
 
-    public String serializeToSynapseType(String bridgeType, JsonNode node) {
+    public String serializeToSynapseType(String recordId, String bridgeType, JsonNode node) {
         if (node == null || node.isNull()) {
             return null;
         }
 
         ColumnType synapseType = bridgeTypeToSynapseType.get(bridgeType);
         if (synapseType == null) {
-            System.out.println("No Synapse type found for Bridge type " + bridgeType);
+            System.out.println("No Synapse type found for Bridge type " + bridgeType + ", record ID " + recordId);
             synapseType = ColumnType.STRING;
         }
 
@@ -314,7 +309,9 @@ public class UploadSchemaHelper {
                 }
                 return BridgeExporter.trimToLengthAndWarn(nodeValue, maxLength);
             default:
-                throw new RuntimeException("Unexpected Synapse Type: " + String.valueOf(synapseType));
+                System.out.println("Unexpected Synapse Type " + String.valueOf(synapseType) + " for record ID "
+                        + recordId);
+                return null;
         }
     }
 
