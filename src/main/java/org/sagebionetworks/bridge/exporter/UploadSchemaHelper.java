@@ -12,7 +12,6 @@ import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.joda.time.DateTime;
 import org.sagebionetworks.client.SynapseClient;
 import org.sagebionetworks.client.SynapseClientImpl;
 import org.sagebionetworks.client.exceptions.SynapseException;
@@ -20,22 +19,27 @@ import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 import org.sagebionetworks.repo.model.table.TableEntity;
 
+import org.sagebionetworks.bridge.synapse.SynapseHelper;
+
 // TODO: unspaghetti this code and move Synapse stuff to SynapseHelper
 public class UploadSchemaHelper {
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
-    private final Map<UploadSchemaKey, Item> schemaMap = new HashMap<>();
+    private final Map<UploadSchemaKey, UploadSchema> schemaMap = new HashMap<>();
     private final Map<UploadSchemaKey, String> synapseTableIdMap = new HashMap<>();
 
-    private Map<String, ColumnType> bridgeTypeToSynapseType;
-    private Map<String, Integer> bridgeTypeToMaxLength;
     private Map<String, String> projectIdsByStudy;
     private Table schemaTable;
     private SynapseClient synapseClient;
+    private SynapseHelper synapseHelper;
     private Table synapseTablesTable;
 
     public void setSchemaTable(Table schemaTable) {
         this.schemaTable = schemaTable;
+    }
+
+    public void setSynapseHelper(SynapseHelper synapseHelper) {
+        this.synapseHelper = synapseHelper;
     }
 
     public void setSynapseTablesTable(Table synapseTablesTable) {
@@ -45,16 +49,17 @@ public class UploadSchemaHelper {
     public void init() throws IOException {
         // schemas
         Iterable<Item> schemaIter = schemaTable.scan();
-        for (Item oneSchema : schemaIter) {
-            String schemaTableKey = oneSchema.getString("key");
+        for (Item oneDdbSchema : schemaIter) {
+            String schemaTableKey = oneDdbSchema.getString("key");
             String[] parts = schemaTableKey.split(":", 2);
             String studyId = parts[0];
             String schemaId = parts[1];
 
-            int schemaRev = oneSchema.getInt("revision");
+            int schemaRev = oneDdbSchema.getInt("revision");
             UploadSchemaKey schemaKey = new UploadSchemaKey(studyId, schemaId, schemaRev);
+            UploadSchema schema = UploadSchema.fromDdbItem(schemaKey, oneDdbSchema);
 
-            schemaMap.put(schemaKey, oneSchema);
+            schemaMap.put(schemaKey, schema);
         }
 
         // synapse config
@@ -76,33 +81,13 @@ public class UploadSchemaHelper {
             String oneStudyId = projectIdMapKeyIter.next();
             projectIdsByStudy.put(oneStudyId, projectIdMapNode.get(oneStudyId).textValue());
         }
-
-        // type map
-        // TODO: use BridgePF enum instead of hardcoded strings
-        bridgeTypeToSynapseType = new HashMap<>();
-        bridgeTypeToSynapseType.put("attachment_blob", ColumnType.FILEHANDLEID);
-        bridgeTypeToSynapseType.put("attachment_csv", ColumnType.FILEHANDLEID);
-        bridgeTypeToSynapseType.put("attachment_json_blob", ColumnType.FILEHANDLEID);
-        bridgeTypeToSynapseType.put("attachment_json_table", ColumnType.FILEHANDLEID);
-        bridgeTypeToSynapseType.put("boolean", ColumnType.BOOLEAN);
-        bridgeTypeToSynapseType.put("calendar_date", ColumnType.STRING);
-        bridgeTypeToSynapseType.put("float", ColumnType.DOUBLE);
-        bridgeTypeToSynapseType.put("inline_json_blob", ColumnType.STRING);
-        bridgeTypeToSynapseType.put("int", ColumnType.INTEGER);
-        bridgeTypeToSynapseType.put("string", ColumnType.STRING);
-        bridgeTypeToSynapseType.put("timestamp", ColumnType.DATE);
-
-        bridgeTypeToMaxLength = new HashMap<>();
-        bridgeTypeToMaxLength.put("calendar_date", 10);
-        bridgeTypeToMaxLength.put("inline_json_blob", 1000);
-        bridgeTypeToMaxLength.put("string", 1000);
     }
 
-    public Item getSchema(UploadSchemaKey schemaKey) {
+    public UploadSchema getSchema(UploadSchemaKey schemaKey) {
         return schemaMap.get(schemaKey);
     }
 
-    public String getSynapseTableId(UploadSchemaKey schemaKey) throws IOException, SynapseException {
+    public String getSynapseTableId(UploadSchemaKey schemaKey) throws SynapseException {
         // check cache
         String synapseTableId = synapseTableIdMap.get(schemaKey);
         if (synapseTableId != null) {
@@ -135,6 +120,12 @@ public class UploadSchemaHelper {
         healthCodeColumn.setMaximumSize(36L);
         columnList.add(healthCodeColumn);
 
+        ColumnModel externalIdColumn = new ColumnModel();
+        externalIdColumn.setName("externalId");
+        externalIdColumn.setColumnType(ColumnType.STRING);
+        externalIdColumn.setMaximumSize(128L);
+        columnList.add(externalIdColumn);
+
         // NOTE: ColumnType.DATE is actually a timestamp. There is no calendar date type.
         ColumnModel uploadDateColumn = new ColumnModel();
         uploadDateColumn.setName("uploadDate");
@@ -160,24 +151,24 @@ public class UploadSchemaHelper {
         columnList.add(phoneInfoColumn);
 
         // schema specific columns
-        Item schema = getSchema(schemaKey);
-        JsonNode fieldDefList = JSON_MAPPER.readTree(schema.getString("fieldDefinitions"));
-        for (JsonNode oneFieldDef : fieldDefList) {
-            String name = oneFieldDef.get("name").textValue();
-            String bridgeType = oneFieldDef.get("type").textValue().toLowerCase();
+        UploadSchema schema = getSchema(schemaKey);
+        List<String> fieldNameList = schema.getFieldNameList();
+        Map<String, String> fieldTypeMap = schema.getFieldTypeMap();
+        for (String oneFieldName : fieldNameList) {
+            String bridgeType = fieldTypeMap.get(oneFieldName);
 
-            ColumnType synapseType = bridgeTypeToSynapseType.get(bridgeType);
+            ColumnType synapseType = SynapseHelper.BRIDGE_TYPE_TO_SYNAPSE_TYPE.get(bridgeType);
             if (synapseType == null) {
                 System.out.println("No Synapse type found for Bridge type " + bridgeType);
                 synapseType = ColumnType.STRING;
             }
 
             ColumnModel oneColumn = new ColumnModel();
-            oneColumn.setName(name);
+            oneColumn.setName(oneFieldName);
             oneColumn.setColumnType(synapseType);
 
             if (synapseType == ColumnType.STRING) {
-                Integer maxLength = bridgeTypeToMaxLength.get(bridgeType);
+                Integer maxLength = SynapseHelper.BRIDGE_TYPE_TO_MAX_LENGTH.get(bridgeType);
                 if (maxLength == null) {
                     System.out.println("No max length found for Bridge type " + bridgeType);
                     maxLength = 1000;
@@ -209,6 +200,8 @@ public class UploadSchemaHelper {
         TableEntity createdTable = synapseClient.createEntity(synapseTable);
         synapseTableId = createdTable.getId();
 
+        synapseHelper.createAclsForTableInStudy(schemaKey.getStudyId(), synapseTableId);
+
         // write back to DDB table
         Item synapseTableDdbItem = new Item();
         synapseTableDdbItem.withString("schemaKey", schemaKey.toString());
@@ -219,73 +212,5 @@ public class UploadSchemaHelper {
         synapseTableIdMap.put(schemaKey, synapseTableId);
 
         return synapseTableId;
-    }
-
-    public String serializeToSynapseType(String recordId, String bridgeType, JsonNode node) {
-        if (node == null || node.isNull()) {
-            return null;
-        }
-
-        ColumnType synapseType = bridgeTypeToSynapseType.get(bridgeType);
-        if (synapseType == null) {
-            System.out.println("No Synapse type found for Bridge type " + bridgeType + ", record ID " + recordId);
-            synapseType = ColumnType.STRING;
-        }
-
-        switch (synapseType) {
-            case BOOLEAN:
-                if (node.isBoolean()) {
-                    return String.valueOf(node.booleanValue());
-                }
-                return null;
-            case DATE:
-                // date is a long epoch millis
-                if (node.isTextual()) {
-                    try {
-                        DateTime dateTime = DateTime.parse(node.textValue());
-                        return String.valueOf(dateTime.getMillis());
-                    } catch (RuntimeException ex) {
-                        // throw out malformatted dates
-                        return null;
-                    }
-                } else if (node.isNumber()) {
-                    return String.valueOf(node.longValue());
-                }
-                return null;
-            case DOUBLE:
-                // double only has double precision, not BigDecimal precision
-                if (node.isNumber()) {
-                    return String.valueOf(node.doubleValue());
-                }
-                return null;
-            case FILEHANDLEID:
-                // TODO
-                return null;
-            case INTEGER:
-                // int includes long
-                if (node.isNumber()) {
-                    return String.valueOf(node.longValue());
-                }
-                return null;
-            case STRING:
-                // String includes calendar_date (as JSON string) and inline_json_blob (arbitrary JSON)
-                String nodeValue;
-                if ("inline_json_blob".equalsIgnoreCase(bridgeType)) {
-                    nodeValue = node.toString();
-                } else {
-                    nodeValue = node.textValue();
-                }
-
-                Integer maxLength = bridgeTypeToMaxLength.get(bridgeType);
-                if (maxLength == null) {
-                    System.out.println("No max length found for Bridge type " + bridgeType);
-                    maxLength = 1000;
-                }
-                return BridgeExporter.trimToLengthAndWarn(nodeValue, maxLength);
-            default:
-                System.out.println("Unexpected Synapse Type " + String.valueOf(synapseType) + " for record ID "
-                        + recordId);
-                return null;
-        }
     }
 }

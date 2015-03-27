@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import com.amazonaws.AmazonClientException;
@@ -22,6 +23,8 @@ import com.amazonaws.services.s3.AmazonS3Client;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.TextNode;
+import com.google.common.base.Charsets;
 import com.google.common.base.Joiner;
 import com.google.common.base.Stopwatch;
 import com.google.common.base.Strings;
@@ -29,6 +32,7 @@ import com.google.common.collect.Multimap;
 import com.google.common.collect.TreeMultimap;
 import org.joda.time.LocalDate;
 import org.sagebionetworks.client.exceptions.SynapseException;
+import org.sagebionetworks.repo.model.table.ColumnType;
 import org.sagebionetworks.repo.model.table.Row;
 import org.sagebionetworks.repo.model.table.RowSet;
 import org.sagebionetworks.repo.model.table.SelectColumn;
@@ -38,15 +42,15 @@ import org.sagebionetworks.bridge.synapse.SynapseHelper;
 
 public class BridgeExporter {
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
-    private static final String S3_BUCKET_ATTACHMENTS = "org-sagebridge-attachment-prod";
+    public static final String S3_BUCKET_ATTACHMENTS = "org-sagebridge-attachment-prod";
 
     // Number of records before the script stops processing records. This is used for testing. To make this unlimited,
     // set it to -1.
-    private static final int RECORD_LIMIT = 30;
+    private static final int RECORD_LIMIT = 300;
 
     // Script should report progress after this many records, so users tailing the logs can see that it's still
     // making progress
-    private static final int PROGRESS_REPORT_PERIOD = 10;
+    private static final int PROGRESS_REPORT_PERIOD = 25;
 
     public static void main(String[] args) throws IOException {
         try {
@@ -70,12 +74,13 @@ public class BridgeExporter {
     private S3Helper s3Helper;
     private SynapseHelper synapseHelper;
 
-    public void run() throws IOException {
+    public void run() throws IOException, SynapseException {
         Stopwatch stopwatch = Stopwatch.createStarted();
         try {
             init();
             downloadHealthDataRecords();
         } finally {
+            close();
             stopwatch.stop();
             System.out.println("Took " + stopwatch.elapsed(TimeUnit.SECONDS) + " seconds");
         }
@@ -86,7 +91,7 @@ public class BridgeExporter {
         this.date = LocalDate.parse(dateString);
     }
 
-    private void init() throws IOException {
+    private void init() throws IOException, SynapseException {
         // Dynamo DB client - move to Spring
         // This gets credentials from the default credential chain. For developer desktops, this is ~/.aws/credentials.
         // For EC2 instances, this happens transparently.
@@ -100,18 +105,28 @@ public class BridgeExporter {
         s3Helper = new S3Helper();
         s3Helper.setS3Client(s3Client);
 
+        // synapse helper
+        synapseHelper = new SynapseHelper();
+        synapseHelper.setDdbClient(ddbClient);
+        synapseHelper.setS3Helper(s3Helper);
+        synapseHelper.init();
+
         // DDB tables and Schema Helper
         Table uploadSchemaTable = ddbClient.getTable("prod-heroku-UploadSchema");
         Table synapseTablesTable = ddbClient.getTable("prod-exporter-SynapseTables");
         schemaHelper = new UploadSchemaHelper();
         schemaHelper.setSchemaTable(uploadSchemaTable);
+        schemaHelper.setSynapseHelper(synapseHelper);
         schemaHelper.setSynapseTablesTable(synapseTablesTable);
         schemaHelper.init();
 
-        // synapse helper
-        synapseHelper = new SynapseHelper();
-        synapseHelper.setDdbClient(ddbClient);
-        synapseHelper.init();
+        System.out.println("Done initializing.");
+    }
+
+    private void close() {
+        if (synapseHelper != null) {
+            synapseHelper.close();
+        }
     }
 
     private void downloadHealthDataRecords() {
@@ -166,6 +181,7 @@ public class BridgeExporter {
             String studyId = oneRecord.getString("studyId");
             String schemaId = oneRecord.getString("schemaId");
             int schemaRev = oneRecord.getInt("schemaRevision");
+            String externalId = getDdbStringRemoveTabsAndTrim(oneRecord, "userExternalId", 48);
 
             String healthCode = oneRecord.getString("healthCode");
             incrementSetCounter("uniqueHealthCodes[" + studyId + "]", healthCode);
@@ -180,7 +196,7 @@ public class BridgeExporter {
                 try {
                     oldDataJson = JSON_MAPPER.readTree(oneRecord.getString("data"));
                 } catch (IOException ex) {
-                    System.out.println("Error parsing JSON data for record " + recordId);
+                    System.out.println("Error parsing JSON data for record " + recordId + ": " + ex.getMessage());
                     continue;
                 }
                 if (oldDataJson == null) {
@@ -213,7 +229,8 @@ public class BridgeExporter {
                 try {
                     answerText = s3Helper.readS3FileAsString(S3_BUCKET_ATTACHMENTS, answerLink);
                 } catch (AmazonClientException | IOException ex) {
-                    System.out.println("Error getting survey answers from S3 for record ID " + recordId);
+                    System.out.println("Error getting survey answers from S3 for record ID " + recordId + ": "
+                            + ex.getMessage());
                     continue;
                 }
 
@@ -221,13 +238,19 @@ public class BridgeExporter {
                 try {
                     answerArrayNode = JSON_MAPPER.readTree(answerText);
                 } catch (IOException ex) {
-                    System.out.println("Error parsing JSON survey answers for record ID " + recordId);
+                    System.out.println("Error parsing JSON survey answers for record ID " + recordId + ": "
+                            + ex.getMessage());
                     continue;
                 }
                 if (answerArrayNode == null) {
                     System.out.println("Survey with no answers for record ID " + recordId);
                     continue;
                 }
+
+                // get schema and field type map, so we can process attachments
+                UploadSchemaKey surveySchemaKey = new UploadSchemaKey(studyId, item, 1);
+                UploadSchema surveySchema = schemaHelper.getSchema(surveySchemaKey);
+                Map<String, String> surveyFieldTypeMap = surveySchema.getFieldTypeMap();
 
                 // copy fields to "non-survey" format
                 ObjectNode convertedSurveyNode = JSON_MAPPER.createObjectNode();
@@ -307,15 +330,32 @@ public class BridgeExporter {
                                     + " has unknown question type " + questionTypeName);
                             break;
                     }
-                    convertedSurveyNode.set(answerItem, answerAnswerNode);
+
+                    if (answerAnswerNode != null && !answerAnswerNode.isNull()) {
+                        // handle attachment types (file handle types)
+                        String bridgeType = surveyFieldTypeMap.get(answerItem);
+                        ColumnType synapseType = SynapseHelper.BRIDGE_TYPE_TO_SYNAPSE_TYPE.get(bridgeType);
+                        if (synapseType == ColumnType.FILEHANDLEID) {
+                            String attachmentId = null;
+                            String answer = answerAnswerNode.asText();
+                            try {
+                                attachmentId = uploadFreeformTextAsAttachment(recordId, answer);
+                            } catch (AmazonClientException | IOException ex) {
+                                System.out.println("Error uploading freeform text as attachment for record ID "
+                                        + recordId + ", survey item " + answerItem + ": " + ex.getMessage());
+                            }
+
+                            convertedSurveyNode.put(answerItem, attachmentId);
+                        } else {
+                            convertedSurveyNode.set(answerItem, answerAnswerNode);
+                        }
+                    }
 
                     // if there's a unit, add it as well
                     JsonNode unitNode = oneAnswerNode.get("unit");
                     if (unitNode != null && !unitNode.isNull()) {
                         convertedSurveyNode.set(answerItem + "_unit", unitNode);
                     }
-
-                    // TODO: attachment types
                 }
 
                 dataJson = convertedSurveyNode;
@@ -325,7 +365,7 @@ public class BridgeExporter {
                 try {
                     dataJson = JSON_MAPPER.readTree(oneRecord.getString("data"));
                 } catch (IOException ex) {
-                    System.out.println("Error parsing JSON for record ID " + recordId);
+                    System.out.println("Error parsing JSON for record ID " + recordId + ": " + ex.getMessage());
                     continue;
                 }
                 if (dataJson == null) {
@@ -341,21 +381,22 @@ public class BridgeExporter {
             if (!Strings.isNullOrEmpty(metadataString)) {
                 try {
                     JsonNode metadataJson = JSON_MAPPER.readTree(metadataString);
-                    appVersion = trimToLengthAndWarn(removeTabs(getJsonString(metadataJson, "appVersion")), 48);
-                    phoneInfo = trimToLengthAndWarn(removeTabs(getJsonString(metadataJson, "phoneInfo")), 48);
+                    appVersion = getJsonStringRemoveTabsAndTrim(metadataJson, "appVersion", 48);
+                    phoneInfo = getJsonStringRemoveTabsAndTrim(metadataJson, "phoneInfo", 48);
                 } catch (IOException ex) {
                     // we can recover from this
-                    System.out.println("Error parsing metadata for record ID " + recordId);
+                    System.out.println("Error parsing metadata for record ID " + recordId + ": " + ex.getMessage());
                 }
             }
 
             // app version bookkeeping
             appVersionsByStudy.put(studyId, appVersion);
 
-            writeHealthDataToSynapse(recordId, healthCode, studyId, schemaId, schemaRev, appVersion, phoneInfo,
-                    oneRecord, dataJson, schemasNotFound);
+            writeHealthDataToSynapse(recordId, healthCode, externalId, studyId, schemaId, schemaRev, appVersion,
+                    phoneInfo, oneRecord, dataJson, schemasNotFound);
 
-            writeAppVersionToSynapse(recordId, healthCode, studyId, schemaId, schemaRev, appVersion, phoneInfo);
+            writeAppVersionToSynapse(recordId, healthCode, externalId, studyId, schemaId, schemaRev, appVersion,
+                    phoneInfo);
         }
 
         for (Map.Entry<String, Integer> oneCounter : counterMap.entrySet()) {
@@ -374,12 +415,12 @@ public class BridgeExporter {
         }
     }
 
-    private void writeHealthDataToSynapse(String recordId, String healthCode, String studyId, String schemaId,
-            int schemaRev, String appVersion, String phoneInfo, Item oneRecord, JsonNode dataJson,
+    private void writeHealthDataToSynapse(String recordId, String healthCode, String externalId, String studyId,
+            String schemaId, int schemaRev, String appVersion, String phoneInfo, Item oneRecord, JsonNode dataJson,
             Set<String> schemasNotFound) {
         // get schema
         UploadSchemaKey schemaKey = new UploadSchemaKey(studyId, schemaId, schemaRev);
-        Item schema = schemaHelper.getSchema(schemaKey);
+        UploadSchema schema = schemaHelper.getSchema(schemaKey);
         if (schema == null) {
             // No schema. Skip.
             System.out.println("Schema " + schemaKey.toString() + " not found for record " + recordId);
@@ -391,9 +432,9 @@ public class BridgeExporter {
         String synapseTableId;
         try {
             synapseTableId = schemaHelper.getSynapseTableId(schemaKey);
-        } catch (IOException | RuntimeException | SynapseException ex) {
+        } catch (RuntimeException | SynapseException ex) {
             System.out.println("Error getting/creating Synapse table for schemaKey " + schemaKey.toString()
-                    + ", record ID " + recordId);
+                    + ", record ID " + recordId + ": " + ex.getMessage());
             return;
         }
         List<SelectColumn> headerList;
@@ -401,7 +442,7 @@ public class BridgeExporter {
             headerList = synapseHelper.getSynapseAppendRowHeaders(synapseTableId);
         } catch (SynapseException ex) {
             System.out.println("Error getting Synapse table columns for synapse table ID " + synapseTableId
-                    + ", record ID " + recordId);
+                    + ", record ID " + recordId + ": " + ex.getMessage());
             return;
         }
         List<String> rowValueList = new ArrayList<>();
@@ -409,6 +450,7 @@ public class BridgeExporter {
         // common values
         rowValueList.add(recordId);
         rowValueList.add(healthCode);
+        rowValueList.add(externalId);
         rowValueList.add(dateString);
 
         // createdOn as a long epoch millis
@@ -418,29 +460,31 @@ public class BridgeExporter {
         rowValueList.add(phoneInfo);
 
         // schema-specific columns
-        JsonNode fieldDefList;
-        try {
-            fieldDefList = JSON_MAPPER.readTree(schema.getString("fieldDefinitions"));
-        } catch (IOException ex) {
-            System.out.println("Error parsing field def list for schema " + schemaKey.toString() + ", record ID "
-                    + recordId);
-            return;
-        }
-        for (JsonNode oneFieldDef : fieldDefList) {
-            // TODO
-            // The following fields in the following schemas need special casing to convert from strings to
-            // attachments
-            // Breast Cancer
-            // * Daily Journal
-            //   * content_data.APHMoodLogNoteText
-            //   * DailyJournalStep103_data.content
-            // * Exercise Journal
-            //   * exercisesurvey101_data.result through exercisesurvey106_data.result
+        List<String> fieldNameList = schema.getFieldNameList();
+        Map<String, String> fieldTypeMap = schema.getFieldTypeMap();
+        for (String oneFieldName : fieldNameList) {
+            String bridgeType = fieldTypeMap.get(oneFieldName);
+            JsonNode valueNode = dataJson.get(oneFieldName);
 
-            String name = oneFieldDef.get("name").textValue();
-            String bridgeType = oneFieldDef.get("type").textValue().toLowerCase();
-            JsonNode valueNode = dataJson.get(name);
-            String value = schemaHelper.serializeToSynapseType(recordId, bridgeType, valueNode);
+            if (shouldConvertFreeformTextToAttachment(schemaKey, oneFieldName)) {
+                // special hack, see comments on shouldConvertFreeformTextToAttachment()
+                bridgeType = "attachment_blob";
+                if (valueNode != null && !valueNode.isNull() && valueNode.isTextual()) {
+                    try {
+                        String attachmentId = uploadFreeformTextAsAttachment(recordId, valueNode.textValue());
+                        valueNode = new TextNode(attachmentId);
+                    } catch (AmazonClientException | IOException ex) {
+                        System.out.println("Error uploading freeform text as attachment for record ID " + recordId
+                                + ", field " + oneFieldName + ": " + ex.getMessage());
+                        valueNode = null;
+                    }
+                } else {
+                    valueNode = null;
+                }
+            }
+
+            String value = synapseHelper.serializeToSynapseType(studyId, recordId, oneFieldName, bridgeType,
+                    valueNode);
             rowValueList.add(value);
         }
 
@@ -458,12 +502,12 @@ public class BridgeExporter {
         try {
             synapseHelper.appendSynapseRows(rowSet, synapseTableId);
         } catch (InterruptedException | SynapseException ex) {
-            System.out.println("Error writing Synapse row for record " + recordId);
+            System.out.println("Error writing Synapse row for record " + recordId + ": " + ex.getMessage());
         }
     }
 
-    private void writeAppVersionToSynapse(String recordId, String healthCode, String studyId, String schemaId,
-            int schemaRev, String appVersion, String phoneInfo) {
+    private void writeAppVersionToSynapse(String recordId, String healthCode, String externalId, String studyId,
+            String schemaId, int schemaRev, String appVersion, String phoneInfo) {
         UploadSchemaKey schemaKey = new UploadSchemaKey(studyId, schemaId, schemaRev);
 
         // table ID
@@ -471,7 +515,8 @@ public class BridgeExporter {
         try {
             synapseTableId = synapseHelper.getSynapseAppVersionTableForStudy(studyId);
         } catch (RuntimeException | SynapseException ex) {
-            System.out.println("Error getting/creating appVersion table for study " + studyId);
+            System.out.println("Error getting/creating appVersion table for study " + studyId + ": "
+                    + ex.getMessage());
             return;
         }
 
@@ -481,7 +526,7 @@ public class BridgeExporter {
             headerList = synapseHelper.getSynapseAppendRowHeaders(synapseTableId);
         } catch (SynapseException ex) {
             System.out.println("Error getting Synapse table columns for synapse table ID " + synapseTableId
-                    + ", record ID " + recordId);
+                    + ", record ID " + recordId + ": " + ex.getMessage());
             return;
         }
 
@@ -489,6 +534,7 @@ public class BridgeExporter {
         List<String> rowValueList = new ArrayList<>();
         rowValueList.add(recordId);
         rowValueList.add(healthCode);
+        rowValueList.add(externalId);
         rowValueList.add(schemaKey.toString());
         rowValueList.add(appVersion);
         rowValueList.add(phoneInfo);
@@ -507,8 +553,24 @@ public class BridgeExporter {
         try {
             synapseHelper.appendSynapseRows(rowSet, synapseTableId);
         } catch (InterruptedException | SynapseException ex) {
-            System.out.println("Error writing Synapse row for record " + recordId);
+            System.out.println("Error writing Synapse row for record " + recordId + ": " + ex.getMessage());
         }
+    }
+
+    private String uploadFreeformTextAsAttachment(String recordId, String text)
+            throws AmazonClientException, IOException {
+        // write to health data attachments table to reserve guid
+        String attachmentId = UUID.randomUUID().toString();
+        Item attachment = new Item();
+        attachment.withString("id", attachmentId);
+        attachment.withString("recordId", recordId);
+
+        Table attachmentsTable = ddbClient.getTable("prod-heroku-HealthDataAttachment");
+        attachmentsTable.putItem(attachment);
+
+        // upload to S3
+        s3Helper.writeBytesToS3(S3_BUCKET_ATTACHMENTS, attachmentId, text.getBytes(Charsets.UTF_8));
+        return attachmentId;
     }
 
     private int incrementCounter(String name) {
@@ -533,6 +595,41 @@ public class BridgeExporter {
             setCounterMap.put(name, set);
         }
         set.add(value);
+    }
+
+    private static boolean shouldConvertFreeformTextToAttachment(UploadSchemaKey schemaKey, String fieldName) {
+        // When we initially designed these schemas, we didn't realize Synapse had a character limit on strings.
+        // These strings may exceed that character limit, so we need this special hack to convert these strings to
+        // attachments. This code applies only to legacy schemas. New schemas need to declare ATTACHMENT_BLOB,
+        // otherwise the strings get automatically truncated.
+
+        if ("breastcancer".equals(schemaKey.getStudyId())) {
+            if ("BreastCancer-DailyJournal".equals(schemaKey.getSchemaId())) {
+                if (schemaKey.getRev() == 1) {
+                    return "content_data.APHMoodLogNoteText".equals(fieldName)
+                            || "DailyJournalStep103_data.content".equals(fieldName);
+                }
+            } else if ("BreastCancer-ExerciseSurvey".equals(schemaKey.getSchemaId())) {
+                if (schemaKey.getRev() == 1) {
+                    return "exercisesurvey101_data.result".equals(fieldName)
+                            || "exercisesurvey102_data.result".equals(fieldName)
+                            || "exercisesurvey103_data.result".equals(fieldName)
+                            || "exercisesurvey104_data.result".equals(fieldName)
+                            || "exercisesurvey105_data.result".equals(fieldName)
+                            || "exercisesurvey106_data.result".equals(fieldName);
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static String getDdbStringRemoveTabsAndTrim(Item ddbItem, String key, int maxLength) {
+        return trimToLengthAndWarn(removeTabs(ddbItem.getString(key)), maxLength);
+    }
+
+    private static String getJsonStringRemoveTabsAndTrim(JsonNode node, String key, int maxLength) {
+        return trimToLengthAndWarn(removeTabs(getJsonString(node, key)), maxLength);
     }
 
     private static String getJsonString(JsonNode node, String key) {
