@@ -163,6 +163,12 @@ public class UploadSchemaHelper {
                 synapseType = ColumnType.STRING;
             }
 
+            // hack to cover legacy schemas pre-1k char limit on strings. See comments on
+            // shouldConvertFreeformTextToAttachment() for more details.
+            if (BridgeExporter.shouldConvertFreeformTextToAttachment(schemaKey, oneFieldName)) {
+                synapseType = ColumnType.FILEHANDLEID;
+            }
+
             ColumnModel oneColumn = new ColumnModel();
             oneColumn.setName(oneFieldName);
             oneColumn.setColumnType(synapseType);
@@ -196,7 +202,6 @@ public class UploadSchemaHelper {
         synapseTable.setName(schemaKey.toString());
         synapseTable.setParentId(projectIdsByStudy.get(schemaKey.getStudyId()));
         synapseTable.setColumnIds(columnIdList);
-        // TODO: ACLs
         TableEntity createdTable = synapseClient.createEntity(synapseTable);
         synapseTableId = createdTable.getId();
 

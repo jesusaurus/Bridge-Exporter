@@ -46,11 +46,11 @@ public class BridgeExporter {
 
     // Number of records before the script stops processing records. This is used for testing. To make this unlimited,
     // set it to -1.
-    private static final int RECORD_LIMIT = 300;
+    private static final int RECORD_LIMIT = 25;
 
     // Script should report progress after this many records, so users tailing the logs can see that it's still
     // making progress
-    private static final int PROGRESS_REPORT_PERIOD = 25;
+    private static final int PROGRESS_REPORT_PERIOD = 5;
 
     public static void main(String[] args) throws IOException {
         try {
@@ -390,7 +390,9 @@ public class BridgeExporter {
             }
 
             // app version bookkeeping
-            appVersionsByStudy.put(studyId, appVersion);
+            if (!Strings.isNullOrEmpty(appVersion)) {
+                appVersionsByStudy.put(studyId, appVersion);
+            }
 
             writeHealthDataToSynapse(recordId, healthCode, externalId, studyId, schemaId, schemaRev, appVersion,
                     phoneInfo, oneRecord, dataJson, schemasNotFound);
@@ -597,7 +599,7 @@ public class BridgeExporter {
         set.add(value);
     }
 
-    private static boolean shouldConvertFreeformTextToAttachment(UploadSchemaKey schemaKey, String fieldName) {
+    public static boolean shouldConvertFreeformTextToAttachment(UploadSchemaKey schemaKey, String fieldName) {
         // When we initially designed these schemas, we didn't realize Synapse had a character limit on strings.
         // These strings may exceed that character limit, so we need this special hack to convert these strings to
         // attachments. This code applies only to legacy schemas. New schemas need to declare ATTACHMENT_BLOB,
