@@ -58,7 +58,7 @@ public class BridgeExporter {
             bridgeExporter.setDate(args[0]);
             bridgeExporter.run();
         } catch (Throwable t) {
-            t.printStackTrace();
+            t.printStackTrace(System.out);
         } finally {
             System.exit(0);
         }
