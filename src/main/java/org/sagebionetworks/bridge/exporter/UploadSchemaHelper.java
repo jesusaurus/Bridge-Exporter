@@ -2,6 +2,7 @@ package org.sagebionetworks.bridge.exporter;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -87,134 +88,156 @@ public class UploadSchemaHelper {
         return schemaMap.get(schemaKey);
     }
 
-    public String getSynapseTableId(UploadSchemaKey schemaKey) throws SynapseException {
+    public String getSynapseTableId(UploadSchemaKey schemaKey) throws IOException, RuntimeException, SynapseException {
         // check cache
         String synapseTableId = synapseTableIdMap.get(schemaKey);
-        if (synapseTableId != null) {
-            return synapseTableId;
+
+        if (synapseTableId == null) {
+            // check DDB table
+            Iterable<Item> tableIterable = synapseTablesTable.query("schemaKey", schemaKey.toString());
+            Iterator<Item> tableIterator = tableIterable.iterator();
+            if (tableIterator.hasNext()) {
+                Item oneTable = tableIterator.next();
+                synapseTableId = oneTable.getString("tableId");
+                synapseTableIdMap.put(schemaKey, synapseTableId);
+            }
         }
 
-        // check DDB table
-        Iterable<Item> tableIterable = synapseTablesTable.query("schemaKey", schemaKey.toString());
-        Iterator<Item> tableIterator = tableIterable.iterator();
-        if (tableIterator.hasNext()) {
-            Item oneTable = tableIterator.next();
-            synapseTableId = oneTable.getString("tableId");
-            synapseTableIdMap.put(schemaKey, synapseTableId);
-            return synapseTableId;
-        }
+        if (synapseTableId == null) {
+            // create columns
+            List<ColumnModel> columnList = new ArrayList<>();
 
-        // create columns
-        List<ColumnModel> columnList = new ArrayList<>();
+            // common columns
+            ColumnModel recordIdColumn = new ColumnModel();
+            recordIdColumn.setName("recordId");
+            recordIdColumn.setColumnType(ColumnType.STRING);
+            recordIdColumn.setMaximumSize(36L);
+            columnList.add(recordIdColumn);
 
-        // common columns
-        ColumnModel recordIdColumn = new ColumnModel();
-        recordIdColumn.setName("recordId");
-        recordIdColumn.setColumnType(ColumnType.STRING);
-        recordIdColumn.setMaximumSize(36L);
-        columnList.add(recordIdColumn);
+            ColumnModel healthCodeColumn = new ColumnModel();
+            healthCodeColumn.setName("healthCode");
+            healthCodeColumn.setColumnType(ColumnType.STRING);
+            healthCodeColumn.setMaximumSize(36L);
+            columnList.add(healthCodeColumn);
 
-        ColumnModel healthCodeColumn = new ColumnModel();
-        healthCodeColumn.setName("healthCode");
-        healthCodeColumn.setColumnType(ColumnType.STRING);
-        healthCodeColumn.setMaximumSize(36L);
-        columnList.add(healthCodeColumn);
+            ColumnModel externalIdColumn = new ColumnModel();
+            externalIdColumn.setName("externalId");
+            externalIdColumn.setColumnType(ColumnType.STRING);
+            externalIdColumn.setMaximumSize(128L);
+            columnList.add(externalIdColumn);
 
-        ColumnModel externalIdColumn = new ColumnModel();
-        externalIdColumn.setName("externalId");
-        externalIdColumn.setColumnType(ColumnType.STRING);
-        externalIdColumn.setMaximumSize(128L);
-        columnList.add(externalIdColumn);
+            // NOTE: ColumnType.DATE is actually a timestamp. There is no calendar date type.
+            ColumnModel uploadDateColumn = new ColumnModel();
+            uploadDateColumn.setName("uploadDate");
+            uploadDateColumn.setColumnType(ColumnType.STRING);
+            uploadDateColumn.setMaximumSize(10L);
+            columnList.add(uploadDateColumn);
 
-        // NOTE: ColumnType.DATE is actually a timestamp. There is no calendar date type.
-        ColumnModel uploadDateColumn = new ColumnModel();
-        uploadDateColumn.setName("uploadDate");
-        uploadDateColumn.setColumnType(ColumnType.STRING);
-        uploadDateColumn.setMaximumSize(10L);
-        columnList.add(uploadDateColumn);
+            ColumnModel createdOnColumn = new ColumnModel();
+            createdOnColumn.setName("createdOn");
+            createdOnColumn.setColumnType(ColumnType.DATE);
+            columnList.add(createdOnColumn);
 
-        ColumnModel createdOnColumn = new ColumnModel();
-        createdOnColumn.setName("createdOn");
-        createdOnColumn.setColumnType(ColumnType.DATE);
-        columnList.add(createdOnColumn);
+            ColumnModel appVersionColumn = new ColumnModel();
+            appVersionColumn.setName("appVersion");
+            appVersionColumn.setColumnType(ColumnType.STRING);
+            appVersionColumn.setMaximumSize(48L);
+            columnList.add(appVersionColumn);
 
-        ColumnModel appVersionColumn = new ColumnModel();
-        appVersionColumn.setName("appVersion");
-        appVersionColumn.setColumnType(ColumnType.STRING);
-        appVersionColumn.setMaximumSize(48L);
-        columnList.add(appVersionColumn);
+            ColumnModel phoneInfoColumn = new ColumnModel();
+            phoneInfoColumn.setName("phoneInfo");
+            phoneInfoColumn.setColumnType(ColumnType.STRING);
+            phoneInfoColumn.setMaximumSize(48L);
+            columnList.add(phoneInfoColumn);
 
-        ColumnModel phoneInfoColumn = new ColumnModel();
-        phoneInfoColumn.setName("phoneInfo");
-        phoneInfoColumn.setColumnType(ColumnType.STRING);
-        phoneInfoColumn.setMaximumSize(48L);
-        columnList.add(phoneInfoColumn);
+            // schema specific columns
+            UploadSchema schema = getSchema(schemaKey);
+            List<String> fieldNameList = schema.getFieldNameList();
+            Map<String, String> fieldTypeMap = schema.getFieldTypeMap();
+            for (String oneFieldName : fieldNameList) {
+                String bridgeType = fieldTypeMap.get(oneFieldName);
 
-        // schema specific columns
-        UploadSchema schema = getSchema(schemaKey);
-        List<String> fieldNameList = schema.getFieldNameList();
-        Map<String, String> fieldTypeMap = schema.getFieldTypeMap();
-        for (String oneFieldName : fieldNameList) {
-            String bridgeType = fieldTypeMap.get(oneFieldName);
-
-            ColumnType synapseType = SynapseHelper.BRIDGE_TYPE_TO_SYNAPSE_TYPE.get(bridgeType);
-            if (synapseType == null) {
-                System.out.println("No Synapse type found for Bridge type " + bridgeType);
-                synapseType = ColumnType.STRING;
-            }
-
-            // hack to cover legacy schemas pre-1k char limit on strings. See comments on
-            // shouldConvertFreeformTextToAttachment() for more details.
-            if (BridgeExporter.shouldConvertFreeformTextToAttachment(schemaKey, oneFieldName)) {
-                synapseType = ColumnType.FILEHANDLEID;
-            }
-
-            ColumnModel oneColumn = new ColumnModel();
-            oneColumn.setName(oneFieldName);
-            oneColumn.setColumnType(synapseType);
-
-            if (synapseType == ColumnType.STRING) {
-                Integer maxLength = SynapseHelper.BRIDGE_TYPE_TO_MAX_LENGTH.get(bridgeType);
-                if (maxLength == null) {
-                    System.out.println("No max length found for Bridge type " + bridgeType);
-                    maxLength = 1000;
+                ColumnType synapseType = SynapseHelper.BRIDGE_TYPE_TO_SYNAPSE_TYPE.get(bridgeType);
+                if (synapseType == null) {
+                    System.out.println("No Synapse type found for Bridge type " + bridgeType);
+                    synapseType = ColumnType.STRING;
                 }
-                oneColumn.setMaximumSize(Long.valueOf(maxLength));
+
+                // hack to cover legacy schemas pre-1k char limit on strings. See comments on
+                // shouldConvertFreeformTextToAttachment() for more details.
+                if (BridgeExporter.shouldConvertFreeformTextToAttachment(schemaKey, oneFieldName)) {
+                    synapseType = ColumnType.FILEHANDLEID;
+                }
+
+                ColumnModel oneColumn = new ColumnModel();
+                oneColumn.setName(oneFieldName);
+                oneColumn.setColumnType(synapseType);
+
+                if (synapseType == ColumnType.STRING) {
+                    Integer maxLength = SynapseHelper.BRIDGE_TYPE_TO_MAX_LENGTH.get(bridgeType);
+                    if (maxLength == null) {
+                        System.out.println("No max length found for Bridge type " + bridgeType);
+                        maxLength = 1000;
+                    }
+                    oneColumn.setMaximumSize(Long.valueOf(maxLength));
+                }
+
+                columnList.add(oneColumn);
             }
 
-            columnList.add(oneColumn);
+            // create columns
+            List<ColumnModel> createdColumnList = synapseClient.createColumnModels(columnList);
+            if (columnList.size() != createdColumnList.size()) {
+                throw new RuntimeException("Tried to create " + columnList.size() + " columns. Actual: "
+                        + createdColumnList.size() + " columns.");
+            }
+
+            List<String> columnIdList = new ArrayList<>();
+            for (ColumnModel oneCreatedColumn : createdColumnList) {
+                columnIdList.add(oneCreatedColumn.getId());
+            }
+
+            // create table
+            String projectId = projectIdsByStudy.get(schemaKey.getStudyId());
+            TableEntity synapseTable = new TableEntity();
+            synapseTable.setName(schemaKey.toString());
+            synapseTable.setParentId(projectId);
+            synapseTable.setColumnIds(columnIdList);
+            TableEntity createdTable = synapseClient.createEntity(synapseTable);
+            synapseTableId = createdTable.getId();
+
+            synapseHelper.createAclsForTableInStudy(schemaKey.getStudyId(), synapseTableId);
+
+            // write back to DDB table
+            Item synapseTableDdbItem = new Item();
+            synapseTableDdbItem.withString("schemaKey", schemaKey.toString());
+            synapseTableDdbItem.withString("tableId", synapseTableId);
+            synapseTablesTable.putItem(synapseTableDdbItem);
+
+            // write back to cache
+            synapseTableIdMap.put(schemaKey, synapseTableId);
         }
 
-        // create columns
-        List<ColumnModel> createdColumnList = synapseClient.createColumnModels(columnList);
-        if (columnList.size() != createdColumnList.size()) {
-            throw new RuntimeException("Tried to create " + columnList.size() + " columns. Actual: "
-                    + createdColumnList.size() + " columns.");
+        // ensure TSV writer
+        PrintWriter tsvWriter = synapseHelper.getTsvWriterForTable(synapseTableId);
+        if (tsvWriter == null) {
+            List<String> tsvFieldNameList = new ArrayList<>();
+
+            // common fields
+            tsvFieldNameList.add("recordId");
+            tsvFieldNameList.add("healthCode");
+            tsvFieldNameList.add("externalId");
+            tsvFieldNameList.add("uploadDate");
+            tsvFieldNameList.add("createdOn");
+            tsvFieldNameList.add("appVersion");
+            tsvFieldNameList.add("phoneInfo");
+
+            // schema specific fields
+            UploadSchema schema = getSchema(schemaKey);
+            tsvFieldNameList.addAll(schema.getFieldNameList());
+
+            synapseHelper.createTsvWriterForTable(schemaKey.getStudyId(), synapseTableId, tsvFieldNameList);
         }
-
-        List<String> columnIdList = new ArrayList<>();
-        for (ColumnModel oneCreatedColumn : createdColumnList) {
-            columnIdList.add(oneCreatedColumn.getId());
-        }
-
-        // create table
-        TableEntity synapseTable = new TableEntity();
-        synapseTable.setName(schemaKey.toString());
-        synapseTable.setParentId(projectIdsByStudy.get(schemaKey.getStudyId()));
-        synapseTable.setColumnIds(columnIdList);
-        TableEntity createdTable = synapseClient.createEntity(synapseTable);
-        synapseTableId = createdTable.getId();
-
-        synapseHelper.createAclsForTableInStudy(schemaKey.getStudyId(), synapseTableId);
-
-        // write back to DDB table
-        Item synapseTableDdbItem = new Item();
-        synapseTableDdbItem.withString("schemaKey", schemaKey.toString());
-        synapseTableDdbItem.withString("tableId", synapseTableId);
-        synapseTablesTable.putItem(synapseTableDdbItem);
-
-        // write back to cache
-        synapseTableIdMap.put(schemaKey, synapseTableId);
 
         return synapseTableId;
     }

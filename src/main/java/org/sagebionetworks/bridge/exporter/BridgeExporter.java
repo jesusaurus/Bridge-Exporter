@@ -1,9 +1,9 @@
 package org.sagebionetworks.bridge.exporter;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -33,24 +33,22 @@ import com.google.common.collect.TreeMultimap;
 import org.joda.time.LocalDate;
 import org.sagebionetworks.client.exceptions.SynapseException;
 import org.sagebionetworks.repo.model.table.ColumnType;
-import org.sagebionetworks.repo.model.table.Row;
-import org.sagebionetworks.repo.model.table.RowSet;
-import org.sagebionetworks.repo.model.table.SelectColumn;
 
 import org.sagebionetworks.bridge.s3.S3Helper;
 import org.sagebionetworks.bridge.synapse.SynapseHelper;
 
 public class BridgeExporter {
+    private static final Joiner JOINER_MESSAGE_LIST_SEPARATOR = Joiner.on(", ");
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
     public static final String S3_BUCKET_ATTACHMENTS = "org-sagebridge-attachment-prod";
 
     // Number of records before the script stops processing records. This is used for testing. To make this unlimited,
     // set it to -1.
-    private static final int RECORD_LIMIT = -1;
+    private static final int RECORD_LIMIT = 30;
 
     // Script should report progress after this many records, so users tailing the logs can see that it's still
     // making progress
-    private static final int PROGRESS_REPORT_PERIOD = 100;
+    private static final int PROGRESS_REPORT_PERIOD = 10;
 
     public static void main(String[] args) throws IOException {
         try {
@@ -78,11 +76,21 @@ public class BridgeExporter {
         Stopwatch stopwatch = Stopwatch.createStarted();
         try {
             init();
+
+            Stopwatch downloadStopwatch = Stopwatch.createStarted();
             downloadHealthDataRecords();
+            downloadStopwatch.stop();
+            System.out.println("Time to make TSVs: " + downloadStopwatch.elapsed(TimeUnit.SECONDS) + " seconds");
+
+            Stopwatch uploadStopwatch = Stopwatch.createStarted();
+            synapseHelper.uploadTsvsToSynapse();
+            uploadStopwatch.stop();
+            System.out.println("Time to upload TSVs to Synapse: " + uploadStopwatch.elapsed(TimeUnit.SECONDS)
+                    + " seconds");
         } finally {
             close();
             stopwatch.stop();
-            System.out.println("Took " + stopwatch.elapsed(TimeUnit.SECONDS) + " seconds");
+            System.out.println("Total time: " + stopwatch.elapsed(TimeUnit.SECONDS) + " seconds");
         }
     }
 
@@ -92,6 +100,10 @@ public class BridgeExporter {
     }
 
     private void init() throws IOException, SynapseException {
+        File synapseConfigFile = new File(System.getProperty("user.home") + "/bridge-synapse-exporter-config.json");
+        JsonNode synapseConfigJson = JSON_MAPPER.readTree(synapseConfigFile);
+        String ddbPrefix = synapseConfigJson.get("ddbPrefix").textValue();
+
         // Dynamo DB client - move to Spring
         // This gets credentials from the default credential chain. For developer desktops, this is ~/.aws/credentials.
         // For EC2 instances, this happens transparently.
@@ -113,7 +125,7 @@ public class BridgeExporter {
 
         // DDB tables and Schema Helper
         Table uploadSchemaTable = ddbClient.getTable("prod-heroku-UploadSchema");
-        Table synapseTablesTable = ddbClient.getTable("prod-exporter-SynapseTables");
+        Table synapseTablesTable = ddbClient.getTable(ddbPrefix + "SynapseTables");
         schemaHelper = new UploadSchemaHelper();
         schemaHelper.setSchemaTable(uploadSchemaTable);
         schemaHelper.setSynapseHelper(synapseHelper);
@@ -409,11 +421,11 @@ public class BridgeExporter {
         }
         if (!schemasNotFound.isEmpty()) {
             System.out.println("The following schemas were referenced but not found: "
-                    + Joiner.on(", ").join(schemasNotFound));
+                    + JOINER_MESSAGE_LIST_SEPARATOR.join(schemasNotFound));
         }
         for (Map.Entry<String, Collection<String>> appVersionEntry : appVersionsByStudy.asMap().entrySet()) {
             System.out.println("App versions for " + appVersionEntry.getKey() + ": "
-                    + Joiner.on(", ").join(appVersionEntry.getValue()));
+                    + JOINER_MESSAGE_LIST_SEPARATOR.join(appVersionEntry.getValue()));
         }
     }
 
@@ -434,26 +446,19 @@ public class BridgeExporter {
         String synapseTableId;
         try {
             synapseTableId = schemaHelper.getSynapseTableId(schemaKey);
-        } catch (RuntimeException | SynapseException ex) {
+        } catch (IOException | RuntimeException | SynapseException ex) {
             System.out.println("Error getting/creating Synapse table for schemaKey " + schemaKey.toString()
                     + ", record ID " + recordId + ": " + ex.getMessage());
             return;
         }
-        List<SelectColumn> headerList;
-        try {
-            headerList = synapseHelper.getSynapseAppendRowHeaders(synapseTableId);
-        } catch (SynapseException ex) {
-            System.out.println("Error getting Synapse table columns for synapse table ID " + synapseTableId
-                    + ", record ID " + recordId + ": " + ex.getMessage());
-            return;
-        }
+
         List<String> rowValueList = new ArrayList<>();
 
         // common values
         rowValueList.add(recordId);
         rowValueList.add(healthCode);
         rowValueList.add(externalId);
-        rowValueList.add(dateString);
+        rowValueList.add(oneRecord.getString("uploadDate"));
 
         // createdOn as a long epoch millis
         rowValueList.add(String.valueOf(oneRecord.getLong("createdOn")));
@@ -490,21 +495,10 @@ public class BridgeExporter {
             rowValueList.add(value);
         }
 
-        Row row = new Row();
-        row.setValues(rowValueList);
-
-        // row set
-        // TODO: batch rows?
-        RowSet rowSet = new RowSet();
-        rowSet.setHeaders(headerList);
-        rowSet.setRows(Collections.singletonList(row));
-        rowSet.setTableId(synapseTableId);
-
-        // call Synapse
         try {
-            synapseHelper.appendSynapseRows(rowSet, synapseTableId);
-        } catch (InterruptedException | SynapseException ex) {
-            System.out.println("Error writing Synapse row for record " + recordId + ": " + ex.getMessage());
+            synapseHelper.appendToTsv(synapseTableId, rowValueList);
+        } catch (IOException ex) {
+            System.out.println("Error writing TSV row for record " + recordId + ": " + ex.getMessage());
         }
     }
 
@@ -516,19 +510,9 @@ public class BridgeExporter {
         String synapseTableId;
         try {
             synapseTableId = synapseHelper.getSynapseAppVersionTableForStudy(studyId);
-        } catch (RuntimeException | SynapseException ex) {
+        } catch (IOException | RuntimeException | SynapseException ex) {
             System.out.println("Error getting/creating appVersion table for study " + studyId + ": "
                     + ex.getMessage());
-            return;
-        }
-
-        // column headers
-        List<SelectColumn> headerList;
-        try {
-            headerList = synapseHelper.getSynapseAppendRowHeaders(synapseTableId);
-        } catch (SynapseException ex) {
-            System.out.println("Error getting Synapse table columns for synapse table ID " + synapseTableId
-                    + ", record ID " + recordId + ": " + ex.getMessage());
             return;
         }
 
@@ -541,21 +525,10 @@ public class BridgeExporter {
         rowValueList.add(appVersion);
         rowValueList.add(phoneInfo);
 
-        Row row = new Row();
-        row.setValues(rowValueList);
-
-        // row set
-        // TODO: batch rows?
-        RowSet rowSet = new RowSet();
-        rowSet.setHeaders(headerList);
-        rowSet.setRows(Collections.singletonList(row));
-        rowSet.setTableId(synapseTableId);
-
-        // call Synapse
         try {
-            synapseHelper.appendSynapseRows(rowSet, synapseTableId);
-        } catch (InterruptedException | SynapseException ex) {
-            System.out.println("Error writing Synapse row for record " + recordId + ": " + ex.getMessage());
+            synapseHelper.appendToTsv(synapseTableId, rowValueList);
+        } catch (IOException ex) {
+            System.out.println("Error writing appVersion TSV row for record " + recordId + ": " + ex.getMessage());
         }
     }
 
