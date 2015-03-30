@@ -138,7 +138,7 @@ public class SynapseHelper {
             try {
                 synapseClient.logout();
             } catch (SynapseException ex) {
-                ex.printStackTrace();
+                ex.printStackTrace(System.out);
             }
         }
     }

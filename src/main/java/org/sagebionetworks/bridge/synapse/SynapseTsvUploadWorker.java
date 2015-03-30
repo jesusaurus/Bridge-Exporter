@@ -41,18 +41,36 @@ public class SynapseTsvUploadWorker implements Runnable {
 
     @Override
     public void run() {
+        String tsvPath = tsvFile.getAbsolutePath();
+
         try {
             // upload file to synapse as a file handle
-            FileHandle tableFileHandle = synapseClient.createFileHandle(tsvFile, "text/tab-separated-values",
-                    projectId);
+            FileHandle tableFileHandle;
+            try {
+                tableFileHandle = synapseClient.createFileHandle(tsvFile, "text/tab-separated-values", projectId);
+            } catch (IOException | SynapseException ex) {
+                System.out.println("Error uploading file " + tsvPath + ", for use with table " + tableId + ": "
+                        + ex.getMessage());
+                return;
+            }
             String fileHandleId = tableFileHandle.getId();
+
+            // We've successfully uploaded the file. We can delete the file now.
+            tsvFile.delete();
 
             // start tsv import
             CsvTableDescriptor tableDesc = new CsvTableDescriptor();
             tableDesc.setIsFirstLineHeader(true);
             tableDesc.setSeparator("\t");
 
-            String jobToken = synapseClient.uploadCsvToTableAsyncStart(tableId, fileHandleId, null, null, tableDesc);
+            String jobToken;
+            try {
+                jobToken = synapseClient.uploadCsvToTableAsyncStart(tableId, fileHandleId, null, null, tableDesc);
+            } catch (SynapseException ex) {
+                System.out.println("Error starting async upload of file handle " + fileHandleId + " to table "
+                        + tableId + ": " + ex.getMessage());
+                return;
+            }
 
             // poll asyncGet until success or timeout
             boolean success = false;
@@ -69,27 +87,29 @@ public class SynapseTsvUploadWorker implements Runnable {
                     UploadToTableResult uploadResult = synapseClient.uploadCsvToTableAsyncGet(jobToken, tableId);
                     Long linesProcessed = uploadResult.getRowsProcessed();
                     if (linesProcessed == null || linesProcessed != expectedLineCount) {
-                        throw new IOException("Wrong number of lines processed, expected=" + expectedLineCount
-                                + ", actual=" + linesProcessed);
+                        System.out.println("Wrong number of lines processed uploading file handle " + fileHandleId
+                                + " to table " + tableId + ", expected=" + expectedLineCount + ", actual="
+                                + linesProcessed);
+                        return;
                     }
 
                     success = true;
                     break;
                 } catch (SynapseResultNotReadyException ex) {
                     // results not ready, sleep some more
+                } catch (SynapseException ex) {
+                    System.out.println("Error polling job status of uploading file handle " + fileHandleId
+                            + " to table " + tableId + ": " + ex.getMessage());
+                    return;
                 }
             }
 
             if (!success) {
-                throw new IOException("Timed out upload to table " + tableId);
+                System.out.println("Timed out uploading file handle " + fileHandleId + " to table " + tableId);
             }
-
-            // We've successfully uploaded the file. We can delete the file now.
-            tsvFile.delete();
-        } catch (IOException | SynapseException ex) {
-            System.out.println("Error uploading TSV for table " + tableId + ": " + ex.getMessage());
         } catch (Throwable t) {
-            System.out.println("Unknown error uploading TSV for table " + tableId + ": " + t.getMessage());
+            System.out.println("Unknown error uploading file " + tsvPath + " for table " + tableId + ": "
+                    + t.getMessage());
             t.printStackTrace(System.out);
         }
     }

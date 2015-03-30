@@ -160,263 +160,269 @@ public class BridgeExporter {
                 break;
             }
 
-            // re-query health data records to get values
             String recordId = oneRecordKey.getString("id");
-            Item oneRecord;
             try {
-                oneRecord = recordTable.getItem("id", recordId);
-            } catch (AmazonClientException ex) {
-                System.out.println("Exception querying record for ID " + recordId + ": " + ex.getMessage());
-                continue;
-            }
-            if (oneRecord == null) {
-                System.out.println("No record for ID " + recordId);
-                continue;
-            }
-
-            // process/filter by user sharing scope
-            String userSharingScope = oneRecord.getString("userSharingScope");
-            if (Strings.isNullOrEmpty(userSharingScope) || userSharingScope.equalsIgnoreCase("no_sharing")) {
-                // must not be exported
-                incrementCounter("numNotShared");
-                continue;
-            } else if (userSharingScope.equalsIgnoreCase("sponsors_and_partners")) {
-                incrementCounter("numSharingBroadly");
-            } else if (userSharingScope.equalsIgnoreCase("all_qualified_researchers")) {
-                incrementCounter("numSharingSparsely");
-            } else {
-                System.out.println("Unknown sharing scope: " + userSharingScope);
-                continue;
-            }
-
-            // basic record data
-            String studyId = oneRecord.getString("studyId");
-            String schemaId = oneRecord.getString("schemaId");
-            int schemaRev = oneRecord.getInt("schemaRevision");
-            String externalId = getDdbStringRemoveTabsAndTrim(oneRecord, "userExternalId", 48);
-
-            String healthCode = oneRecord.getString("healthCode");
-            incrementSetCounter("uniqueHealthCodes[" + studyId + "]", healthCode);
-
-            // special handling for surveys
-            JsonNode dataJson;
-            if ("ios-survey".equals(schemaId)) {
-                incrementCounter("numSurveys");
-
-                // TODO: move survey translation layer to server-side
-                JsonNode oldDataJson;
+                // re-query health data records to get values
+                Item oneRecord;
                 try {
-                    oldDataJson = JSON_MAPPER.readTree(oneRecord.getString("data"));
-                } catch (IOException ex) {
-                    System.out.println("Error parsing JSON data for record " + recordId + ": " + ex.getMessage());
+                    oneRecord = recordTable.getItem("id", recordId);
+                } catch (AmazonClientException ex) {
+                    System.out.println("Exception querying record for ID " + recordId + ": " + ex.getMessage());
                     continue;
                 }
-                if (oldDataJson == null) {
-                    System.out.println("No JSON data for record " + recordId);
-                    continue;
-                }
-                JsonNode itemNode = oldDataJson.get("item");
-                if (itemNode == null) {
-                    System.out.println("Survey with no item for record ID " + recordId);
-                    continue;
-                }
-                String item = itemNode.textValue();
-                if (Strings.isNullOrEmpty(item)) {
-                    System.out.println("Survey with null or empty item for record ID " + recordId);
-                    continue;
-                }
-                schemaId = item;
-
-                // surveys default to rev 1 until this code is moved to server side
-                schemaRev = 1;
-
-                // download answers from S3 attachments
-                JsonNode answerLinkNode = oldDataJson.get("answers");
-                if (answerLinkNode == null) {
-                    System.out.println("Survey with no answer link for record ID " + recordId);
-                    continue;
-                }
-                String answerLink = answerLinkNode.textValue();
-                String answerText;
-                try {
-                    answerText = s3Helper.readS3FileAsString(S3_BUCKET_ATTACHMENTS, answerLink);
-                } catch (AmazonClientException | IOException ex) {
-                    System.out.println("Error getting survey answers from S3 for record ID " + recordId + ": "
-                            + ex.getMessage());
+                if (oneRecord == null) {
+                    System.out.println("No record for ID " + recordId);
                     continue;
                 }
 
-                JsonNode answerArrayNode;
-                try {
-                    answerArrayNode = JSON_MAPPER.readTree(answerText);
-                } catch (IOException ex) {
-                    System.out.println("Error parsing JSON survey answers for record ID " + recordId + ": "
-                            + ex.getMessage());
+                // process/filter by user sharing scope
+                String userSharingScope = oneRecord.getString("userSharingScope");
+                if (Strings.isNullOrEmpty(userSharingScope) || userSharingScope.equalsIgnoreCase("no_sharing")) {
+                    // must not be exported
+                    incrementCounter("numNotShared");
                     continue;
-                }
-                if (answerArrayNode == null) {
-                    System.out.println("Survey with no answers for record ID " + recordId);
+                } else if (userSharingScope.equalsIgnoreCase("sponsors_and_partners")) {
+                    incrementCounter("numSharingBroadly");
+                } else if (userSharingScope.equalsIgnoreCase("all_qualified_researchers")) {
+                    incrementCounter("numSharingSparsely");
+                } else {
+                    System.out.println("Unknown sharing scope: " + userSharingScope);
                     continue;
                 }
 
-                // get schema and field type map, so we can process attachments
-                UploadSchemaKey surveySchemaKey = new UploadSchemaKey(studyId, item, 1);
-                UploadSchema surveySchema = schemaHelper.getSchema(surveySchemaKey);
-                if (surveySchema == null) {
-                    System.out.println("Survey " + surveySchemaKey.toString() + " not found for record "
-                            + recordId);
-                    schemasNotFound.add(surveySchemaKey.toString());
-                    continue;
-                }
-                Map<String, String> surveyFieldTypeMap = surveySchema.getFieldTypeMap();
+                // basic record data
+                String studyId = oneRecord.getString("studyId");
+                String schemaId = oneRecord.getString("schemaId");
+                int schemaRev = oneRecord.getInt("schemaRevision");
+                String externalId = getDdbStringRemoveTabsAndTrim(oneRecord, "userExternalId", 48);
 
-                // copy fields to "non-survey" format
-                ObjectNode convertedSurveyNode = JSON_MAPPER.createObjectNode();
-                int numAnswers = answerArrayNode.size();
-                for (int i = 0; i < numAnswers; i++) {
-                    JsonNode oneAnswerNode = answerArrayNode.get(i);
-                    if (oneAnswerNode == null) {
-                        System.out.println("Survey record ID " + recordId + " answer " + i + " has no value");
+                String healthCode = oneRecord.getString("healthCode");
+                incrementSetCounter("uniqueHealthCodes[" + studyId + "]", healthCode);
+
+                // special handling for surveys
+                JsonNode dataJson;
+                if ("ios-survey".equals(schemaId)) {
+                    incrementCounter("numSurveys");
+
+                    // TODO: move survey translation layer to server-side
+                    JsonNode oldDataJson;
+                    try {
+                        oldDataJson = JSON_MAPPER.readTree(oneRecord.getString("data"));
+                    } catch (IOException ex) {
+                        System.out.println("Error parsing JSON data for record " + recordId + ": " + ex.getMessage());
+                        continue;
+                    }
+                    if (oldDataJson == null) {
+                        System.out.println("No JSON data for record " + recordId);
+                        continue;
+                    }
+                    JsonNode itemNode = oldDataJson.get("item");
+                    if (itemNode == null) {
+                        System.out.println("Survey with no item for record ID " + recordId);
+                        continue;
+                    }
+                    String item = itemNode.textValue();
+                    if (Strings.isNullOrEmpty(item)) {
+                        System.out.println("Survey with null or empty item for record ID " + recordId);
+                        continue;
+                    }
+                    schemaId = item;
+
+                    // surveys default to rev 1 until this code is moved to server side
+                    schemaRev = 1;
+
+                    // download answers from S3 attachments
+                    JsonNode answerLinkNode = oldDataJson.get("answers");
+                    if (answerLinkNode == null) {
+                        System.out.println("Survey with no answer link for record ID " + recordId);
+                        continue;
+                    }
+                    String answerLink = answerLinkNode.textValue();
+                    String answerText;
+                    try {
+                        answerText = s3Helper.readS3FileAsString(S3_BUCKET_ATTACHMENTS, answerLink);
+                    } catch (AmazonClientException | IOException ex) {
+                        System.out.println("Error getting survey answers from S3 for record ID " + recordId + ": "
+                                + ex.getMessage());
                         continue;
                     }
 
-                    // question name ("item")
-                    JsonNode answerItemNode = oneAnswerNode.get("item");
-                    if (answerItemNode == null) {
-                        System.out.println("Survey record ID " + recordId + " answer " + i
-                                + " has no question name (item)");
+                    JsonNode answerArrayNode;
+                    try {
+                        answerArrayNode = JSON_MAPPER.readTree(answerText);
+                    } catch (IOException ex) {
+                        System.out.println("Error parsing JSON survey answers for record ID " + recordId + ": "
+                                + ex.getMessage());
                         continue;
                     }
-                    String answerItem = answerItemNode.textValue();
-                    if (Strings.isNullOrEmpty(answerItem)) {
-                        System.out.println("Survey record ID " + recordId + " answer " + i
-                                + " has null or empty question name (item)");
-                        continue;
-                    }
-
-                    // question type
-                    JsonNode questionTypeNameNode = oneAnswerNode.get("questionTypeName");
-                    if (questionTypeNameNode == null || questionTypeNameNode.isNull()) {
-                        // fall back to questionType
-                        questionTypeNameNode = oneAnswerNode.get("questionType");
-                    }
-                    if (questionTypeNameNode == null || questionTypeNameNode.isNull()) {
-                        System.out.println("Survey record ID " + recordId + " answer " + i + " has no question type");
-                        continue;
-                    }
-                    String questionTypeName = questionTypeNameNode.textValue();
-                    if (Strings.isNullOrEmpty(questionTypeName)) {
-                        System.out.println("Survey record ID " + recordId + " answer " + i
-                                + " has null or empty question type");
+                    if (answerArrayNode == null) {
+                        System.out.println("Survey with no answers for record ID " + recordId);
                         continue;
                     }
 
-                    // answer
-                    // TODO: Hey, this should really be a Map<String, String>, not a big switch statement
-                    JsonNode answerAnswerNode = null;
-                    switch (questionTypeName) {
-                        case "Boolean":
-                            answerAnswerNode = oneAnswerNode.get("booleanAnswer");
-                            break;
-                        case "Date":
-                            answerAnswerNode = oneAnswerNode.get("dateAnswer");
-                            break;
-                        case "Decimal":
-                        case "Integer":
-                            answerAnswerNode = oneAnswerNode.get("numericAnswer");
-                            break;
-                        case "MultipleChoice":
-                        case "SingleChoice":
-                            answerAnswerNode = oneAnswerNode.get("choiceAnswers");
-                            break;
-                        case "None":
-                        case "Scale":
-                            // yes, None really gets the answer from scaleAnswer
-                            answerAnswerNode = oneAnswerNode.get("scaleAnswer");
-                            break;
-                        case "Text":
-                            answerAnswerNode = oneAnswerNode.get("textAnswer");
-                            break;
-                        case "TimeInterval":
-                            answerAnswerNode = oneAnswerNode.get("intervalAnswer");
-                            break;
-                        case "TimeOfDay":
-                            answerAnswerNode = oneAnswerNode.get("dateComponentsAnswer");
-                            break;
-                        default:
+                    // get schema and field type map, so we can process attachments
+                    UploadSchemaKey surveySchemaKey = new UploadSchemaKey(studyId, item, 1);
+                    UploadSchema surveySchema = schemaHelper.getSchema(surveySchemaKey);
+                    if (surveySchema == null) {
+                        System.out.println("Survey " + surveySchemaKey.toString() + " not found for record "
+                                + recordId);
+                        schemasNotFound.add(surveySchemaKey.toString());
+                        continue;
+                    }
+                    Map<String, String> surveyFieldTypeMap = surveySchema.getFieldTypeMap();
+
+                    // copy fields to "non-survey" format
+                    ObjectNode convertedSurveyNode = JSON_MAPPER.createObjectNode();
+                    int numAnswers = answerArrayNode.size();
+                    for (int i = 0; i < numAnswers; i++) {
+                        JsonNode oneAnswerNode = answerArrayNode.get(i);
+                        if (oneAnswerNode == null) {
+                            System.out.println("Survey record ID " + recordId + " answer " + i + " has no value");
+                            continue;
+                        }
+
+                        // question name ("item")
+                        JsonNode answerItemNode = oneAnswerNode.get("item");
+                        if (answerItemNode == null) {
                             System.out.println("Survey record ID " + recordId + " answer " + i
-                                    + " has unknown question type " + questionTypeName);
-                            break;
-                    }
+                                    + " has no question name (item)");
+                            continue;
+                        }
+                        String answerItem = answerItemNode.textValue();
+                        if (Strings.isNullOrEmpty(answerItem)) {
+                            System.out.println("Survey record ID " + recordId + " answer " + i
+                                    + " has null or empty question name (item)");
+                            continue;
+                        }
 
-                    if (answerAnswerNode != null && !answerAnswerNode.isNull()) {
-                        // handle attachment types (file handle types)
-                        String bridgeType = surveyFieldTypeMap.get(answerItem);
-                        ColumnType synapseType = SynapseHelper.BRIDGE_TYPE_TO_SYNAPSE_TYPE.get(bridgeType);
-                        if (synapseType == ColumnType.FILEHANDLEID) {
-                            String attachmentId = null;
-                            String answer = answerAnswerNode.asText();
-                            try {
-                                attachmentId = uploadFreeformTextAsAttachment(recordId, answer);
-                            } catch (AmazonClientException | IOException ex) {
-                                System.out.println("Error uploading freeform text as attachment for record ID "
-                                        + recordId + ", survey item " + answerItem + ": " + ex.getMessage());
+                        // question type
+                        JsonNode questionTypeNameNode = oneAnswerNode.get("questionTypeName");
+                        if (questionTypeNameNode == null || questionTypeNameNode.isNull()) {
+                            // fall back to questionType
+                            questionTypeNameNode = oneAnswerNode.get("questionType");
+                        }
+                        if (questionTypeNameNode == null || questionTypeNameNode.isNull()) {
+                            System.out.println(
+                                    "Survey record ID " + recordId + " answer " + i + " has no question type");
+                            continue;
+                        }
+                        String questionTypeName = questionTypeNameNode.textValue();
+                        if (Strings.isNullOrEmpty(questionTypeName)) {
+                            System.out.println("Survey record ID " + recordId + " answer " + i
+                                    + " has null or empty question type");
+                            continue;
+                        }
+
+                        // answer
+                        // TODO: Hey, this should really be a Map<String, String>, not a big switch statement
+                        JsonNode answerAnswerNode = null;
+                        switch (questionTypeName) {
+                            case "Boolean":
+                                answerAnswerNode = oneAnswerNode.get("booleanAnswer");
+                                break;
+                            case "Date":
+                                answerAnswerNode = oneAnswerNode.get("dateAnswer");
+                                break;
+                            case "Decimal":
+                            case "Integer":
+                                answerAnswerNode = oneAnswerNode.get("numericAnswer");
+                                break;
+                            case "MultipleChoice":
+                            case "SingleChoice":
+                                answerAnswerNode = oneAnswerNode.get("choiceAnswers");
+                                break;
+                            case "None":
+                            case "Scale":
+                                // yes, None really gets the answer from scaleAnswer
+                                answerAnswerNode = oneAnswerNode.get("scaleAnswer");
+                                break;
+                            case "Text":
+                                answerAnswerNode = oneAnswerNode.get("textAnswer");
+                                break;
+                            case "TimeInterval":
+                                answerAnswerNode = oneAnswerNode.get("intervalAnswer");
+                                break;
+                            case "TimeOfDay":
+                                answerAnswerNode = oneAnswerNode.get("dateComponentsAnswer");
+                                break;
+                            default:
+                                System.out.println("Survey record ID " + recordId + " answer " + i
+                                        + " has unknown question type " + questionTypeName);
+                                break;
+                        }
+
+                        if (answerAnswerNode != null && !answerAnswerNode.isNull()) {
+                            // handle attachment types (file handle types)
+                            String bridgeType = surveyFieldTypeMap.get(answerItem);
+                            ColumnType synapseType = SynapseHelper.BRIDGE_TYPE_TO_SYNAPSE_TYPE.get(bridgeType);
+                            if (synapseType == ColumnType.FILEHANDLEID) {
+                                String attachmentId = null;
+                                String answer = answerAnswerNode.asText();
+                                try {
+                                    attachmentId = uploadFreeformTextAsAttachment(recordId, answer);
+                                } catch (AmazonClientException | IOException ex) {
+                                    System.out.println("Error uploading freeform text as attachment for record ID "
+                                            + recordId + ", survey item " + answerItem + ": " + ex.getMessage());
+                                }
+
+                                convertedSurveyNode.put(answerItem, attachmentId);
+                            } else {
+                                convertedSurveyNode.set(answerItem, answerAnswerNode);
                             }
+                        }
 
-                            convertedSurveyNode.put(answerItem, attachmentId);
-                        } else {
-                            convertedSurveyNode.set(answerItem, answerAnswerNode);
+                        // if there's a unit, add it as well
+                        JsonNode unitNode = oneAnswerNode.get("unit");
+                        if (unitNode != null && !unitNode.isNull()) {
+                            convertedSurveyNode.set(answerItem + "_unit", unitNode);
                         }
                     }
 
-                    // if there's a unit, add it as well
-                    JsonNode unitNode = oneAnswerNode.get("unit");
-                    if (unitNode != null && !unitNode.isNull()) {
-                        convertedSurveyNode.set(answerItem + "_unit", unitNode);
+                    dataJson = convertedSurveyNode;
+                } else {
+                    // non-surveys
+                    incrementCounter("numNonSurveys");
+                    try {
+                        dataJson = JSON_MAPPER.readTree(oneRecord.getString("data"));
+                    } catch (IOException ex) {
+                        System.out.println("Error parsing JSON for record ID " + recordId + ": " + ex.getMessage());
+                        continue;
+                    }
+                    if (dataJson == null) {
+                        System.out.println("Null data JSON for record ID " + recordId);
+                        continue;
                     }
                 }
 
-                dataJson = convertedSurveyNode;
-            } else {
-                // non-surveys
-                incrementCounter("numNonSurveys");
-                try {
-                    dataJson = JSON_MAPPER.readTree(oneRecord.getString("data"));
-                } catch (IOException ex) {
-                    System.out.println("Error parsing JSON for record ID " + recordId + ": " + ex.getMessage());
-                    continue;
+                // get phone and app info
+                String appVersion = null;
+                String phoneInfo = null;
+                String metadataString = oneRecord.getString("metadata");
+                if (!Strings.isNullOrEmpty(metadataString)) {
+                    try {
+                        JsonNode metadataJson = JSON_MAPPER.readTree(metadataString);
+                        appVersion = getJsonStringRemoveTabsAndTrim(metadataJson, "appVersion", 48);
+                        phoneInfo = getJsonStringRemoveTabsAndTrim(metadataJson, "phoneInfo", 48);
+                    } catch (IOException ex) {
+                        // we can recover from this
+                        System.out.println("Error parsing metadata for record ID " + recordId + ": " + ex.getMessage());
+                    }
                 }
-                if (dataJson == null) {
-                    System.out.println("Null data JSON for record ID " + recordId);
-                    continue;
+
+                // app version bookkeeping
+                if (!Strings.isNullOrEmpty(appVersion)) {
+                    appVersionsByStudy.put(studyId, appVersion);
                 }
+
+                writeHealthDataToSynapse(recordId, healthCode, externalId, studyId, schemaId, schemaRev, appVersion,
+                        phoneInfo, oneRecord, dataJson, schemasNotFound);
+
+                writeAppVersionToSynapse(recordId, healthCode, externalId, studyId, schemaId, schemaRev, appVersion,
+                        phoneInfo);
+            } catch (RuntimeException ex) {
+                System.out.println("Unknown error processing record " + recordId + ": " + ex.getMessage());
+                ex.printStackTrace(System.out);
             }
-
-            // get phone and app info
-            String appVersion = null;
-            String phoneInfo = null;
-            String metadataString = oneRecord.getString("metadata");
-            if (!Strings.isNullOrEmpty(metadataString)) {
-                try {
-                    JsonNode metadataJson = JSON_MAPPER.readTree(metadataString);
-                    appVersion = getJsonStringRemoveTabsAndTrim(metadataJson, "appVersion", 48);
-                    phoneInfo = getJsonStringRemoveTabsAndTrim(metadataJson, "phoneInfo", 48);
-                } catch (IOException ex) {
-                    // we can recover from this
-                    System.out.println("Error parsing metadata for record ID " + recordId + ": " + ex.getMessage());
-                }
-            }
-
-            // app version bookkeeping
-            if (!Strings.isNullOrEmpty(appVersion)) {
-                appVersionsByStudy.put(studyId, appVersion);
-            }
-
-            writeHealthDataToSynapse(recordId, healthCode, externalId, studyId, schemaId, schemaRev, appVersion,
-                    phoneInfo, oneRecord, dataJson, schemasNotFound);
-
-            writeAppVersionToSynapse(recordId, healthCode, externalId, studyId, schemaId, schemaRev, appVersion,
-                    phoneInfo);
         }
 
         for (Map.Entry<String, Integer> oneCounter : counterMap.entrySet()) {
