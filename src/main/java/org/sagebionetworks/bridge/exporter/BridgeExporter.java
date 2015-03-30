@@ -262,6 +262,12 @@ public class BridgeExporter {
                 // get schema and field type map, so we can process attachments
                 UploadSchemaKey surveySchemaKey = new UploadSchemaKey(studyId, item, 1);
                 UploadSchema surveySchema = schemaHelper.getSchema(surveySchemaKey);
+                if (surveySchema == null) {
+                    System.out.println("Survey " + surveySchemaKey.toString() + " not found for record "
+                            + recordId);
+                    schemasNotFound.add(surveySchemaKey.toString());
+                    continue;
+                }
                 Map<String, String> surveyFieldTypeMap = surveySchema.getFieldTypeMap();
 
                 // copy fields to "non-survey" format
