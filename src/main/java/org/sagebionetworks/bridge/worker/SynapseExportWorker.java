@@ -81,15 +81,21 @@ public abstract class SynapseExportWorker extends ExportWorker {
                 ex.printStackTrace(System.out);
             } finally {
                 uploadTsvStopwatch.stop();
-                System.out.println("[METRICS] " + getSynapseTableName() + ".uploadTsvTime: "
-                        + uploadTsvStopwatch.elapsed(TimeUnit.SECONDS) + " seconds");
+                long elapsedSec = uploadTsvStopwatch.elapsed(TimeUnit.SECONDS);
+
+                if (lineCount > 0 && elapsedSec > 60) {
+                    System.out.println("[METRICS] " + getSynapseTableName() + ".uploadTsvTime: " + elapsedSec
+                            + " seconds");
+                }
             }
         } catch (Throwable t) {
             System.out.println("[ERROR] Unknown error for table " + getSynapseTableName() + ": " + t.getMessage());
             t.printStackTrace(System.out);
         } finally {
-            System.out.println("[METRICS] Synapse worker " + getSynapseTableName() + " done: "
-                    + BridgeExporterUtil.getCurrentLocalTimestamp());
+            if (lineCount > 0 || errorCount > 0) {
+                System.out.println("[METRICS] Synapse worker " + getSynapseTableName() + " done: "
+                        + BridgeExporterUtil.getCurrentLocalTimestamp());
+            }
         }
     }
 
@@ -345,8 +351,12 @@ public abstract class SynapseExportWorker extends ExportWorker {
 
     @Override
     public void reportMetrics() {
-        System.out.println("[METRICS] " + getSynapseTableName() + ".lineCount: " + lineCount);
-        System.out.println("[METRICS] " + getSynapseTableName() + ".errorCount: " + errorCount);
+        if (lineCount > 0) {
+            System.out.println("[METRICS] " + getSynapseTableName() + ".lineCount: " + lineCount);
+        }
+        if (errorCount > 0) {
+            System.out.println("[METRICS] " + getSynapseTableName() + ".errorCount: " + errorCount);
+        }
     }
 
     /** Initialize schemas. Child classes need to override this. In some cases, this may be a noop. */

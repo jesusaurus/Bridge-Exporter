@@ -202,7 +202,7 @@ public class BridgeExporter {
 
                 // Multiplex and add the right tasks to the manager. Since Export Tasks are immutable, it's safe to
                 // shared the same export task.
-                ExportTask task = new ExportTask(ExportTaskType.PROCESS_RECORD, oneRecord, null);
+                ExportTask task = new ExportTask(ExportTaskType.PROCESS_RECORD, schemaKey, oneRecord, null);
                 if ("ios-survey".equals(schemaId)) {
                     try {
                         manager.addIosSurveyExportTask(studyId, task);
@@ -217,12 +217,13 @@ public class BridgeExporter {
                         System.out.println("[ERROR] Schema not found for record " + recordId + " schema "
                                 + schemaKey.toString() + ": " + ex.getMessage());
                     }
-                }
-                try {
-                    manager.addAppVersionExportTask(studyId, task);
-                } catch (ExportWorkerException ex) {
-                    System.out.println("[ERROR] Error queueing app version task for record " + recordId + " in study "
-                            + studyId + ": " + ex.getMessage());
+
+                    try {
+                        manager.addAppVersionExportTask(studyId, task);
+                    } catch (ExportWorkerException ex) {
+                        System.out.println("[ERROR] Error queueing app version task for record " + recordId + " in study "
+                                + studyId + ": " + ex.getMessage());
+                    }
                 }
             } catch (RuntimeException ex) {
                 System.out.println("[ERROR] Unknown error processing record " + recordId + ": " + ex.getMessage());

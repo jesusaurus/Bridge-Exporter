@@ -20,7 +20,8 @@ import org.sagebionetworks.bridge.synapse.SynapseHelper;
 import org.sagebionetworks.bridge.util.BridgeExporterUtil;
 
 public class ExportWorkerManager {
-    private static final ExportTask END_OF_STREAM_TASK = new ExportTask(ExportTaskType.END_OF_STREAM, null, null);
+    private static final ExportTask END_OF_STREAM_TASK = new ExportTask(ExportTaskType.END_OF_STREAM, null, null,
+            null);
 
     // Configured externally
     private BridgeExporterConfig bridgeExporterConfig;
@@ -164,7 +165,7 @@ public class ExportWorkerManager {
 
     /**
      * Queues up an iOS survey export task to the manager. This task will also transparently queue up the corresponding
-     * PROCESS_IOS_SURVEY task to the right health data export worker.
+     * PROCESS_IOS_SURVEY task to the right health data export worker and to the study's app version worker.
      */
     public void addIosSurveyExportTask(String studyId, ExportTask task) throws ExportWorkerException {
         IosSurveyExportWorker surveyWorker = surveyWorkerMap.get(studyId);

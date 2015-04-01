@@ -105,12 +105,6 @@ public class AppVersionExportWorker extends SynapseExportWorker {
         }
         String recordId = record.getString("id");
 
-        // construct original schema
-        String studyId = record.getString("studyId");
-        String schemaId = record.getString("schemaId");
-        int schemaRev = record.getInt("schemaRevision");
-        UploadSchemaKey originalSchemaKey = new UploadSchemaKey(studyId, schemaId, schemaRev);
-
         // get phone and app info
         String appVersion = null;
         String phoneInfo = null;
@@ -133,7 +127,7 @@ public class AppVersionExportWorker extends SynapseExportWorker {
         rowValueList.add(recordId);
         rowValueList.add(record.getString("healthCode"));
         rowValueList.add(BridgeExporterUtil.getDdbStringRemoveTabsAndTrim(record, "userExternalId", 128, recordId));
-        rowValueList.add(originalSchemaKey.toString());
+        rowValueList.add(task.getSchemaKey().toString());
         rowValueList.add(appVersion);
         rowValueList.add(phoneInfo);
 
@@ -146,7 +140,10 @@ public class AppVersionExportWorker extends SynapseExportWorker {
     @Override
     public void reportMetrics() {
         super.reportMetrics();
-        System.out.println("[METRICS] Unique app versions for study " + getStudyId() + ": "
-                + APP_VERSION_JOINER.join(uniqueAppVersionSet));
+
+        if (!uniqueAppVersionSet.isEmpty()) {
+            System.out.println("[METRICS] Unique app versions for study " + getStudyId() + ": "
+                    + APP_VERSION_JOINER.join(uniqueAppVersionSet));
+        }
     }
 }

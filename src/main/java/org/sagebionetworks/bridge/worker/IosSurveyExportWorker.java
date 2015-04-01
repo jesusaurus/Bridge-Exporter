@@ -83,8 +83,10 @@ public class IosSurveyExportWorker extends ExportWorker {
                     + t.getMessage());
             t.printStackTrace(System.out);
         } finally {
-            System.out.println("[METRICS] Survey worker for study " + getStudyId() + " done: "
-                    + BridgeExporterUtil.getCurrentLocalTimestamp());
+            if (surveyCount > 0 || errorCount > 0) {
+                System.out.println("[METRICS] Survey worker for study " + getStudyId() + " done: "
+                        + BridgeExporterUtil.getCurrentLocalTimestamp());
+            }
         }
     }
 
@@ -256,8 +258,10 @@ public class IosSurveyExportWorker extends ExportWorker {
             }
         }
 
-        ExportTask convertedTask = new ExportTask(ExportTaskType.PROCESS_IOS_SURVEY, record, convertedSurveyNode);
+        ExportTask convertedTask = new ExportTask(ExportTaskType.PROCESS_IOS_SURVEY, surveySchemaKey, record,
+                convertedSurveyNode);
         getManager().addHealthDataExportTask(surveySchemaKey, convertedTask);
+        getManager().addAppVersionExportTask(getStudyId(), convertedTask);
     }
 
     // TODO: This is copy-pasted from HealthDataExportWorker. This should be refactored.
@@ -285,7 +289,11 @@ public class IosSurveyExportWorker extends ExportWorker {
 
     @Override
     public void reportMetrics() {
-        System.out.println("[METRICS] surveyWorker[" + getStudyId() + "].surveyCount: " + surveyCount);
-        System.out.println("[METRICS] surveyWorker[" + getStudyId() + "].errorCount: " + errorCount);
+        if (surveyCount > 0) {
+            System.out.println("[METRICS] surveyWorker[" + getStudyId() + "].surveyCount: " + surveyCount);
+        }
+        if (errorCount > 0) {
+            System.out.println("[METRICS] surveyWorker[" + getStudyId() + "].errorCount: " + errorCount);
+        }
     }
 }
