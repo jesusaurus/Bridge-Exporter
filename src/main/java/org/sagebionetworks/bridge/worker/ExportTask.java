@@ -8,26 +8,24 @@ import com.fasterxml.jackson.databind.JsonNode;
  * table.
  */
 public class ExportTask {
-    private ExportTaskType type;
-    private Item record;
-    private JsonNode dataJsonNode;
+    private final ExportTaskType type;
+    private final Item record;
+    private final JsonNode dataJsonNode;
+
+    public ExportTask(ExportTaskType type, Item record, JsonNode dataJsonNode) {
+        this.type = type;
+        this.record = record;
+        this.dataJsonNode = dataJsonNode;
+    }
 
     /** Task type, such as process record or upload TSV. */
     public ExportTaskType getType() {
         return type;
     }
 
-    public void setType(ExportTaskType type) {
-        this.type = type;
-    }
-
     /** DDB health data record. This is present only for PROCESS_RECORD and PROCESS_IOS_SURVEY tasks. */
     public Item getRecord() {
         return record;
-    }
-
-    public void setRecord(Item record) {
-        this.record = record;
     }
 
     /**
@@ -36,9 +34,5 @@ public class ExportTask {
      */
     public JsonNode getDataJsonNode() {
         return dataJsonNode;
-    }
-
-    public void setDataJsonNode(JsonNode dataJsonNode) {
-        this.dataJsonNode = dataJsonNode;
     }
 }

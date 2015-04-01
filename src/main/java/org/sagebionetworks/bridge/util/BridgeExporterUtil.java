@@ -3,12 +3,21 @@ package org.sagebionetworks.bridge.util;
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.joda.time.DateTime;
+import org.joda.time.DateTimeZone;
+import org.joda.time.format.ISODateTimeFormat;
 
 import org.sagebionetworks.bridge.exporter.UploadSchemaKey;
 
 public class BridgeExporterUtil {
     public static final ObjectMapper JSON_MAPPER = new ObjectMapper();
+    // TODO: make timezone configurable
+    public static final DateTimeZone LOCAL_TIME_ZONE = DateTimeZone.forID("America/Los_Angeles");
     public static final String S3_BUCKET_ATTACHMENTS = "org-sagebridge-attachment-prod";
+
+    public static String getCurrentLocalTimestamp() {
+        return DateTime.now(LOCAL_TIME_ZONE).toString(ISODateTimeFormat.dateTime());
+    }
 
     public static boolean shouldConvertFreeformTextToAttachment(UploadSchemaKey schemaKey, String fieldName) {
         // When we initially designed these schemas, we didn't realize Synapse had a character limit on strings.

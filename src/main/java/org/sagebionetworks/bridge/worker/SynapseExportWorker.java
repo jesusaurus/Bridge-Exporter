@@ -12,16 +12,16 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import com.amazonaws.AmazonClientException;
-import com.amazonaws.services.dynamodbv2.document.DynamoDB;
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
 import com.google.common.base.Charsets;
 import com.google.common.base.Joiner;
+import com.google.common.base.Stopwatch;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableSet;
-import org.sagebionetworks.client.SynapseClient;
 import org.sagebionetworks.client.exceptions.SynapseException;
 import org.sagebionetworks.client.exceptions.SynapseResultNotReadyException;
 import org.sagebionetworks.repo.model.ACCESS_TYPE;
@@ -35,6 +35,7 @@ import org.sagebionetworks.repo.model.table.UploadToTableResult;
 
 import org.sagebionetworks.bridge.exceptions.ExportWorkerException;
 import org.sagebionetworks.bridge.exceptions.SchemaNotFoundException;
+import org.sagebionetworks.bridge.util.BridgeExporterUtil;
 
 /**
  * This is a worker thread who's solely responsible for a single table in Synapse (study, schema, rev). This thread
@@ -48,23 +49,12 @@ public abstract class SynapseExportWorker extends ExportWorker {
     private static final int ASYNC_UPLOAD_TIMEOUT_SECONDS = 300;
     private static final Joiner JOINER_COLUMN_SEPARATOR = Joiner.on('\t').useForNull("");
 
-    // Configured externally
-    private SynapseClient synapseClient;
-
     // Internal state
+    private int errorCount = 0;
+    private int lineCount = 0;
     private String synapseTableId;
     private File tsvFile;
     private PrintWriter tsvWriter;
-    private int lineCount = 0;
-
-    /** Synapse client. Configured externally. */
-    public SynapseClient getSynapseClient() {
-        return synapseClient;
-    }
-
-    public void setSynapseClient(SynapseClient synapseClient) {
-        this.synapseClient = synapseClient;
-    }
 
     @Override
     public void run() {
@@ -95,21 +85,27 @@ public abstract class SynapseExportWorker extends ExportWorker {
             }
 
             String tsvPath = tsvFile.getAbsolutePath();
+            Stopwatch uploadTsvStopwatch = Stopwatch.createStarted();
             try {
                 uploadTsvToSynapse();
             } catch (ExportWorkerException ex) {
                 System.out.println("Error uploading file " + tsvPath + " to Synapse table " + getSynapseTableName()
                         + " with table ID " + synapseTableId + ": " +  ex.getMessage());
-                return;
             } catch (RuntimeException ex) {
                 System.out.println("RuntimeException uploading file " + tsvPath + " to Synapse table "
                         + getSynapseTableName() + " with table ID " + synapseTableId + ": " +  ex.getMessage());
                 ex.printStackTrace(System.out);
-                return;
+            } finally {
+                uploadTsvStopwatch.stop();
+                System.out.println(getSynapseTableName() + ".uploadTsvTime: "
+                        + uploadTsvStopwatch.elapsed(TimeUnit.SECONDS) + " seconds");
             }
         } catch (Throwable t) {
             System.out.println("Unknown error for table " + getSynapseTableName() + ": " + t.getMessage());
             t.printStackTrace(System.out);
+        } finally {
+            System.out.println("Synapse worker " + getSynapseTableName() + " done: "
+                    + BridgeExporterUtil.getCurrentLocalTimestamp());
         }
     }
 
@@ -121,8 +117,8 @@ public abstract class SynapseExportWorker extends ExportWorker {
 
     private void initSynapseTable() throws ExportWorkerException {
         // check DDB to see if the Synapse table exists
-        Table synapseTableDdbTable = getDdbClient().getTable(getBridgeExporterConfig().getDdbPrefix()
-                + getDdbTableName());
+        Table synapseTableDdbTable = getManager().getDdbClient().getTable(
+                getManager().getBridgeExporterConfig().getDdbPrefix() + getDdbTableName());
         try {
             Iterable<Item> tableIterable = synapseTableDdbTable.query(getDdbTableKeyName(), getSynapseTableName());
             Iterator<Item> tableIterator = tableIterable.iterator();
@@ -143,7 +139,7 @@ public abstract class SynapseExportWorker extends ExportWorker {
         List<ColumnModel> columnList = getSynapseTableColumnList();
         List<ColumnModel> createdColumnList;
         try {
-            createdColumnList = synapseClient.createColumnModels(columnList);
+            createdColumnList = getManager().getSynapseClient().createColumnModels(columnList);
         } catch (SynapseException ex) {
             throw new ExportWorkerException("Error creating Synapse column models: " + ex.getMessage(), ex);
         }
@@ -165,7 +161,7 @@ public abstract class SynapseExportWorker extends ExportWorker {
         synapseTable.setColumnIds(columnIdList);
         TableEntity createdTable;
         try {
-            createdTable = synapseClient.createEntity(synapseTable);
+            createdTable = getManager().getSynapseClient().createEntity(synapseTable);
         } catch (SynapseException ex) {
             throw new ExportWorkerException("Error creating Synapse table: " + ex.getMessage(), ex);
         }
@@ -175,7 +171,7 @@ public abstract class SynapseExportWorker extends ExportWorker {
         Set<ResourceAccess> resourceAccessSet = new HashSet<>();
 
         ResourceAccess exporterOwnerAccess = new ResourceAccess();
-        exporterOwnerAccess.setPrincipalId(getBridgeExporterConfig().getPrincipalId());
+        exporterOwnerAccess.setPrincipalId(getManager().getBridgeExporterConfig().getPrincipalId());
         exporterOwnerAccess.setAccessType(ACCESS_TYPE_ALL);
         resourceAccessSet.add(exporterOwnerAccess);
 
@@ -189,7 +185,7 @@ public abstract class SynapseExportWorker extends ExportWorker {
         acl.setResourceAccess(resourceAccessSet);
 
         try {
-            synapseClient.createACL(acl);
+            getManager().getSynapseClient().createACL(acl);
         } catch (SynapseException ex) {
             throw new ExportWorkerException("Error setting ACLs on Synapse table: " + ex.getMessage(), ex);
         }
@@ -245,20 +241,24 @@ public abstract class SynapseExportWorker extends ExportWorker {
                 switch (task.getType()) {
                     case PROCESS_RECORD:
                     case PROCESS_IOS_SURVEY:
+                        lineCount++;
                         appendToTsv(task);
                         break;
                     case END_OF_STREAM:
                         // END_OF_STREAM means we're finished
                         return;
                     default:
+                        errorCount++;
                         System.out.println("Unknown task type " + task.getType().name() + " for record " + recordId
                                 + " table " + getSynapseTableName());
                         break;
                 }
             } catch (ExportWorkerException ex) {
+                errorCount++;
                 System.out.println("Error processing record " + recordId + " for table " + getSynapseTableName()
                         + ": " + ex.getMessage());
             } catch (RuntimeException ex) {
+                errorCount++;
                 System.out.println("RuntimeException processing record " + recordId + " for table "
                         + getSynapseTableName() + ": " + ex.getMessage());
                 ex.printStackTrace(System.out);
@@ -269,7 +269,6 @@ public abstract class SynapseExportWorker extends ExportWorker {
     private void appendToTsv(ExportTask task) throws ExportWorkerException {
         List<String> rowValueList = getTsvRowValueList(task);
         tsvWriter.println(JOINER_COLUMN_SEPARATOR.join(rowValueList));
-        lineCount++;
     }
 
     private void uploadTsvToSynapse() throws ExportWorkerException {
@@ -288,7 +287,8 @@ public abstract class SynapseExportWorker extends ExportWorker {
         // upload file to synapse as a file handle
         FileHandle tableFileHandle;
         try {
-            tableFileHandle = synapseClient.createFileHandle(tsvFile, "text/tab-separated-values", getProjectId());
+            tableFileHandle = getManager().getSynapseClient().createFileHandle(tsvFile, "text/tab-separated-values",
+                    getProjectId());
         } catch (IOException | SynapseException ex) {
             throw new ExportWorkerException("Error uploading TSV as a file handle: " + ex.getMessage());
         }
@@ -304,7 +304,8 @@ public abstract class SynapseExportWorker extends ExportWorker {
 
         String jobToken;
         try {
-            jobToken = synapseClient.uploadCsvToTableAsyncStart(synapseTableId, fileHandleId, null, null, tableDesc);
+            jobToken = getManager().getSynapseClient().uploadCsvToTableAsyncStart(synapseTableId, fileHandleId, null,
+                    null, tableDesc);
         } catch (SynapseException ex) {
             throw new ExportWorkerException("Error starting async import of file handle " + fileHandleId + ": "
                     + ex.getMessage(), ex);
@@ -322,7 +323,8 @@ public abstract class SynapseExportWorker extends ExportWorker {
 
             // poll
             try {
-                UploadToTableResult uploadResult = synapseClient.uploadCsvToTableAsyncGet(jobToken, synapseTableId);
+                UploadToTableResult uploadResult = getManager().getSynapseClient().uploadCsvToTableAsyncGet(jobToken,
+                        synapseTableId);
                 Long linesProcessed = uploadResult.getRowsProcessed();
                 if (linesProcessed == null || linesProcessed != lineCount) {
                     throw new ExportWorkerException("Wrong number of lines processed importing file handle "
@@ -342,6 +344,12 @@ public abstract class SynapseExportWorker extends ExportWorker {
         if (!success) {
             throw new ExportWorkerException("Timed out uploading file handle " + fileHandleId);
         }
+    }
+
+    @Override
+    protected void reportMetrics() {
+        System.out.println(getSynapseTableName() + ".lineCount: " + lineCount);
+        System.out.println(getSynapseTableName() + ".errorCount: " + errorCount);
     }
 
     /**

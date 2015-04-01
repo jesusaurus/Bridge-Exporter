@@ -19,41 +19,17 @@ import org.sagebionetworks.repo.model.table.ColumnType;
 import org.sagebionetworks.bridge.exceptions.ExportWorkerException;
 import org.sagebionetworks.bridge.exceptions.SchemaNotFoundException;
 import org.sagebionetworks.bridge.exporter.UploadSchema;
-import org.sagebionetworks.bridge.exporter.UploadSchemaHelper;
 import org.sagebionetworks.bridge.exporter.UploadSchemaKey;
-import org.sagebionetworks.bridge.s3.S3Helper;
 import org.sagebionetworks.bridge.synapse.SynapseHelper;
 import org.sagebionetworks.bridge.util.BridgeExporterUtil;
 
 /** Synapse export worker for health data tables. */
 public class HealthDataExportWorker extends SynapseExportWorker {
     // Configured externally
-    private S3Helper s3Helper;
-    private UploadSchemaHelper schemaHelper;
     private UploadSchemaKey schemaKey;
-    private SynapseHelper synapseHelper;
-    private String todaysDateString;
 
     // Internal state
     private UploadSchema schema;
-
-    /** S3 helper. Configured externally. */
-    public S3Helper getS3Helper() {
-        return s3Helper;
-    }
-
-    public void setS3Helper(S3Helper s3Helper) {
-        this.s3Helper = s3Helper;
-    }
-
-    /** Schema helper. Configured externally. */
-    public UploadSchemaHelper getSchemaHelper() {
-        return schemaHelper;
-    }
-
-    public void setSchemaHelper(UploadSchemaHelper schemaHelper) {
-        this.schemaHelper = schemaHelper;
-    }
 
     /** Schema key corresponding to this health data record table. Configured externally. */
     public UploadSchemaKey getSchemaKey() {
@@ -64,31 +40,9 @@ public class HealthDataExportWorker extends SynapseExportWorker {
         this.schemaKey = schemaKey;
     }
 
-    /** Synapse helper. Configured externally. */
-    public SynapseHelper getSynapseHelper() {
-        return synapseHelper;
-    }
-
-    public void setSynapseHelper(SynapseHelper synapseHelper) {
-        this.synapseHelper = synapseHelper;
-    }
-
-    /**
-     * Calendar date in YYYY-MM-DD format, representing when the data is uploaded to Synapse. (Because uploads can take
-     * some time, this corresponds with when the upload started. Ideally, the uploads shouldn't take long enough to
-     * cross over to the next day.
-     */
-    public String getTodaysDateString() {
-        return todaysDateString;
-    }
-
-    public void setTodaysDateString(String todaysDateString) {
-        this.todaysDateString = todaysDateString;
-    }
-
     @Override
     protected void initSchemas() throws SchemaNotFoundException {
-        schema = schemaHelper.getSchema(schemaKey);
+        schema = getManager().getSchemaHelper().getSchema(schemaKey);
     }
 
     @Override
@@ -260,7 +214,7 @@ public class HealthDataExportWorker extends SynapseExportWorker {
         rowValueList.add(recordId);
         rowValueList.add(record.getString("healthCode"));
         rowValueList.add(BridgeExporterUtil.getDdbStringRemoveTabsAndTrim(record, "userExternalId", 128, recordId));
-        rowValueList.add(todaysDateString);
+        rowValueList.add(getManager().getTodaysDateString());
 
         // createdOn as a long epoch millis
         rowValueList.add(String.valueOf(record.getLong("createdOn")));
@@ -292,8 +246,8 @@ public class HealthDataExportWorker extends SynapseExportWorker {
                 }
             }
 
-            String value = synapseHelper.serializeToSynapseType(getStudyId(), recordId, oneFieldName, bridgeType,
-                    valueNode);
+            String value = getManager().getSynapseHelper().serializeToSynapseType(getStudyId(), recordId, oneFieldName,
+                    bridgeType, valueNode);
             rowValueList.add(value);
         }
 
@@ -308,11 +262,12 @@ public class HealthDataExportWorker extends SynapseExportWorker {
         attachment.withString("id", attachmentId);
         attachment.withString("recordId", recordId);
 
-        Table attachmentsTable = getDdbClient().getTable("prod-heroku-HealthDataAttachment");
+        Table attachmentsTable = getManager().getDdbClient().getTable("prod-heroku-HealthDataAttachment");
         attachmentsTable.putItem(attachment);
 
         // upload to S3
-        s3Helper.writeBytesToS3(BridgeExporterUtil.S3_BUCKET_ATTACHMENTS, attachmentId, text.getBytes(Charsets.UTF_8));
+        getManager().getS3Helper().writeBytesToS3(BridgeExporterUtil.S3_BUCKET_ATTACHMENTS, attachmentId,
+                text.getBytes(Charsets.UTF_8));
         return attachmentId;
     }
 }

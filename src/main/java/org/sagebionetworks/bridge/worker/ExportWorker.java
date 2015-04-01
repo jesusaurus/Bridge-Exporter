@@ -2,47 +2,33 @@ package org.sagebionetworks.bridge.worker;
 
 import java.util.concurrent.LinkedBlockingQueue;
 
-import com.amazonaws.services.dynamodbv2.document.DynamoDB;
-
-import org.sagebionetworks.bridge.exporter.BridgeExporterConfig;
-
 /**
  * Generic export worker. This class encapsulates basic configuration, helpers, and clients needed by export workers
  * and serves as the parent class for both Synapse export workers and iOS survey export workers.
  */
-public abstract class ExportWorker implements Runnable {
+public abstract class ExportWorker extends Thread {
     // Configured externally
-    private DynamoDB ddbClient;
-    private BridgeExporterConfig bridgeExporterConfig;
+    private ExportWorkerManager manager;
     private String studyId;
 
     // Internal state
     private final LinkedBlockingQueue<ExportTask> taskQueue = new LinkedBlockingQueue<>();
-
-    /** DynamoDB client. Configured externally. */
-    public DynamoDB getDdbClient() {
-        return ddbClient;
-    }
-
-    public void setDdbClient(DynamoDB ddbClient) {
-        this.ddbClient = ddbClient;
-    }
-
-    /** Bridge exporter config. Configured externally. */
-    public BridgeExporterConfig getBridgeExporterConfig() {
-        return bridgeExporterConfig;
-    }
-
-    public void setBridgeExporterConfig(BridgeExporterConfig bridgeExporterConfig) {
-        this.bridgeExporterConfig = bridgeExporterConfig;
-    }
 
     /**
      * Returns team ID of the team allowed to read the data. This is derived from the study and from the study to
      * project mapping in the Bridge Exporter config.
      */
     public Long getDataAccessTeamId() {
-        return bridgeExporterConfig.getDataAccessTeamIdsByStudy().get(studyId);
+        return manager.getBridgeExporterConfig().getDataAccessTeamIdsByStudy().get(studyId);
+    }
+
+    /** Export worker manager. Configured externally. */
+    public ExportWorkerManager getManager() {
+        return manager;
+    }
+
+    public void setManager(ExportWorkerManager manager) {
+        this.manager = manager;
     }
 
     /**
@@ -50,7 +36,7 @@ public abstract class ExportWorker implements Runnable {
      * Bridge Exporter config.
      */
     public String getProjectId() {
-        return bridgeExporterConfig.getProjectIdsByStudy().get(studyId);
+        return manager.getBridgeExporterConfig().getProjectIdsByStudy().get(studyId);
     }
 
     /** Study ID. Configured externally. */
@@ -77,4 +63,7 @@ public abstract class ExportWorker implements Runnable {
         // task queue is unbounded, so add() always succeeds
         taskQueue.add(task);
     }
+
+    /** Reports the metrics the worker has collected, if any. */
+    protected abstract void reportMetrics();
 }

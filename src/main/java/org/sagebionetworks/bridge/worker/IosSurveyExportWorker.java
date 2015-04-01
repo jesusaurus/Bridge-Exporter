@@ -16,9 +16,7 @@ import org.sagebionetworks.repo.model.table.ColumnType;
 import org.sagebionetworks.bridge.exceptions.ExportWorkerException;
 import org.sagebionetworks.bridge.exceptions.SchemaNotFoundException;
 import org.sagebionetworks.bridge.exporter.UploadSchema;
-import org.sagebionetworks.bridge.exporter.UploadSchemaHelper;
 import org.sagebionetworks.bridge.exporter.UploadSchemaKey;
-import org.sagebionetworks.bridge.s3.S3Helper;
 import org.sagebionetworks.bridge.synapse.SynapseHelper;
 import org.sagebionetworks.bridge.util.BridgeExporterUtil;
 
@@ -29,27 +27,8 @@ import org.sagebionetworks.bridge.util.BridgeExporterUtil;
  */
 // TODO: move this logic to the Bridge server
 public class IosSurveyExportWorker extends ExportWorker {
-    // Configured externally
-    private S3Helper s3Helper;
-    private UploadSchemaHelper schemaHelper;
-
-    /** S3 helper. Configured externally. */
-    public S3Helper getS3Helper() {
-        return s3Helper;
-    }
-
-    public void setS3Helper(S3Helper s3Helper) {
-        this.s3Helper = s3Helper;
-    }
-
-    /** Schema helper. Configured externally. */
-    public UploadSchemaHelper getSchemaHelper() {
-        return schemaHelper;
-    }
-
-    public void setSchemaHelper(UploadSchemaHelper schemaHelper) {
-        this.schemaHelper = schemaHelper;
-    }
+    private int errorCount = 0;
+    private int surveyCount = 0;
 
     @Override
     public void run() {
@@ -72,23 +51,28 @@ public class IosSurveyExportWorker extends ExportWorker {
                     // this class.
                     switch (task.getType()) {
                         case PROCESS_RECORD:
+                            surveyCount++;
                             processRecordAsSurvey(task);
                             break;
                         case END_OF_STREAM:
                             // END_OF_STREAM means we're finished
                             return;
                         default:
+                            errorCount++;
                             System.out.println("Unknown task type " + task.getType().name() + " for record " + recordId
                                     + " for survey worker for study " + getStudyId());
                             break;
                     }
                 } catch (SchemaNotFoundException ex) {
+                    errorCount++;
                     System.out.println("Schema not found for record " + recordId + " for study " + getStudyId()
                             + ": " + ex.getMessage());
                 } catch (ExportWorkerException ex) {
+                    errorCount++;
                     System.out.println("Error processing record " + recordId + " for survey worker for study "
                             + getStudyId() + ": " + ex.getMessage());
                 } catch (RuntimeException ex) {
+                    errorCount++;
                     System.out.println("RuntimeException processing record " + recordId
                             + " for survey worker for study " + getStudyId() + ": " + ex.getMessage());
                     ex.printStackTrace(System.out);
@@ -97,6 +81,9 @@ public class IosSurveyExportWorker extends ExportWorker {
         } catch (Throwable t) {
             System.out.println("Unknown error for survey worker for study " + getStudyId() + ": " + t.getMessage());
             t.printStackTrace(System.out);
+        } finally {
+            System.out.println("Survey worker for study " + getStudyId() + " done: "
+                    + BridgeExporterUtil.getCurrentLocalTimestamp());
         }
     }
 
@@ -140,7 +127,8 @@ public class IosSurveyExportWorker extends ExportWorker {
         String answerLink = answerLinkNode.textValue();
         String answerText;
         try {
-            answerText = s3Helper.readS3FileAsString(BridgeExporterUtil.S3_BUCKET_ATTACHMENTS, answerLink);
+            answerText = getManager().getS3Helper().readS3FileAsString(BridgeExporterUtil.S3_BUCKET_ATTACHMENTS,
+                    answerLink);
         } catch (AmazonClientException | IOException ex) {
             throw new ExportWorkerException("Error getting survey answers from S3 file " + answerLink + ": "
                     + ex.getMessage(), ex);
@@ -158,7 +146,7 @@ public class IosSurveyExportWorker extends ExportWorker {
         }
 
         // get schema and field type map, so we can process attachments
-        UploadSchema surveySchema = schemaHelper.getSchema(surveySchemaKey);
+        UploadSchema surveySchema = getManager().getSchemaHelper().getSchema(surveySchemaKey);
         Map<String, String> surveyFieldTypeMap = surveySchema.getFieldTypeMap();
 
         // copy fields to "non-survey" format
@@ -268,7 +256,8 @@ public class IosSurveyExportWorker extends ExportWorker {
             }
         }
 
-        // TODO: call the manager to route a new task
+        ExportTask convertedTask = new ExportTask(ExportTaskType.PROCESS_IOS_SURVEY, record, convertedSurveyNode);
+        getManager().addHealthDataExportTask(surveySchemaKey, convertedTask);
     }
 
     // TODO: This is copy-pasted from HealthDataExportWorker. This should be refactored.
@@ -280,11 +269,18 @@ public class IosSurveyExportWorker extends ExportWorker {
         attachment.withString("id", attachmentId);
         attachment.withString("recordId", recordId);
 
-        Table attachmentsTable = getDdbClient().getTable("prod-heroku-HealthDataAttachment");
+        Table attachmentsTable = getManager().getDdbClient().getTable("prod-heroku-HealthDataAttachment");
         attachmentsTable.putItem(attachment);
 
         // upload to S3
-        s3Helper.writeBytesToS3(BridgeExporterUtil.S3_BUCKET_ATTACHMENTS, attachmentId, text.getBytes(Charsets.UTF_8));
+        getManager().getS3Helper().writeBytesToS3(BridgeExporterUtil.S3_BUCKET_ATTACHMENTS, attachmentId,
+                text.getBytes(Charsets.UTF_8));
         return attachmentId;
+    }
+
+    @Override
+    protected void reportMetrics() {
+        System.out.println("surveyWorker[" + getStudyId() + "].surveyCount: " + surveyCount);
+        System.out.println("surveyWorker[" + getStudyId() + "].errorCount: " + errorCount);
     }
 }

@@ -3,9 +3,12 @@ package org.sagebionetworks.bridge.worker;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.base.Joiner;
 import com.google.common.base.Strings;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
@@ -16,6 +19,9 @@ import org.sagebionetworks.bridge.util.BridgeExporterUtil;
 
 /** Synapse export worker for app version tables. */
 public class AppVersionExportWorker extends SynapseExportWorker {
+    private static final Joiner APP_VERSION_JOINER = Joiner.on("; ");
+    private final Set<String> uniqueAppVersionSet = new TreeSet<>();
+
     @Override
     protected String getDdbTableName() {
         return "SynapseMetaTables";
@@ -125,6 +131,16 @@ public class AppVersionExportWorker extends SynapseExportWorker {
         rowValueList.add(appVersion);
         rowValueList.add(phoneInfo);
 
+        // book keeping
+        uniqueAppVersionSet.add(appVersion);
+
         return rowValueList;
+    }
+
+    @Override
+    protected void reportMetrics() {
+        super.reportMetrics();
+        System.out.println("Unique app versions for study " + getStudyId() + ": "
+                + APP_VERSION_JOINER.join(uniqueAppVersionSet));
     }
 }

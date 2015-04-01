@@ -1,5 +1,6 @@
 package org.sagebionetworks.bridge.exporter;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -14,6 +15,7 @@ public class BridgeExporterConfig {
     private String password;
     private long principalId;
     private Map<String, String> projectIdsByStudy;
+    private List<String> studyIdList;
 
     /** Synapse API Key. */
     public String getApiKey() {
@@ -83,5 +85,14 @@ public class BridgeExporterConfig {
 
     public void setProjectIdsByStudy(Map<String, String> projectIdsByStudy) {
         this.projectIdsByStudy = projectIdsByStudy;
+    }
+
+    /** List of study IDs to export. */
+    public List<String> getStudyIdList() {
+        return studyIdList;
+    }
+
+    public void setStudyIdList(List<String> studyIdList) {
+        this.studyIdList = studyIdList;
     }
 }
