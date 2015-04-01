@@ -20,7 +20,9 @@ import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 import org.sagebionetworks.repo.model.table.TableEntity;
 
+import org.sagebionetworks.bridge.exceptions.SchemaNotFoundException;
 import org.sagebionetworks.bridge.synapse.SynapseHelper;
+import org.sagebionetworks.bridge.util.BridgeExporterUtil;
 
 // TODO: unspaghetti this code and move Synapse stuff to SynapseHelper
 public class UploadSchemaHelper {
@@ -84,8 +86,12 @@ public class UploadSchemaHelper {
         }
     }
 
-    public UploadSchema getSchema(UploadSchemaKey schemaKey) {
-        return schemaMap.get(schemaKey);
+    public UploadSchema getSchema(UploadSchemaKey schemaKey) throws SchemaNotFoundException {
+        UploadSchema schema = schemaMap.get(schemaKey);
+        if (schema == null) {
+            throw new SchemaNotFoundException("Schema " + schemaKey + " not found.");
+        }
+        return schema;
     }
 
     public String getSynapseTableId(UploadSchemaKey schemaKey) throws IOException, RuntimeException, SynapseException {
@@ -165,7 +171,7 @@ public class UploadSchemaHelper {
 
                 // hack to cover legacy schemas pre-1k char limit on strings. See comments on
                 // shouldConvertFreeformTextToAttachment() for more details.
-                if (BridgeExporter.shouldConvertFreeformTextToAttachment(schemaKey, oneFieldName)) {
+                if (BridgeExporterUtil.shouldConvertFreeformTextToAttachment(schemaKey, oneFieldName)) {
                     synapseType = ColumnType.FILEHANDLEID;
                 }
 

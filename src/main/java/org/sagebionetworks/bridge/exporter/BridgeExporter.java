@@ -21,7 +21,6 @@ import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import com.google.common.base.Charsets;
@@ -30,17 +29,18 @@ import com.google.common.base.Stopwatch;
 import com.google.common.base.Strings;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.TreeMultimap;
+import org.joda.time.DateTimeZone;
 import org.joda.time.LocalDate;
+import org.joda.time.format.ISODateTimeFormat;
 import org.sagebionetworks.client.exceptions.SynapseException;
 import org.sagebionetworks.repo.model.table.ColumnType;
 
 import org.sagebionetworks.bridge.s3.S3Helper;
 import org.sagebionetworks.bridge.synapse.SynapseHelper;
+import org.sagebionetworks.bridge.util.BridgeExporterUtil;
 
 public class BridgeExporter {
     private static final Joiner JOINER_MESSAGE_LIST_SEPARATOR = Joiner.on(", ");
-    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
-    public static final String S3_BUCKET_ATTACHMENTS = "org-sagebridge-attachment-prod";
 
     // Number of records before the script stops processing records. This is used for testing. To make this unlimited,
     // set it to -1.
@@ -66,11 +66,11 @@ public class BridgeExporter {
     private final Map<String, Set<String>> setCounterMap = new HashMap<>();
 
     private DynamoDB ddbClient;
-    private LocalDate date;
-    private String dateString;
     private UploadSchemaHelper schemaHelper;
     private S3Helper s3Helper;
     private SynapseHelper synapseHelper;
+    private String todaysDateString;
+    private String uploadDateString;
 
     public void run() throws IOException, SynapseException {
         Stopwatch stopwatch = Stopwatch.createStarted();
@@ -95,13 +95,19 @@ public class BridgeExporter {
     }
 
     public void setDate(String dateString) {
-        this.dateString = dateString;
-        this.date = LocalDate.parse(dateString);
+        // validate date
+        LocalDate.parse(dateString);
+
+        this.uploadDateString = dateString;
     }
 
     private void init() throws IOException, SynapseException {
+        // TODO: make timezone configurable
+        LocalDate todaysDate = LocalDate.now(DateTimeZone.forID("America/Los_Angeles"));
+        todaysDateString = todaysDate.toString(ISODateTimeFormat.date());
+
         File synapseConfigFile = new File(System.getProperty("user.home") + "/bridge-synapse-exporter-config.json");
-        JsonNode synapseConfigJson = JSON_MAPPER.readTree(synapseConfigFile);
+        JsonNode synapseConfigJson = BridgeExporterUtil.JSON_MAPPER.readTree(synapseConfigFile);
         String ddbPrefix = synapseConfigJson.get("ddbPrefix").textValue();
 
         // Dynamo DB client - move to Spring
@@ -145,7 +151,7 @@ public class BridgeExporter {
         // get key objects by querying uploadDate index
         Table recordTable = ddbClient.getTable("prod-heroku-HealthDataRecord3");
         Index recordTableUploadDateIndex = recordTable.getIndex("uploadDate-index");
-        Iterable<Item> recordKeyIter = recordTableUploadDateIndex.query("uploadDate", dateString);
+        Iterable<Item> recordKeyIter = recordTableUploadDateIndex.query("uploadDate", uploadDateString);
 
         // re-query table to get values
         Set<String> schemasNotFound = new TreeSet<>();
@@ -194,7 +200,8 @@ public class BridgeExporter {
                 String studyId = oneRecord.getString("studyId");
                 String schemaId = oneRecord.getString("schemaId");
                 int schemaRev = oneRecord.getInt("schemaRevision");
-                String externalId = getDdbStringRemoveTabsAndTrim(oneRecord, "userExternalId", 48);
+                String externalId = BridgeExporterUtil.getDdbStringRemoveTabsAndTrim(oneRecord, "userExternalId", 128,
+                        recordId);
 
                 String healthCode = oneRecord.getString("healthCode");
                 incrementSetCounter("uniqueHealthCodes[" + studyId + "]", healthCode);
@@ -207,7 +214,7 @@ public class BridgeExporter {
                     // TODO: move survey translation layer to server-side
                     JsonNode oldDataJson;
                     try {
-                        oldDataJson = JSON_MAPPER.readTree(oneRecord.getString("data"));
+                        oldDataJson = BridgeExporterUtil.JSON_MAPPER.readTree(oneRecord.getString("data"));
                     } catch (IOException ex) {
                         System.out.println("Error parsing JSON data for record " + recordId + ": " + ex.getMessage());
                         continue;
@@ -240,7 +247,7 @@ public class BridgeExporter {
                     String answerLink = answerLinkNode.textValue();
                     String answerText;
                     try {
-                        answerText = s3Helper.readS3FileAsString(S3_BUCKET_ATTACHMENTS, answerLink);
+                        answerText = s3Helper.readS3FileAsString(BridgeExporterUtil.S3_BUCKET_ATTACHMENTS, answerLink);
                     } catch (AmazonClientException | IOException ex) {
                         System.out.println("Error getting survey answers from S3 for record ID " + recordId + ": "
                                 + ex.getMessage());
@@ -249,7 +256,7 @@ public class BridgeExporter {
 
                     JsonNode answerArrayNode;
                     try {
-                        answerArrayNode = JSON_MAPPER.readTree(answerText);
+                        answerArrayNode = BridgeExporterUtil.JSON_MAPPER.readTree(answerText);
                     } catch (IOException ex) {
                         System.out.println("Error parsing JSON survey answers for record ID " + recordId + ": "
                                 + ex.getMessage());
@@ -272,7 +279,7 @@ public class BridgeExporter {
                     Map<String, String> surveyFieldTypeMap = surveySchema.getFieldTypeMap();
 
                     // copy fields to "non-survey" format
-                    ObjectNode convertedSurveyNode = JSON_MAPPER.createObjectNode();
+                    ObjectNode convertedSurveyNode = BridgeExporterUtil.JSON_MAPPER.createObjectNode();
                     int numAnswers = answerArrayNode.size();
                     for (int i = 0; i < numAnswers; i++) {
                         JsonNode oneAnswerNode = answerArrayNode.get(i);
@@ -383,7 +390,7 @@ public class BridgeExporter {
                     // non-surveys
                     incrementCounter("numNonSurveys");
                     try {
-                        dataJson = JSON_MAPPER.readTree(oneRecord.getString("data"));
+                        dataJson = BridgeExporterUtil.JSON_MAPPER.readTree(oneRecord.getString("data"));
                     } catch (IOException ex) {
                         System.out.println("Error parsing JSON for record ID " + recordId + ": " + ex.getMessage());
                         continue;
@@ -400,9 +407,11 @@ public class BridgeExporter {
                 String metadataString = oneRecord.getString("metadata");
                 if (!Strings.isNullOrEmpty(metadataString)) {
                     try {
-                        JsonNode metadataJson = JSON_MAPPER.readTree(metadataString);
-                        appVersion = getJsonStringRemoveTabsAndTrim(metadataJson, "appVersion", 48);
-                        phoneInfo = getJsonStringRemoveTabsAndTrim(metadataJson, "phoneInfo", 48);
+                        JsonNode metadataJson = BridgeExporterUtil.JSON_MAPPER.readTree(metadataString);
+                        appVersion = BridgeExporterUtil.getJsonStringRemoveTabsAndTrim(metadataJson, "appVersion", 48,
+                                recordId);
+                        phoneInfo = BridgeExporterUtil.getJsonStringRemoveTabsAndTrim(metadataJson, "phoneInfo", 48,
+                                recordId);
                     } catch (IOException ex) {
                         // we can recover from this
                         System.out.println("Error parsing metadata for record ID " + recordId + ": " + ex.getMessage());
@@ -470,7 +479,7 @@ public class BridgeExporter {
         rowValueList.add(recordId);
         rowValueList.add(healthCode);
         rowValueList.add(externalId);
-        rowValueList.add(oneRecord.getString("uploadDate"));
+        rowValueList.add(todaysDateString);
 
         // createdOn as a long epoch millis
         rowValueList.add(String.valueOf(oneRecord.getLong("createdOn")));
@@ -485,7 +494,7 @@ public class BridgeExporter {
             String bridgeType = fieldTypeMap.get(oneFieldName);
             JsonNode valueNode = dataJson.get(oneFieldName);
 
-            if (shouldConvertFreeformTextToAttachment(schemaKey, oneFieldName)) {
+            if (BridgeExporterUtil.shouldConvertFreeformTextToAttachment(schemaKey, oneFieldName)) {
                 // special hack, see comments on shouldConvertFreeformTextToAttachment()
                 bridgeType = "attachment_blob";
                 if (valueNode != null && !valueNode.isNull() && valueNode.isTextual()) {
@@ -556,7 +565,7 @@ public class BridgeExporter {
         attachmentsTable.putItem(attachment);
 
         // upload to S3
-        s3Helper.writeBytesToS3(S3_BUCKET_ATTACHMENTS, attachmentId, text.getBytes(Charsets.UTF_8));
+        s3Helper.writeBytesToS3(BridgeExporterUtil.S3_BUCKET_ATTACHMENTS, attachmentId, text.getBytes(Charsets.UTF_8));
         return attachmentId;
     }
 
@@ -584,63 +593,4 @@ public class BridgeExporter {
         set.add(value);
     }
 
-    public static boolean shouldConvertFreeformTextToAttachment(UploadSchemaKey schemaKey, String fieldName) {
-        // When we initially designed these schemas, we didn't realize Synapse had a character limit on strings.
-        // These strings may exceed that character limit, so we need this special hack to convert these strings to
-        // attachments. This code applies only to legacy schemas. New schemas need to declare ATTACHMENT_BLOB,
-        // otherwise the strings get automatically truncated.
-
-        if ("breastcancer".equals(schemaKey.getStudyId())) {
-            if ("BreastCancer-DailyJournal".equals(schemaKey.getSchemaId())) {
-                if (schemaKey.getRev() == 1) {
-                    return "content_data.APHMoodLogNoteText".equals(fieldName)
-                            || "DailyJournalStep103_data.content".equals(fieldName);
-                }
-            } else if ("BreastCancer-ExerciseSurvey".equals(schemaKey.getSchemaId())) {
-                if (schemaKey.getRev() == 1) {
-                    return "exercisesurvey101_data.result".equals(fieldName)
-                            || "exercisesurvey102_data.result".equals(fieldName)
-                            || "exercisesurvey103_data.result".equals(fieldName)
-                            || "exercisesurvey104_data.result".equals(fieldName)
-                            || "exercisesurvey105_data.result".equals(fieldName)
-                            || "exercisesurvey106_data.result".equals(fieldName);
-                }
-            }
-        }
-
-        return false;
-    }
-
-    private static String getDdbStringRemoveTabsAndTrim(Item ddbItem, String key, int maxLength) {
-        return trimToLengthAndWarn(removeTabs(ddbItem.getString(key)), maxLength);
-    }
-
-    private static String getJsonStringRemoveTabsAndTrim(JsonNode node, String key, int maxLength) {
-        return trimToLengthAndWarn(removeTabs(getJsonString(node, key)), maxLength);
-    }
-
-    private static String getJsonString(JsonNode node, String key) {
-        if (node.hasNonNull(key)) {
-            return node.get(key).textValue();
-        } else {
-            return null;
-        }
-    }
-
-    private static String removeTabs(String in) {
-        if (in != null) {
-            return in.replaceAll("\t+", " ");
-        } else {
-            return null;
-        }
-    }
-
-    public static String trimToLengthAndWarn(String in, int maxLength) {
-        if (in != null && in.length() > maxLength) {
-            System.out.println("Trunacting string " + in + " to length " + maxLength);
-            return in.substring(0, maxLength);
-        } else {
-            return in;
-        }
-    }
 }

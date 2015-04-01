@@ -39,8 +39,8 @@ import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 import org.sagebionetworks.repo.model.table.TableEntity;
 
-import org.sagebionetworks.bridge.exporter.BridgeExporter;
 import org.sagebionetworks.bridge.s3.S3Helper;
+import org.sagebionetworks.bridge.util.BridgeExporterUtil;
 
 public class SynapseHelper {
     private static final Set<ACCESS_TYPE> ACCESS_TYPE_ALL = ImmutableSet.copyOf(ACCESS_TYPE.values());
@@ -439,7 +439,7 @@ public class SynapseHelper {
                     System.out.println("No max length found for Bridge type " + bridgeType);
                     maxLength = 1000;
                 }
-                return BridgeExporter.trimToLengthAndWarn(nodeValue, maxLength);
+                return BridgeExporterUtil.trimToLengthAndWarn(nodeValue, maxLength);
             default:
                 System.out.println("Unexpected Synapse Type " + String.valueOf(synapseType) + " for record ID "
                         + recordId);
@@ -455,7 +455,7 @@ public class SynapseHelper {
         try {
             // download from S3
             // TODO: update S3Helper to stream directly to a file instead of holding it in memory first
-            byte[] fileBytes = s3Helper.readS3FileAsBytes(BridgeExporter.S3_BUCKET_ATTACHMENTS, s3Key);
+            byte[] fileBytes = s3Helper.readS3FileAsBytes(BridgeExporterUtil.S3_BUCKET_ATTACHMENTS, s3Key);
             Files.write(fileBytes, tempFile);
 
             // upload to Synapse
