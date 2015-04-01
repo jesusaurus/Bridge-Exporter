@@ -9,7 +9,6 @@ import java.util.Set;
 
 import com.amazonaws.services.dynamodbv2.document.DynamoDB;
 import com.google.common.collect.ImmutableSet;
-import org.sagebionetworks.client.SynapseClient;
 
 import org.sagebionetworks.bridge.exceptions.ExportWorkerException;
 import org.sagebionetworks.bridge.exceptions.SchemaNotFoundException;
@@ -28,7 +27,6 @@ public class ExportWorkerManager {
     private DynamoDB ddbClient;
     private S3Helper s3Helper;
     private UploadSchemaHelper schemaHelper;
-    private SynapseClient synapseClient;
     private SynapseHelper synapseHelper;
     private String todaysDateString;
 
@@ -76,15 +74,6 @@ public class ExportWorkerManager {
         this.schemaHelper = schemaHelper;
     }
 
-    /** Synapse client. Configured externally. */
-    public SynapseClient getSynapseClient() {
-        return synapseClient;
-    }
-
-    public void setSynapseClient(SynapseClient synapseClient) {
-        this.synapseClient = synapseClient;
-    }
-
     /** Synapse helper. Configured externally. */
     public SynapseHelper getSynapseHelper() {
         return synapseHelper;
@@ -122,15 +111,15 @@ public class ExportWorkerManager {
             // init survey workers
             IosSurveyExportWorker oneSurveyWorker = new IosSurveyExportWorker();
             oneSurveyWorker.setManager(this);
+            oneSurveyWorker.setName("surveyWorker-" + oneStudyId);
             oneSurveyWorker.setStudyId(oneStudyId);
-            oneSurveyWorker.start();
             surveyWorkerMap.put(oneStudyId, oneSurveyWorker);
 
             // init app version workers
             AppVersionExportWorker oneAppVersionWorker = new AppVersionExportWorker();
             oneAppVersionWorker.setManager(this);
+            oneAppVersionWorker.setName("appVersionWorker-" + oneStudyId);
             oneAppVersionWorker.setStudyId(oneStudyId);
-            oneAppVersionWorker.start();
             appVersionWorkerMap.put(oneStudyId, oneAppVersionWorker);
         }
 
@@ -139,8 +128,9 @@ public class ExportWorkerManager {
         for (UploadSchemaKey oneSchemaKey : schemaKeySet) {
             HealthDataExportWorker oneHealthDataWorker = new HealthDataExportWorker();
             oneHealthDataWorker.setManager(this);
+            oneHealthDataWorker.setName("healthDataWorker-" + oneSchemaKey.toString());
             oneHealthDataWorker.setSchemaKey(oneSchemaKey);
-            oneHealthDataWorker.start();
+            oneHealthDataWorker.setStudyId(oneSchemaKey.getStudyId());
             healthDataWorkerMap.put(oneSchemaKey, oneHealthDataWorker);
         }
 
@@ -150,6 +140,26 @@ public class ExportWorkerManager {
         allWorkerList.addAll(surveyWorkerMap.values());
         allWorkerList.addAll(appVersionWorkerMap.values());
         allWorkerList.addAll(healthDataWorkerMap.values());
+
+        // init and start workers
+        for (ExportWorker oneWorker : allWorkerList) {
+            try {
+                oneWorker.init();
+
+                // only workers that are successfully inited will be started
+                oneWorker.start();
+            } catch (SchemaNotFoundException ex) {
+                System.out.println("[ERROR] Schema not found for worker " + oneWorker.getName() + ": "
+                        + ex.getMessage());
+            } catch (ExportWorkerException ex) {
+                System.out.println("[ERROR] Error initializing worker " + oneWorker.getName() + ": "
+                        + ex.getMessage());
+            } catch (RuntimeException ex) {
+                System.out.println("[ERROR] RuntimeException initializing worker for table " + oneWorker.getName()
+                        + ": " + ex.getMessage());
+                ex.printStackTrace(System.out);
+            }
+        }
     }
 
     /**
@@ -192,7 +202,7 @@ public class ExportWorkerManager {
      * This blocks until all workers are finished.
      */
     public void endOfStream() {
-        System.out.println("End of stream signaled: " + BridgeExporterUtil.getCurrentLocalTimestamp());
+        System.out.println("[METRICS] End of stream signaled: " + BridgeExporterUtil.getCurrentLocalTimestamp());
 
         // Since iOS survey workers can generate additional work for other workers, we need to handle iOS survey
         // workers first.
@@ -205,12 +215,12 @@ public class ExportWorkerManager {
             try {
                 oneSurveyWorker.join();
             } catch (InterruptedException ex) {
-                System.out.println("Interrupted waiting for survey worker " + oneSurveyWorker.getStudyId()
+                System.out.println("[ERROR] Interrupted waiting for survey worker " + oneSurveyWorker.getName()
                         + " to complete: " + ex.getMessage());
             }
         }
 
-        System.out.println("Survey workers finished: " + BridgeExporterUtil.getCurrentLocalTimestamp());
+        System.out.println("[METRICS] Survey workers finished: " + BridgeExporterUtil.getCurrentLocalTimestamp());
 
         // Now signal all the other workers (synapse workers) and then wait for them to finish.
         // First loop signals all of the workers to finish.
@@ -222,7 +232,7 @@ public class ExportWorkerManager {
             try {
                 oneSynapseWorker.join();
             } catch (InterruptedException ex) {
-                System.out.println("Interrupted waiting for synapse worker " + oneSynapseWorker.getSynapseTableName()
+                System.out.println("[ERROR] Interrupted waiting for synapse worker " + oneSynapseWorker.getName()
                         + " to complete: " + ex.getMessage());
             }
         }

@@ -73,7 +73,8 @@ public class BridgeExporterUtil {
 
     public static String trimToLengthAndWarn(String in, int maxLength, String recordId) {
         if (in != null && in.length() > maxLength) {
-            System.out.println("Trunacting string " + in + " to length " + maxLength + " for record " + recordId);
+            System.out.println("[ERROR] Truncating string " + in + " to length " + maxLength + " for record "
+                    + recordId);
             return in.substring(0, maxLength);
         } else {
             return in;

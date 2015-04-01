@@ -47,7 +47,7 @@ public class HealthDataExportWorker extends SynapseExportWorker {
 
     @Override
     protected String getDdbTableName() {
-        return "SynapseTable";
+        return "SynapseTables";
     }
 
     @Override
@@ -110,7 +110,7 @@ public class HealthDataExportWorker extends SynapseExportWorker {
 
             ColumnType synapseType = SynapseHelper.BRIDGE_TYPE_TO_SYNAPSE_TYPE.get(bridgeType);
             if (synapseType == null) {
-                System.out.println("No Synapse type found for Bridge type " + bridgeType);
+                System.out.println("[ERROR] No Synapse type found for Bridge type " + bridgeType);
                 synapseType = ColumnType.STRING;
             }
 
@@ -127,7 +127,7 @@ public class HealthDataExportWorker extends SynapseExportWorker {
             if (synapseType == ColumnType.STRING) {
                 Integer maxLength = SynapseHelper.BRIDGE_TYPE_TO_MAX_LENGTH.get(bridgeType);
                 if (maxLength == null) {
-                    System.out.println("No max length found for Bridge type " + bridgeType);
+                    System.out.println("[ERROR] No max length found for Bridge type " + bridgeType);
                     maxLength = 1000;
                 }
                 oneColumn.setMaximumSize(Long.valueOf(maxLength));
@@ -204,7 +204,7 @@ public class HealthDataExportWorker extends SynapseExportWorker {
                 phoneInfo = BridgeExporterUtil.getJsonStringRemoveTabsAndTrim(metadataJson, "phoneInfo", 48, recordId);
             } catch (IOException ex) {
                 // we can recover from this
-                System.out.println("Error parsing metadata for record ID " + recordId + ": " + ex.getMessage());
+                System.out.println("[ERROR] Error parsing metadata for record ID " + recordId + ": " + ex.getMessage());
             }
         }
 
@@ -237,8 +237,8 @@ public class HealthDataExportWorker extends SynapseExportWorker {
                         String attachmentId = uploadFreeformTextAsAttachment(recordId, valueNode.textValue());
                         valueNode = new TextNode(attachmentId);
                     } catch (AmazonClientException | IOException ex) {
-                        System.out.println("Error uploading freeform text as attachment for record ID " + recordId
-                                + ", field " + oneFieldName + ": " + ex.getMessage());
+                        System.out.println("[ERROR] Error uploading freeform text as attachment for record ID "
+                                + recordId + ", field " + oneFieldName + ": " + ex.getMessage());
                         valueNode = null;
                     }
                 } else {

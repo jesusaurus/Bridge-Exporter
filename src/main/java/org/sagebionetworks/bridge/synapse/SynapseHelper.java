@@ -2,16 +2,26 @@ package org.sagebionetworks.bridge.synapse;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
+import com.amazonaws.AmazonClientException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.io.Files;
+import com.jcabi.aspects.RetryOnFailure;
 import org.joda.time.DateTime;
 import org.sagebionetworks.client.SynapseClient;
 import org.sagebionetworks.client.exceptions.SynapseException;
+import org.sagebionetworks.client.exceptions.SynapseResultNotReadyException;
+import org.sagebionetworks.repo.model.AccessControlList;
 import org.sagebionetworks.repo.model.file.FileHandle;
+import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
+import org.sagebionetworks.repo.model.table.CsvTableDescriptor;
+import org.sagebionetworks.repo.model.table.TableEntity;
+import org.sagebionetworks.repo.model.table.UploadToTableResult;
 
 import org.sagebionetworks.bridge.exporter.BridgeExporterConfig;
 import org.sagebionetworks.bridge.s3.S3Helper;
@@ -63,7 +73,8 @@ public class SynapseHelper {
 
         ColumnType synapseType = BRIDGE_TYPE_TO_SYNAPSE_TYPE.get(bridgeType);
         if (synapseType == null) {
-            System.out.println("No Synapse type found for Bridge type " + bridgeType + ", record ID " + recordId);
+            System.out.println("[ERROR] No Synapse type found for Bridge type " + bridgeType + ", record ID "
+                    + recordId);
             synapseType = ColumnType.STRING;
         }
 
@@ -100,7 +111,7 @@ public class SynapseHelper {
                     try {
                         return uploadFromS3ToSynapseFileHandle(studyId, fieldName, s3Key);
                     } catch (IOException | SynapseException ex) {
-                        System.out.println("Error uploading attachment to Synapse for record ID " + recordId +
+                        System.out.println("[ERROR] Error uploading attachment to Synapse for record ID " + recordId +
                                 ", s3Key " + s3Key + ": " + ex.getMessage());
                         return null;
                     }
@@ -123,12 +134,12 @@ public class SynapseHelper {
 
                 Integer maxLength = BRIDGE_TYPE_TO_MAX_LENGTH.get(bridgeType);
                 if (maxLength == null) {
-                    System.out.println("No max length found for Bridge type " + bridgeType);
+                    System.out.println("[ERROR] No max length found for Bridge type " + bridgeType);
                     maxLength = 1000;
                 }
                 return BridgeExporterUtil.trimToLengthAndWarn(nodeValue, maxLength, recordId);
             default:
-                System.out.println("Unexpected Synapse Type " + String.valueOf(synapseType) + " for record ID "
+                System.out.println("[ERROR] Unexpected Synapse Type " + String.valueOf(synapseType) + " for record ID "
                         + recordId);
                 return null;
         }
@@ -146,12 +157,52 @@ public class SynapseHelper {
             Files.write(fileBytes, tempFile);
 
             // upload to Synapse
-            FileHandle synapseFileHandle = synapseClient.createFileHandle(tempFile, "application/octet-stream",
+            FileHandle synapseFileHandle = createFileHandleWithRetry(tempFile, "application/octet-stream",
                     bridgeExporterConfig.getProjectIdsByStudy().get(studyId));
             return synapseFileHandle.getId();
         } finally {
             // delete temp file
             tempFile.delete();
+        }
+    }
+
+    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class)
+    public AccessControlList createAclWithRetry(AccessControlList acl) throws SynapseException {
+        return synapseClient.createACL(acl);
+    }
+
+    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class)
+    public List<ColumnModel> createColumnModelsWithRetry(List<ColumnModel> columnList) throws SynapseException {
+        return synapseClient.createColumnModels(columnList);
+    }
+
+    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = {
+            AmazonClientException.class,
+            SynapseException.class
+    })
+    public FileHandle createFileHandleWithRetry(File file, String contentType, String parentId) throws IOException,
+            SynapseException {
+        return synapseClient.createFileHandle(file, contentType, parentId);
+    }
+
+    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class)
+    public TableEntity createTableWithRetry(TableEntity table) throws SynapseException {
+        return synapseClient.createEntity(table);
+    }
+
+    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class)
+    public String uploadTsvStartWithRetry(String tableId, String fileHandleId, CsvTableDescriptor tableDescriptor)
+            throws SynapseException {
+        return synapseClient.uploadCsvToTableAsyncStart(tableId, fileHandleId, null, null, tableDescriptor);
+    }
+
+    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class)
+    public UploadToTableResult getUploadTsvStatus(String jobToken, String tableId) throws SynapseException {
+        try {
+            return synapseClient.uploadCsvToTableAsyncGet(jobToken, tableId);
+        } catch (SynapseResultNotReadyException ex) {
+            // catch this and return null so we don't retry on "not ready"
+            return null;
         }
     }
 }

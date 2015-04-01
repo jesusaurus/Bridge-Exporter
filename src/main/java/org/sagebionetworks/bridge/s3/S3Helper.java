@@ -3,11 +3,14 @@ package org.sagebionetworks.bridge.s3;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.concurrent.TimeUnit;
 
+import com.amazonaws.AmazonClientException;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.model.S3Object;
 import com.google.common.base.Charsets;
 import com.google.common.io.ByteStreams;
+import com.jcabi.aspects.RetryOnFailure;
 
 /**
  * Helper class that simplifies reading S3 files. This is generally created by Spring. However, we don't use the
@@ -35,6 +38,7 @@ public class S3Helper {
      * @throws IOException
      *         if closing the stream fails
      */
+    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = AmazonClientException.class)
     public byte[] readS3FileAsBytes(String bucket, String key) throws IOException {
         S3Object s3File = s3Client.getObject(bucket, key);
         try (InputStream s3Stream = s3File.getObjectContent()) {
@@ -58,6 +62,7 @@ public class S3Helper {
         return new String(bytes, Charsets.UTF_8);
     }
 
+    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = AmazonClientException.class)
     public void writeBytesToS3(String bucket, String key, byte[] data) throws IOException {
         try (InputStream dataInputStream = new ByteArrayInputStream(data)) {
             s3Client.putObject(bucket, key, dataInputStream, null);

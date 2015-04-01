@@ -60,26 +60,10 @@ public abstract class SynapseExportWorker extends ExportWorker {
     public void run() {
         try {
             try {
-                init();
-            } catch (SchemaNotFoundException ex) {
-                System.out.println("Schema not found for table " + getSynapseTableName() + ": " + ex.getMessage());
-                return;
-            } catch (ExportWorkerException ex) {
-                System.out.println("Error initializing Synapse export worker for table " + getSynapseTableName() + ": "
-                        + ex.getMessage());
-                return;
-            } catch (RuntimeException ex) {
-                System.out.println("RuntimeException initializing Synapse export worker for table "
-                        + getSynapseTableName() + ": " + ex.getMessage());
-                ex.printStackTrace(System.out);
-                return;
-            }
-
-            try {
                 workerLoop();
             } catch (RuntimeException ex) {
-                System.out.println("RuntimeException running worker loop for table " + getSynapseTableName() + ": "
-                        + ex.getMessage());
+                System.out.println("[ERROR] RuntimeException running worker loop for table " + getSynapseTableName()
+                        + ": " + ex.getMessage());
                 ex.printStackTrace(System.out);
                 return;
             }
@@ -89,27 +73,34 @@ public abstract class SynapseExportWorker extends ExportWorker {
             try {
                 uploadTsvToSynapse();
             } catch (ExportWorkerException ex) {
-                System.out.println("Error uploading file " + tsvPath + " to Synapse table " + getSynapseTableName()
-                        + " with table ID " + synapseTableId + ": " +  ex.getMessage());
+                System.out.println("[ERROR] Error uploading file " + tsvPath + " to Synapse table "
+                        + getSynapseTableName() + " with table ID " + synapseTableId + ": " +  ex.getMessage());
             } catch (RuntimeException ex) {
-                System.out.println("RuntimeException uploading file " + tsvPath + " to Synapse table "
+                System.out.println("[ERROR] RuntimeException uploading file " + tsvPath + " to Synapse table "
                         + getSynapseTableName() + " with table ID " + synapseTableId + ": " +  ex.getMessage());
                 ex.printStackTrace(System.out);
             } finally {
                 uploadTsvStopwatch.stop();
-                System.out.println(getSynapseTableName() + ".uploadTsvTime: "
+                System.out.println("[METRICS] " + getSynapseTableName() + ".uploadTsvTime: "
                         + uploadTsvStopwatch.elapsed(TimeUnit.SECONDS) + " seconds");
             }
         } catch (Throwable t) {
-            System.out.println("Unknown error for table " + getSynapseTableName() + ": " + t.getMessage());
+            System.out.println("[ERROR] Unknown error for table " + getSynapseTableName() + ": " + t.getMessage());
             t.printStackTrace(System.out);
         } finally {
-            System.out.println("Synapse worker " + getSynapseTableName() + " done: "
+            System.out.println("[METRICS] Synapse worker " + getSynapseTableName() + " done: "
                     + BridgeExporterUtil.getCurrentLocalTimestamp());
         }
     }
 
-    private void init() throws ExportWorkerException, SchemaNotFoundException {
+    /**
+     * Initializes the worker. This includes initializing the schema (where applicable), initializing (and potentially
+     * creating) the Synapse table, and initializing the TSV file and writer. This is done outside the run loop and
+     * instead done sequentially by the main thread because concurrent create table requests in Synapse may get
+     * throttled.
+     */
+    @Override
+    public void init() throws ExportWorkerException, SchemaNotFoundException {
         initSchemas();
         initSynapseTable();
         initTsvWriter();
@@ -139,7 +130,7 @@ public abstract class SynapseExportWorker extends ExportWorker {
         List<ColumnModel> columnList = getSynapseTableColumnList();
         List<ColumnModel> createdColumnList;
         try {
-            createdColumnList = getManager().getSynapseClient().createColumnModels(columnList);
+            createdColumnList = getManager().getSynapseHelper().createColumnModelsWithRetry(columnList);
         } catch (SynapseException ex) {
             throw new ExportWorkerException("Error creating Synapse column models: " + ex.getMessage(), ex);
         }
@@ -161,7 +152,7 @@ public abstract class SynapseExportWorker extends ExportWorker {
         synapseTable.setColumnIds(columnIdList);
         TableEntity createdTable;
         try {
-            createdTable = getManager().getSynapseClient().createEntity(synapseTable);
+            createdTable = getManager().getSynapseHelper().createTableWithRetry(synapseTable);
         } catch (SynapseException ex) {
             throw new ExportWorkerException("Error creating Synapse table: " + ex.getMessage(), ex);
         }
@@ -185,9 +176,10 @@ public abstract class SynapseExportWorker extends ExportWorker {
         acl.setResourceAccess(resourceAccessSet);
 
         try {
-            getManager().getSynapseClient().createACL(acl);
+            getManager().getSynapseHelper().createAclWithRetry(acl);
         } catch (SynapseException ex) {
-            throw new ExportWorkerException("Error setting ACLs on Synapse table: " + ex.getMessage(), ex);
+            throw new ExportWorkerException("Error setting ACLs on Synapse table " + synapseTableId + ": "
+                    + ex.getMessage(), ex);
         }
 
         // write back to DDB table
@@ -249,17 +241,17 @@ public abstract class SynapseExportWorker extends ExportWorker {
                         return;
                     default:
                         errorCount++;
-                        System.out.println("Unknown task type " + task.getType().name() + " for record " + recordId
-                                + " table " + getSynapseTableName());
+                        System.out.println("[ERROR] Unknown task type " + task.getType().name() + " for record "
+                                + recordId + " table " + getSynapseTableName());
                         break;
                 }
             } catch (ExportWorkerException ex) {
                 errorCount++;
-                System.out.println("Error processing record " + recordId + " for table " + getSynapseTableName()
-                        + ": " + ex.getMessage());
+                System.out.println("[ERROR] Error processing record " + recordId + " for table "
+                        + getSynapseTableName() + ": " + ex.getMessage());
             } catch (RuntimeException ex) {
                 errorCount++;
-                System.out.println("RuntimeException processing record " + recordId + " for table "
+                System.out.println("[ERROR] RuntimeException processing record " + recordId + " for table "
                         + getSynapseTableName() + ": " + ex.getMessage());
                 ex.printStackTrace(System.out);
             }
@@ -287,8 +279,8 @@ public abstract class SynapseExportWorker extends ExportWorker {
         // upload file to synapse as a file handle
         FileHandle tableFileHandle;
         try {
-            tableFileHandle = getManager().getSynapseClient().createFileHandle(tsvFile, "text/tab-separated-values",
-                    getProjectId());
+            tableFileHandle = getManager().getSynapseHelper().createFileHandleWithRetry(tsvFile,
+                    "text/tab-separated-values", getProjectId());
         } catch (IOException | SynapseException ex) {
             throw new ExportWorkerException("Error uploading TSV as a file handle: " + ex.getMessage());
         }
@@ -304,8 +296,8 @@ public abstract class SynapseExportWorker extends ExportWorker {
 
         String jobToken;
         try {
-            jobToken = getManager().getSynapseClient().uploadCsvToTableAsyncStart(synapseTableId, fileHandleId, null,
-                    null, tableDesc);
+            jobToken = getManager().getSynapseHelper().uploadTsvStartWithRetry(synapseTableId, fileHandleId,
+                    tableDesc);
         } catch (SynapseException ex) {
             throw new ExportWorkerException("Error starting async import of file handle " + fileHandleId + ": "
                     + ex.getMessage(), ex);
@@ -323,8 +315,13 @@ public abstract class SynapseExportWorker extends ExportWorker {
 
             // poll
             try {
-                UploadToTableResult uploadResult = getManager().getSynapseClient().uploadCsvToTableAsyncGet(jobToken,
+                UploadToTableResult uploadResult = getManager().getSynapseHelper().getUploadTsvStatus(jobToken,
                         synapseTableId);
+                if (uploadResult == null) {
+                    // Result not ready. Sleep some more.
+                    continue;
+                }
+
                 Long linesProcessed = uploadResult.getRowsProcessed();
                 if (linesProcessed == null || linesProcessed != lineCount) {
                     throw new ExportWorkerException("Wrong number of lines processed importing file handle "
@@ -347,17 +344,13 @@ public abstract class SynapseExportWorker extends ExportWorker {
     }
 
     @Override
-    protected void reportMetrics() {
-        System.out.println(getSynapseTableName() + ".lineCount: " + lineCount);
-        System.out.println(getSynapseTableName() + ".errorCount: " + errorCount);
+    public void reportMetrics() {
+        System.out.println("[METRICS] " + getSynapseTableName() + ".lineCount: " + lineCount);
+        System.out.println("[METRICS] " + getSynapseTableName() + ".errorCount: " + errorCount);
     }
 
-    /**
-     * Initialize schemas. The default implementation does nothing. Child classes can overwrite to do additional
-     * initialization.
-     */
-    protected void initSchemas() throws SchemaNotFoundException {
-    }
+    /** Initialize schemas. Child classes need to override this. In some cases, this may be a noop. */
+    protected abstract void initSchemas() throws SchemaNotFoundException;
 
     /** Table name (excluding prefix) of the DDB table that holds Synapse table IDs. */
     protected abstract String getDdbTableName();

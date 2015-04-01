@@ -39,11 +39,11 @@ public class BridgeExporter {
 
     // Number of records before the script stops processing records. This is used for testing. To make this unlimited,
     // set it to -1.
-    private static final int RECORD_LIMIT = -1;
+    private static final int RECORD_LIMIT = 30;
 
     // Script should report progress after this many records, so users tailing the logs can see that it's still
     // making progress
-    private static final int PROGRESS_REPORT_PERIOD = 100;
+    private static final int PROGRESS_REPORT_PERIOD = 10;
 
     public static void main(String[] args) throws IOException {
         try {
@@ -66,19 +66,19 @@ public class BridgeExporter {
     private String uploadDateString;
 
     public void run() throws IOException, SynapseException {
-        System.out.println("Starting Bridge Exporter for date " + uploadDateString);
+        System.out.println("[METRICS] Starting Bridge Exporter for date " + uploadDateString);
 
         Stopwatch stopwatch = Stopwatch.createStarted();
         try {
-            System.out.println("Starting initialization: " + BridgeExporterUtil.getCurrentLocalTimestamp());
+            System.out.println("[METRICS] Starting initialization: " + BridgeExporterUtil.getCurrentLocalTimestamp());
             init();
-            System.out.println("Initialization done: " + BridgeExporterUtil.getCurrentLocalTimestamp());
+            System.out.println("[METRICS] Initialization done: " + BridgeExporterUtil.getCurrentLocalTimestamp());
 
             downloadHealthDataRecords();
         } finally {
             stopwatch.stop();
-            System.out.println("Bridge Exporter done: " + BridgeExporterUtil.getCurrentLocalTimestamp());
-            System.out.println("Total time: " + stopwatch.elapsed(TimeUnit.SECONDS) + " seconds");
+            System.out.println("[METRICS] Bridge Exporter done: " + BridgeExporterUtil.getCurrentLocalTimestamp());
+            System.out.println("[METRICS] Total time: " + stopwatch.elapsed(TimeUnit.SECONDS) + " seconds");
         }
     }
 
@@ -136,7 +136,6 @@ public class BridgeExporter {
         manager.setDdbClient(ddbClient);
         manager.setS3Helper(s3Helper);
         manager.setSchemaHelper(schemaHelper);
-        manager.setSynapseClient(synapseClient);
         manager.setSynapseHelper(synapseHelper);
         manager.setTodaysDateString(todaysDateString);
         manager.init();
@@ -155,7 +154,7 @@ public class BridgeExporter {
             // running count of records
             int numTotal = incrementCounter("numTotal");
             if (numTotal % PROGRESS_REPORT_PERIOD == 0) {
-                System.out.println("Num records so far: " + numTotal + " in "
+                System.out.println("[METRICS] Num records so far: " + numTotal + " in "
                         + progressStopwatch.elapsed(TimeUnit.SECONDS) + " seconds");
             }
             if (RECORD_LIMIT > 0 && numTotal > RECORD_LIMIT) {
@@ -169,11 +168,11 @@ public class BridgeExporter {
                 try {
                     oneRecord = recordTable.getItem("id", recordId);
                 } catch (AmazonClientException ex) {
-                    System.out.println("Exception querying record for ID " + recordId + ": " + ex.getMessage());
+                    System.out.println("[ERROR] Exception querying record for ID " + recordId + ": " + ex.getMessage());
                     continue;
                 }
                 if (oneRecord == null) {
-                    System.out.println("No record for ID " + recordId);
+                    System.out.println("[ERROR] No record for ID " + recordId);
                     continue;
                 }
 
@@ -188,7 +187,7 @@ public class BridgeExporter {
                 } else if (userSharingScope.equalsIgnoreCase("all_qualified_researchers")) {
                     incrementCounter("numSharingSparsely");
                 } else {
-                    System.out.println("Unknown sharing scope: " + userSharingScope);
+                    System.out.println("[ERROR] Unknown sharing scope: " + userSharingScope);
                     continue;
                 }
 
@@ -208,25 +207,25 @@ public class BridgeExporter {
                     try {
                         manager.addIosSurveyExportTask(studyId, task);
                     } catch (ExportWorkerException ex) {
-                        System.out.println("Error queueing survey task for record " + recordId + " in study "
+                        System.out.println("[ERROR] Error queueing survey task for record " + recordId + " in study "
                                 + studyId + ": " + ex.getMessage());
                     }
                 } else {
                     try {
                         manager.addHealthDataExportTask(schemaKey, task);
                     } catch (SchemaNotFoundException ex) {
-                        System.out.println("Schema not found for record " + recordId + " schema "
+                        System.out.println("[ERROR] Schema not found for record " + recordId + " schema "
                                 + schemaKey.toString() + ": " + ex.getMessage());
                     }
                 }
                 try {
                     manager.addAppVersionExportTask(studyId, task);
                 } catch (ExportWorkerException ex) {
-                    System.out.println("Error queueing app version task for record " + recordId + " in study "
+                    System.out.println("[ERROR] Error queueing app version task for record " + recordId + " in study "
                             + studyId + ": " + ex.getMessage());
                 }
             } catch (RuntimeException ex) {
-                System.out.println("Unknown error processing record " + recordId + ": " + ex.getMessage());
+                System.out.println("[ERROR] Unknown error processing record " + recordId + ": " + ex.getMessage());
                 ex.printStackTrace(System.out);
             }
         }
@@ -235,17 +234,17 @@ public class BridgeExporter {
         manager.endOfStream();
 
         for (Map.Entry<String, Integer> oneCounter : counterMap.entrySet()) {
-            System.out.println(oneCounter.getKey() + ": " + oneCounter.getValue());
+            System.out.println("[METRICS] " + oneCounter.getKey() + ": " + oneCounter.getValue());
         }
         for (Map.Entry<String, Set<String>> oneSetCounter : setCounterMap.entrySet()) {
-            System.out.println(oneSetCounter.getKey() + ": " + oneSetCounter.getValue().size());
+            System.out.println("[METRICS] " + oneSetCounter.getKey() + ": " + oneSetCounter.getValue().size());
         }
 
         Set<String> schemasNotFound = new TreeSet<>();
         schemasNotFound.addAll(manager.getSchemasNotFound());
         schemasNotFound.addAll(schemaHelper.getSchemasNotFound());
         if (!schemasNotFound.isEmpty()) {
-            System.out.println("The following schemas were referenced but not found: "
+            System.out.println("[METRICS] The following schemas were referenced but not found: "
                     + SCHEMAS_NOT_FOUND_JOINER.join(schemasNotFound));
         }
     }

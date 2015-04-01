@@ -59,30 +59,31 @@ public class IosSurveyExportWorker extends ExportWorker {
                             return;
                         default:
                             errorCount++;
-                            System.out.println("Unknown task type " + task.getType().name() + " for record " + recordId
-                                    + " for survey worker for study " + getStudyId());
+                            System.out.println("[ERROR] Unknown task type " + task.getType().name() + " for record "
+                                    + recordId + " for survey worker for study " + getStudyId());
                             break;
                     }
                 } catch (SchemaNotFoundException ex) {
                     errorCount++;
-                    System.out.println("Schema not found for record " + recordId + " for study " + getStudyId()
+                    System.out.println("[ERROR] Schema not found for record " + recordId + " for study " + getStudyId()
                             + ": " + ex.getMessage());
                 } catch (ExportWorkerException ex) {
                     errorCount++;
-                    System.out.println("Error processing record " + recordId + " for survey worker for study "
+                    System.out.println("[ERROR] Error processing record " + recordId + " for survey worker for study "
                             + getStudyId() + ": " + ex.getMessage());
                 } catch (RuntimeException ex) {
                     errorCount++;
-                    System.out.println("RuntimeException processing record " + recordId
+                    System.out.println("[ERROR] RuntimeException processing record " + recordId
                             + " for survey worker for study " + getStudyId() + ": " + ex.getMessage());
                     ex.printStackTrace(System.out);
                 }
             }
         } catch (Throwable t) {
-            System.out.println("Unknown error for survey worker for study " + getStudyId() + ": " + t.getMessage());
+            System.out.println("[ERROR] Unknown error for survey worker for study " + getStudyId() + ": "
+                    + t.getMessage());
             t.printStackTrace(System.out);
         } finally {
-            System.out.println("Survey worker for study " + getStudyId() + " done: "
+            System.out.println("[METRICS] Survey worker for study " + getStudyId() + " done: "
                     + BridgeExporterUtil.getCurrentLocalTimestamp());
         }
     }
@@ -155,20 +156,20 @@ public class IosSurveyExportWorker extends ExportWorker {
         for (int i = 0; i < numAnswers; i++) {
             JsonNode oneAnswerNode = answerArrayNode.get(i);
             if (oneAnswerNode == null || oneAnswerNode.isNull()) {
-                System.out.println("Survey record ID " + recordId + " answer " + i + " has no value");
+                System.out.println("[ERROR] Survey record ID " + recordId + " answer " + i + " has no value");
                 continue;
             }
 
             // question name ("item")
             JsonNode answerItemNode = oneAnswerNode.get("item");
             if (answerItemNode == null || answerItemNode.isNull()) {
-                System.out.println("Survey record ID " + recordId + " answer " + i
+                System.out.println("[ERROR] Survey record ID " + recordId + " answer " + i
                         + " has no question name (item)");
                 continue;
             }
             String answerItem = answerItemNode.textValue();
             if (Strings.isNullOrEmpty(answerItem)) {
-                System.out.println("Survey record ID " + recordId + " answer " + i
+                System.out.println("[ERROR] Survey record ID " + recordId + " answer " + i
                         + " has null or empty question name (item)");
                 continue;
             }
@@ -180,13 +181,12 @@ public class IosSurveyExportWorker extends ExportWorker {
                 questionTypeNameNode = oneAnswerNode.get("questionType");
             }
             if (questionTypeNameNode == null || questionTypeNameNode.isNull()) {
-                System.out.println(
-                        "Survey record ID " + recordId + " answer " + i + " has no question type");
+                System.out.println("[ERROR] Survey record ID " + recordId + " answer " + i + " has no question type");
                 continue;
             }
             String questionTypeName = questionTypeNameNode.textValue();
             if (Strings.isNullOrEmpty(questionTypeName)) {
-                System.out.println("Survey record ID " + recordId + " answer " + i
+                System.out.println("[ERROR] Survey record ID " + recordId + " answer " + i
                         + " has null or empty question type");
                 continue;
             }
@@ -224,7 +224,7 @@ public class IosSurveyExportWorker extends ExportWorker {
                     answerAnswerNode = oneAnswerNode.get("dateComponentsAnswer");
                     break;
                 default:
-                    System.out.println("Survey record ID " + recordId + " answer " + i
+                    System.out.println("[ERROR] Survey record ID " + recordId + " answer " + i
                             + " has unknown question type " + questionTypeName);
                     break;
             }
@@ -239,7 +239,7 @@ public class IosSurveyExportWorker extends ExportWorker {
                     try {
                         attachmentId = uploadFreeformTextAsAttachment(recordId, answer);
                     } catch (AmazonClientException | IOException ex) {
-                        System.out.println("Error uploading freeform text as attachment for record ID "
+                        System.out.println("[ERROR] Error uploading freeform text as attachment for record ID "
                                 + recordId + ", survey item " + answerItem + ": " + ex.getMessage());
                     }
 
@@ -279,8 +279,13 @@ public class IosSurveyExportWorker extends ExportWorker {
     }
 
     @Override
-    protected void reportMetrics() {
-        System.out.println("surveyWorker[" + getStudyId() + "].surveyCount: " + surveyCount);
-        System.out.println("surveyWorker[" + getStudyId() + "].errorCount: " + errorCount);
+    public void init() throws ExportWorkerException, SchemaNotFoundException {
+        // noop
+    }
+
+    @Override
+    public void reportMetrics() {
+        System.out.println("[METRICS] surveyWorker[" + getStudyId() + "].surveyCount: " + surveyCount);
+        System.out.println("[METRICS] surveyWorker[" + getStudyId() + "].errorCount: " + errorCount);
     }
 }

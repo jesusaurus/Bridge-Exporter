@@ -23,6 +23,11 @@ public class AppVersionExportWorker extends SynapseExportWorker {
     private final Set<String> uniqueAppVersionSet = new TreeSet<>();
 
     @Override
+    protected void initSchemas() {
+        // noop
+    }
+
+    @Override
     protected String getDdbTableName() {
         return "SynapseMetaTables";
     }
@@ -118,7 +123,8 @@ public class AppVersionExportWorker extends SynapseExportWorker {
                 phoneInfo = BridgeExporterUtil.getJsonStringRemoveTabsAndTrim(metadataJson, "phoneInfo", 48, recordId);
             } catch (IOException ex) {
                 // we can recover from this
-                System.out.println("Error parsing metadata for record ID " + recordId + ": " + ex.getMessage());
+                System.out.println("[ERROR] Error parsing metadata for record ID " + recordId + ": "
+                        + ex.getMessage());
             }
         }
 
@@ -138,9 +144,9 @@ public class AppVersionExportWorker extends SynapseExportWorker {
     }
 
     @Override
-    protected void reportMetrics() {
+    public void reportMetrics() {
         super.reportMetrics();
-        System.out.println("Unique app versions for study " + getStudyId() + ": "
+        System.out.println("[METRICS] Unique app versions for study " + getStudyId() + ": "
                 + APP_VERSION_JOINER.join(uniqueAppVersionSet));
     }
 }

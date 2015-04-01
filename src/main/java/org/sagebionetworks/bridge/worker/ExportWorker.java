@@ -2,6 +2,9 @@ package org.sagebionetworks.bridge.worker;
 
 import java.util.concurrent.LinkedBlockingQueue;
 
+import org.sagebionetworks.bridge.exceptions.ExportWorkerException;
+import org.sagebionetworks.bridge.exceptions.SchemaNotFoundException;
+
 /**
  * Generic export worker. This class encapsulates basic configuration, helpers, and clients needed by export workers
  * and serves as the parent class for both Synapse export workers and iOS survey export workers.
@@ -64,6 +67,12 @@ public abstract class ExportWorker extends Thread {
         taskQueue.add(task);
     }
 
-    /** Reports the metrics the worker has collected, if any. */
-    protected abstract void reportMetrics();
+    /** Initializes the worker. This is called by the ExportWorkerManager before starting the worker. */
+    public abstract void init() throws ExportWorkerException, SchemaNotFoundException;
+
+    /**
+     * Reports the metrics the worker has collected, if any. This is called by the ExportWorkerManager upon reaching
+     * end of stream.
+     */
+    public abstract void reportMetrics();
 }
