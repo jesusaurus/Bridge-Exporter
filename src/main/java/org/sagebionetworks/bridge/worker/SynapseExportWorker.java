@@ -75,6 +75,7 @@ public abstract class SynapseExportWorker extends ExportWorker {
             } catch (ExportWorkerException ex) {
                 System.out.println("[ERROR] Error uploading file " + tsvPath + " to Synapse table "
                         + getSynapseTableName() + " with table ID " + synapseTableId + ": " +  ex.getMessage());
+                ex.printStackTrace(System.out);
             } catch (RuntimeException ex) {
                 System.out.println("[ERROR] RuntimeException uploading file " + tsvPath + " to Synapse table "
                         + getSynapseTableName() + " with table ID " + synapseTableId + ": " +  ex.getMessage());
@@ -202,7 +203,7 @@ public abstract class SynapseExportWorker extends ExportWorker {
     private void initTsvWriter() throws ExportWorkerException {
         // file
         try {
-            tsvFile = File.createTempFile(getSynapseTableName(), ".tsv");
+            tsvFile = File.createTempFile(getSynapseTableName() + ".", ".tsv");
         } catch (IOException ex) {
             throw new ExportWorkerException("Error creating temp TSV file: " + ex.getMessage(), ex);
         }
@@ -279,6 +280,8 @@ public abstract class SynapseExportWorker extends ExportWorker {
 
         // filter on line count
         if (lineCount == 0) {
+            // delete files with no lines--they're useless anyway
+            tsvFile.delete();
             return;
         }
 
@@ -288,6 +291,7 @@ public abstract class SynapseExportWorker extends ExportWorker {
             tableFileHandle = getManager().getSynapseHelper().createFileHandleWithRetry(tsvFile,
                     "text/tab-separated-values", getProjectId());
         } catch (IOException | SynapseException ex) {
+            System.out.println("[re-upload-tsv] file " + tsvFile.getAbsolutePath() + " " + synapseTableId);
             throw new ExportWorkerException("Error uploading TSV as a file handle: " + ex.getMessage());
         }
         String fileHandleId = tableFileHandle.getId();
@@ -305,6 +309,7 @@ public abstract class SynapseExportWorker extends ExportWorker {
             jobToken = getManager().getSynapseHelper().uploadTsvStartWithRetry(synapseTableId, fileHandleId,
                     tableDesc);
         } catch (SynapseException ex) {
+            System.out.println("[re-upload-tsv] filehandle " + fileHandleId + " " + synapseTableId);
             throw new ExportWorkerException("Error starting async import of file handle " + fileHandleId + ": "
                     + ex.getMessage(), ex);
         }
@@ -339,6 +344,7 @@ public abstract class SynapseExportWorker extends ExportWorker {
             } catch (SynapseResultNotReadyException ex) {
                 // results not ready, sleep some more
             } catch (SynapseException ex) {
+                System.out.println("[re-upload-tsv] filehandle " + fileHandleId + " " + synapseTableId);
                 throw new ExportWorkerException("Error polling job status of importing file handle " + fileHandleId
                         + ": " + ex.getMessage(), ex);
             }

@@ -113,6 +113,7 @@ public class SynapseHelper {
                     } catch (IOException | SynapseException ex) {
                         System.out.println("[ERROR] Error uploading attachment to Synapse for record ID " + recordId +
                                 ", s3Key " + s3Key + ": " + ex.getMessage());
+                        ex.printStackTrace(System.out);
                         return null;
                     }
                 }
