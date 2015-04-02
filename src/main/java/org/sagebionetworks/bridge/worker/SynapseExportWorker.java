@@ -239,8 +239,8 @@ public abstract class SynapseExportWorker extends ExportWorker {
                 switch (task.getType()) {
                     case PROCESS_RECORD:
                     case PROCESS_IOS_SURVEY:
-                        lineCount++;
                         appendToTsv(task);
+                        lineCount++;
                         break;
                     case END_OF_STREAM:
                         // END_OF_STREAM means we're finished

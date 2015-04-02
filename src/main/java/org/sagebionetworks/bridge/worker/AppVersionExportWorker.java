@@ -14,7 +14,6 @@ import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 
 import org.sagebionetworks.bridge.exceptions.ExportWorkerException;
-import org.sagebionetworks.bridge.exporter.UploadSchemaKey;
 import org.sagebionetworks.bridge.util.BridgeExporterUtil;
 
 /** Synapse export worker for app version tables. */
@@ -132,7 +131,9 @@ public class AppVersionExportWorker extends SynapseExportWorker {
         rowValueList.add(phoneInfo);
 
         // book keeping
-        uniqueAppVersionSet.add(appVersion);
+        if (!Strings.isNullOrEmpty(appVersion)) {
+            uniqueAppVersionSet.add(appVersion);
+        }
 
         return rowValueList;
     }

@@ -176,7 +176,7 @@ public class SynapseHelper {
         return synapseClient.createColumnModels(columnList);
     }
 
-    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = {
+    @RetryOnFailure(attempts = 5, delay = 1, unit = TimeUnit.SECONDS, types = {
             AmazonClientException.class,
             SynapseException.class
     })

@@ -51,8 +51,8 @@ public class IosSurveyExportWorker extends ExportWorker {
                     // this class.
                     switch (task.getType()) {
                         case PROCESS_RECORD:
-                            surveyCount++;
                             processRecordAsSurvey(task);
+                            surveyCount++;
                             break;
                         case END_OF_STREAM:
                             // END_OF_STREAM means we're finished
