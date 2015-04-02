@@ -2,10 +2,10 @@ package org.sagebionetworks.bridge.exporter;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 
@@ -43,7 +43,7 @@ public class BridgeExporter {
 
     // Script should report progress after this many records, so users tailing the logs can see that it's still
     // making progress
-    private static final int PROGRESS_REPORT_PERIOD = 250;
+    private static final int PROGRESS_REPORT_PERIOD = 2500;
 
     public static void main(String[] args) throws IOException {
         try {
@@ -57,8 +57,8 @@ public class BridgeExporter {
         }
     }
 
-    private final Map<String, Integer> counterMap = new HashMap<>();
-    private final Map<String, Set<String>> setCounterMap = new HashMap<>();
+    private final Map<String, Integer> counterMap = new TreeMap<>();
+    private final Map<String, Set<String>> setCounterMap = new TreeMap<>();
 
     private DynamoDB ddbClient;
     private ExportWorkerManager manager;
@@ -199,6 +199,12 @@ public class BridgeExporter {
 
                 String healthCode = oneRecord.getString("healthCode");
                 incrementSetCounter("uniqueHealthCodes[" + studyId + "]", healthCode);
+
+                // filter out poorly performing schemas
+                if (BridgeExporterUtil.SCHEMA_BLACKLIST.contains(schemaKey)) {
+                    incrementCounter(schemaKey.toString() + ".filteredCount");
+                    continue;
+                }
 
                 // Multiplex and add the right tasks to the manager. Since Export Tasks are immutable, it's safe to
                 // shared the same export task.

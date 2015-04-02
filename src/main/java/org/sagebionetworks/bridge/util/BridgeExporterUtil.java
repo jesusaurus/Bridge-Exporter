@@ -1,8 +1,11 @@
 package org.sagebionetworks.bridge.util;
 
+import java.util.Set;
+
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.ImmutableSet;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
 import org.joda.time.format.ISODateTimeFormat;
@@ -14,6 +17,10 @@ public class BridgeExporterUtil {
     // TODO: make timezone configurable
     public static final DateTimeZone LOCAL_TIME_ZONE = DateTimeZone.forID("America/Los_Angeles");
     public static final String S3_BUCKET_ATTACHMENTS = "org-sagebridge-attachment-prod";
+    public static final Set<UploadSchemaKey> SCHEMA_BLACKLIST = ImmutableSet.of(
+            new UploadSchemaKey("parkinson", "Parkinsons-TappingActivity", 4),
+            new UploadSchemaKey("parkinson", "Parkinsons-VoiceActivity", 1),
+            new UploadSchemaKey("parkinson", "Parkinsons-WalkingActivity", 3));
 
     public static String getCurrentLocalTimestamp() {
         return DateTime.now(LOCAL_TIME_ZONE).toString(ISODateTimeFormat.dateTime());

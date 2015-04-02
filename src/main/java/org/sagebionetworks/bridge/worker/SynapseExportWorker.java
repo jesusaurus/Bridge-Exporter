@@ -292,7 +292,7 @@ public abstract class SynapseExportWorker extends ExportWorker {
                     "text/tab-separated-values", getProjectId());
         } catch (IOException | SynapseException ex) {
             System.out.println("[re-upload-tsv] file " + tsvFile.getAbsolutePath() + " " + synapseTableId);
-            throw new ExportWorkerException("Error uploading TSV as a file handle: " + ex.getMessage());
+            throw new ExportWorkerException("Error uploading TSV as a file handle: " + ex.getMessage(), ex);
         }
         String fileHandleId = tableFileHandle.getId();
 
