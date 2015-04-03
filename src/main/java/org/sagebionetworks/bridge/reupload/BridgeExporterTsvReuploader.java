@@ -111,6 +111,8 @@ public class BridgeExporterTsvReuploader {
                 ex.printStackTrace(System.out);
             }
         }
+
+        System.out.println("Done running re-uploader.");
     }
 
     // TODO: This is copy-pasted from SynapseExportWorker. Un-spaghetti this.
