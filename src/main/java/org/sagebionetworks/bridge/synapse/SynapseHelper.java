@@ -167,12 +167,14 @@ public class SynapseHelper {
         }
     }
 
-    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class)
+    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
+            randomize = false)
     public AccessControlList createAclWithRetry(AccessControlList acl) throws SynapseException {
         return synapseClient.createACL(acl);
     }
 
-    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class)
+    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
+            randomize = false)
     public List<ColumnModel> createColumnModelsWithRetry(List<ColumnModel> columnList) throws SynapseException {
         return synapseClient.createColumnModels(columnList);
     }
@@ -180,29 +182,33 @@ public class SynapseHelper {
     @RetryOnFailure(attempts = 5, delay = 1, unit = TimeUnit.SECONDS, types = {
             AmazonClientException.class,
             SynapseException.class
-    })
+    }, randomize = false)
     public FileHandle createFileHandleWithRetry(File file, String contentType, String parentId) throws IOException,
             SynapseException {
         return synapseClient.createFileHandle(file, contentType, parentId);
     }
 
-    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class)
+    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
+            randomize = false)
     public TableEntity createTableWithRetry(TableEntity table) throws SynapseException {
         return synapseClient.createEntity(table);
     }
 
-    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class)
+    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
+            randomize = false)
     public TableEntity getTableWithRetry(String tableId) throws SynapseException {
         return synapseClient.getEntity(tableId, TableEntity.class);
     }
 
-    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class)
+    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
+            randomize = false)
     public String uploadTsvStartWithRetry(String tableId, String fileHandleId, CsvTableDescriptor tableDescriptor)
             throws SynapseException {
         return synapseClient.uploadCsvToTableAsyncStart(tableId, fileHandleId, null, null, tableDescriptor);
     }
 
-    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class)
+    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
+            randomize = false)
     public UploadToTableResult getUploadTsvStatus(String jobToken, String tableId) throws SynapseException {
         try {
             return synapseClient.uploadCsvToTableAsyncGet(jobToken, tableId);

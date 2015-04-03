@@ -38,7 +38,8 @@ public class S3Helper {
      * @throws IOException
      *         if closing the stream fails
      */
-    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = AmazonClientException.class)
+    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = AmazonClientException.class,
+            randomize = false)
     public byte[] readS3FileAsBytes(String bucket, String key) throws IOException {
         S3Object s3File = s3Client.getObject(bucket, key);
         try (InputStream s3Stream = s3File.getObjectContent()) {
@@ -62,7 +63,8 @@ public class S3Helper {
         return new String(bytes, Charsets.UTF_8);
     }
 
-    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = AmazonClientException.class)
+    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = AmazonClientException.class,
+            randomize = false)
     public void writeBytesToS3(String bucket, String key, byte[] data) throws IOException {
         try (InputStream dataInputStream = new ByteArrayInputStream(data)) {
             s3Client.putObject(bucket, key, dataInputStream, null);

@@ -10,8 +10,9 @@
 
     <properties>
         <jackson.version>2.4.4</jackson.version>
-        <maven.compiler.source>1.7</maven.compiler.source>
-        <maven.compiler.target>1.7</maven.compiler.target>
+        <java.version>1.7</java.version>
+        <maven.compiler.source>${java.version}</maven.compiler.source>
+        <maven.compiler.target>${java.version}</maven.compiler.target>
         <synapse.version>2015-03-28-1678-0bfe7d3</synapse.version>
     </properties>
 
@@ -83,6 +84,9 @@
                 <artifactId>aspectj-maven-plugin</artifactId>
                 <version>1.7</version>
                 <configuration>
+                    <source>${java.version}</source>
+                    <target>${java.version}</target>
+                    <complianceLevel>${java.version}</complianceLevel>
                     <aspectLibraries>
                         <aspectLibrary>
                             <groupId>com.jcabi</groupId>
