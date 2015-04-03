@@ -192,6 +192,11 @@ public class SynapseHelper {
     }
 
     @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class)
+    public TableEntity getTableWithRetry(String tableId) throws SynapseException {
+        return synapseClient.getEntity(tableId, TableEntity.class);
+    }
+
+    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class)
     public String uploadTsvStartWithRetry(String tableId, String fileHandleId, CsvTableDescriptor tableDescriptor)
             throws SynapseException {
         return synapseClient.uploadCsvToTableAsyncStart(tableId, fileHandleId, null, null, tableDescriptor);
