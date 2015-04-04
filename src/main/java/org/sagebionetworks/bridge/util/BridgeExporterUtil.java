@@ -69,7 +69,7 @@ public class BridgeExporterUtil {
         }
     }
 
-    private static String removeTabs(String in) {
+    public static String removeTabs(String in) {
         if (in != null) {
             // also strip newlines and carriage returns
             return in.replaceAll("[\n\r\t]+", " ");

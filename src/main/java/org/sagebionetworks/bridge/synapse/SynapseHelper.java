@@ -138,7 +138,9 @@ public class SynapseHelper {
                     System.out.println("[ERROR] No max length found for Bridge type " + bridgeType);
                     maxLength = 1000;
                 }
-                return BridgeExporterUtil.trimToLengthAndWarn(nodeValue, maxLength, recordId);
+                String filtered = BridgeExporterUtil.removeTabs(nodeValue);
+                String trimmed =  BridgeExporterUtil.trimToLengthAndWarn(filtered, maxLength, recordId);
+                return trimmed;
             default:
                 System.out.println("[ERROR] Unexpected Synapse Type " + String.valueOf(synapseType) + " for record ID "
                         + recordId);
