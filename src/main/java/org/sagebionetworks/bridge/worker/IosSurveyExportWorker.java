@@ -261,7 +261,6 @@ public class IosSurveyExportWorker extends ExportWorker {
         ExportTask convertedTask = new ExportTask(ExportTaskType.PROCESS_IOS_SURVEY, surveySchemaKey, record,
                 convertedSurveyNode);
         getManager().addHealthDataExportTask(surveySchemaKey, convertedTask);
-        getManager().addAppVersionExportTask(getStudyId(), convertedTask);
     }
 
     // TODO: This is copy-pasted from HealthDataExportWorker. This should be refactored.

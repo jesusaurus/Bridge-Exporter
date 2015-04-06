@@ -8,6 +8,5 @@ public enum ExportMode {
     REDRIVE_TABLES,
 
     /** Redrive a list of records - redrive all records specified. Can be across multiple dates */
-    // TODO
     REDRIVE_RECORDS,
 }

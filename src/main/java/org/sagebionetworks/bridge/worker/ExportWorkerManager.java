@@ -221,20 +221,12 @@ public class ExportWorkerManager {
         surveyWorker.addTask(task);
     }
 
-    /** Queues up an app version export task to the manager. */
-    public void addAppVersionExportTask(String studyId, ExportTask task) throws ExportWorkerException {
-        AppVersionExportWorker appVersionWorker = appVersionWorkerMap.get(studyId);
-        if (appVersionWorker == null) {
-            throw new ExportWorkerException("No app version worker for study " + studyId);
-        }
-        appVersionWorker.addTask(task);
-    }
-
     /**
-     * Queues up a health data export task to the manager. This is called by the Bridge Exporter as well as the iOS
-     * survey export workers.
+     * Queues up a health data export task to the manager. This also queues up the corresponding app version export
+     * task. This is called by the Bridge Exporter as well as the iOS survey export workers.
      */
-    public void addHealthDataExportTask(UploadSchemaKey schemaKey, ExportTask task) throws SchemaNotFoundException {
+    public void addHealthDataExportTask(UploadSchemaKey schemaKey, ExportTask task) throws ExportWorkerException,
+            SchemaNotFoundException {
         // check black list
         if (schemaBlacklist != null && schemaBlacklist.contains(schemaKey)) {
             return;
@@ -251,6 +243,13 @@ public class ExportWorkerManager {
             throw new SchemaNotFoundException("Schema " + schemaKey.toString() + " not found");
         }
         healthDataWorker.addTask(task);
+
+        String studyId = schemaKey.getStudyId();
+        AppVersionExportWorker appVersionWorker = appVersionWorkerMap.get(studyId);
+        if (appVersionWorker == null) {
+            throw new ExportWorkerException("No app version worker for study " + studyId);
+        }
+        appVersionWorker.addTask(task);
     }
 
     /**

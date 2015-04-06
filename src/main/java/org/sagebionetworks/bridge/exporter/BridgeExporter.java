@@ -13,7 +13,6 @@ import java.util.concurrent.TimeUnit;
 import com.amazonaws.AmazonClientException;
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClient;
 import com.amazonaws.services.dynamodbv2.document.DynamoDB;
-import com.amazonaws.services.dynamodbv2.document.Index;
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
 import com.amazonaws.services.s3.AmazonS3Client;
@@ -61,6 +60,11 @@ public class BridgeExporter {
                 bridgeExporter.setDate(args[2]);
                 bridgeExporter.setMode(ExportMode.REDRIVE_TABLES);
                 bridgeExporter.setRedriveTableKeySet(extractRedriveTableKeySet(args[1]));
+            } else if ("redrive-records".equals(args[0])) {
+                // format: BridgeExporter redrive-records [record list file]
+                // Note that redrive-records doesn't need an upload date, since it doesn't talk to the uploadDate index
+                bridgeExporter.setMode(ExportMode.REDRIVE_RECORDS);
+                bridgeExporter.setRecordIdFilename(args[1]);
             } else {
                 // format: BridgeExporter yyyy-mm-dd
                 bridgeExporter.setDate(args[0]);
@@ -83,12 +87,17 @@ public class BridgeExporter {
     private final Map<String, Integer> counterMap = new TreeMap<>();
     private final Map<String, Set<String>> setCounterMap = new TreeMap<>();
 
-    private DynamoDB ddbClient;
-    private ExportWorkerManager manager;
-    private ExportMode mode;
-    private Set<UploadSchemaKey> redriveTableKeySet;
-    private UploadSchemaHelper schemaHelper;
+    // Configured externally
     private String uploadDateString;
+    private ExportMode mode;
+    private String recordIdFilename;
+    private Set<UploadSchemaKey> redriveTableKeySet;
+
+    // Internal state
+    private ExportWorkerManager manager;
+    private RecordIdSource recordIdSource;
+    private UploadSchemaHelper schemaHelper;
+    private Table recordTable;
 
     public void setDate(String dateString) {
         // validate date
@@ -101,11 +110,15 @@ public class BridgeExporter {
         this.mode = mode;
     }
 
+    public void setRecordIdFilename(String recordIdFilename) {
+        this.recordIdFilename = recordIdFilename;
+    }
+
     public void setRedriveTableKeySet(Set<UploadSchemaKey> redriveTableKeySet) {
         this.redriveTableKeySet = ImmutableSet.copyOf(redriveTableKeySet);
     }
 
-    public void run() throws IOException, SynapseException {
+    public void run() throws ExportWorkerException, IOException, SynapseException {
         Stopwatch stopwatch = Stopwatch.createStarted();
         try {
             System.out.println("[METRICS] Starting initialization: " + BridgeExporterUtil.getCurrentLocalTimestamp());
@@ -120,7 +133,7 @@ public class BridgeExporter {
         }
     }
 
-    private void init() throws IOException, SynapseException {
+    private void init() throws ExportWorkerException, IOException, SynapseException {
         LocalDate todaysDate = LocalDate.now(BridgeExporterUtil.LOCAL_TIME_ZONE);
         String todaysDateString = todaysDate.toString(ISODateTimeFormat.date());
 
@@ -134,7 +147,8 @@ public class BridgeExporter {
         // See http://docs.aws.amazon.com/AWSSdkDocsJava/latest/DeveloperGuide/credentials.html and
         // http://docs.aws.amazon.com/AWSSdkDocsJava/latest/DeveloperGuide/java-dg-setup.html#set-up-creds for more
         // info.
-        ddbClient = new DynamoDB(new AmazonDynamoDBClient());
+        DynamoDB ddbClient = new DynamoDB(new AmazonDynamoDBClient());
+        recordTable = ddbClient.getTable("prod-heroku-HealthDataRecord3");
 
         // S3 client - move to Spring
         AmazonS3Client s3Client = new AmazonS3Client();
@@ -174,18 +188,35 @@ public class BridgeExporter {
         manager.setSynapseHelper(synapseHelper);
         manager.setTodaysDateString(todaysDateString);
         manager.init();
+
+        // record ID source
+        switch (mode) {
+            case EXPORT:
+            case REDRIVE_TABLES:
+                // export and redrive tables both get their records from DDB
+                DynamoRecordIdSource dynamoRecordIdSource = new DynamoRecordIdSource();
+                dynamoRecordIdSource.setDdbClient(ddbClient);
+                dynamoRecordIdSource.setUploadDateString(uploadDateString);
+                recordIdSource = dynamoRecordIdSource;
+                break;
+            case REDRIVE_RECORDS:
+                FileRecordIdSource fileRecordIdSource = new FileRecordIdSource();
+                fileRecordIdSource.setFilename(recordIdFilename);
+                recordIdSource = fileRecordIdSource;
+                break;
+            default:
+                throw new UnsupportedOperationException("Unsupported export mode " + mode.name());
+        }
+        recordIdSource.init();
     }
 
     private void downloadHealthDataRecords() {
         Stopwatch progressStopwatch = Stopwatch.createStarted();
 
-        // get key objects by querying uploadDate index
-        Table recordTable = ddbClient.getTable("prod-heroku-HealthDataRecord3");
-        Index recordTableUploadDateIndex = recordTable.getIndex("uploadDate-index");
-        Iterable<Item> recordKeyIter = recordTableUploadDateIndex.query("uploadDate", uploadDateString);
+        // get record IDs from record ID source and query DDB
+        while (recordIdSource.hasNext()) {
+            String recordId = recordIdSource.next();
 
-        // re-query table to get values
-        for (Item oneRecordKey : recordKeyIter) {
             // running count of records
             int numTotal = incrementCounter("numTotal");
             if (numTotal % PROGRESS_REPORT_PERIOD == 0) {
@@ -196,7 +227,6 @@ public class BridgeExporter {
                 break;
             }
 
-            String recordId = oneRecordKey.getString("id");
             try {
                 // re-query health data records to get values
                 Item oneRecord;
@@ -251,10 +281,6 @@ public class BridgeExporter {
                     } catch (SchemaNotFoundException ex) {
                         System.out.println("[ERROR] Schema not found for record " + recordId + " schema "
                                 + schemaKey.toString() + ": " + ex.getMessage());
-                    }
-
-                    try {
-                        manager.addAppVersionExportTask(studyId, task);
                     } catch (ExportWorkerException ex) {
                         System.out.println("[ERROR] Error queueing app version task for record " + recordId + " in study "
                                 + studyId + ": " + ex.getMessage());
