@@ -28,6 +28,8 @@ public class ExportWorkerManager {
     private DynamoDB ddbClient;
     private S3Helper s3Helper;
     private UploadSchemaHelper schemaHelper;
+    private Set<UploadSchemaKey> schemaBlacklist;
+    private Set<UploadSchemaKey> schemaWhitelist;
     private SynapseHelper synapseHelper;
     private String todaysDateString;
 
@@ -73,6 +75,39 @@ public class ExportWorkerManager {
 
     public void setSchemaHelper(UploadSchemaHelper schemaHelper) {
         this.schemaHelper = schemaHelper;
+    }
+
+    /**
+     * Blacklist of schema keys to never process. This is generally used for poorly performing or buggy schemas that we
+     * need to backfill later. Blacklist takes precedence over whitelist. May be null but will never be empty.
+     */
+    public Set<UploadSchemaKey> getSchemaBlacklist() {
+        return schemaBlacklist;
+    }
+
+    public void setSchemaBlacklist(Set<UploadSchemaKey> schemaBlacklist) {
+        if (schemaBlacklist != null && !schemaBlacklist.isEmpty()) {
+            this.schemaBlacklist = ImmutableSet.copyOf(schemaBlacklist);
+        } else {
+            this.schemaBlacklist = null;
+        }
+    }
+
+    /**
+     * Whitelist of schema keys that should be the only ones to be processed (other than app version and iOS survey).
+     * This is generally used for table backfills. Blacklist takes precedence over whitelist.  May be null but will
+     * never be empty.
+     */
+    public Set<UploadSchemaKey> getSchemaWhitelist() {
+        return schemaWhitelist;
+    }
+
+    public void setSchemaWhitelist(Set<UploadSchemaKey> schemaWhitelist) {
+        if (schemaWhitelist != null && !schemaWhitelist.isEmpty()) {
+            this.schemaWhitelist = ImmutableSet.copyOf(schemaWhitelist);
+        } else {
+            this.schemaWhitelist = null;
+        }
     }
 
     /** Synapse helper. Configured externally. */
@@ -125,8 +160,19 @@ public class ExportWorkerManager {
         }
 
         // init health data workers for each schema
-        Set<UploadSchemaKey> schemaKeySet = schemaHelper.getAllSchemaKeys();
+        Set<UploadSchemaKey> schemaKeySet;
+        if (schemaWhitelist != null) {
+            schemaKeySet = schemaWhitelist;
+        } else {
+            schemaKeySet = schemaHelper.getAllSchemaKeys();
+        }
         for (UploadSchemaKey oneSchemaKey : schemaKeySet) {
+            // check black list
+            if (schemaBlacklist != null && schemaBlacklist.contains(oneSchemaKey)) {
+                continue;
+            }
+
+            // create worker
             HealthDataExportWorker oneHealthDataWorker = new HealthDataExportWorker();
             oneHealthDataWorker.setManager(this);
             oneHealthDataWorker.setName("healthDataWorker-" + oneSchemaKey.toString());
@@ -189,6 +235,16 @@ public class ExportWorkerManager {
      * survey export workers.
      */
     public void addHealthDataExportTask(UploadSchemaKey schemaKey, ExportTask task) throws SchemaNotFoundException {
+        // check black list
+        if (schemaBlacklist != null && schemaBlacklist.contains(schemaKey)) {
+            return;
+        }
+
+        // check white list
+        if (schemaWhitelist != null && !schemaWhitelist.contains(schemaKey)) {
+            return;
+        }
+
         HealthDataExportWorker healthDataWorker = healthDataWorkerMap.get(schemaKey);
         if (healthDataWorker == null) {
             schemasNotFound.add(schemaKey.toString());

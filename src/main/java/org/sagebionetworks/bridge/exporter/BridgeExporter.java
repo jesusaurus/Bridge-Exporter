@@ -3,6 +3,7 @@ package org.sagebionetworks.bridge.exporter;
 import java.io.File;
 import java.io.IOException;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -16,9 +17,11 @@ import com.amazonaws.services.dynamodbv2.document.Index;
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
 import com.amazonaws.services.s3.AmazonS3Client;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.google.common.base.Joiner;
 import com.google.common.base.Stopwatch;
 import com.google.common.base.Strings;
+import com.google.common.collect.ImmutableSet;
 import org.joda.time.LocalDate;
 import org.joda.time.format.ISODateTimeFormat;
 import org.sagebionetworks.client.SynapseClient;
@@ -36,6 +39,9 @@ import org.sagebionetworks.bridge.worker.ExportWorkerManager;
 
 public class BridgeExporter {
     private static final Joiner SCHEMAS_NOT_FOUND_JOINER = Joiner.on(", ");
+    private static final TypeReference<List<UploadSchemaKey>> TYPE_REF_SCHEMA_KEY_LIST =
+            new TypeReference<List<UploadSchemaKey>>() {
+            };
 
     // Number of records before the script stops processing records. This is used for testing. To make this unlimited,
     // set it to -1.
@@ -47,8 +53,19 @@ public class BridgeExporter {
 
     public static void main(String[] args) throws IOException {
         try {
+            System.out.println("[METRICS] Starting Bridge Exporter for args " + Joiner.on(' ').join(args));
+
             BridgeExporter bridgeExporter = new BridgeExporter();
-            bridgeExporter.setDate(args[0]);
+            if ("redrive-tables".equals(args[0])) {
+                // format: BridgeExporter redrive-tables [table list file] yyyy-mm-dd
+                bridgeExporter.setDate(args[2]);
+                bridgeExporter.setMode(ExportMode.REDRIVE_TABLES);
+                bridgeExporter.setRedriveTableKeySet(extractRedriveTableKeySet(args[1]));
+            } else {
+                // format: BridgeExporter yyyy-mm-dd
+                bridgeExporter.setDate(args[0]);
+                bridgeExporter.setMode(ExportMode.EXPORT);
+            }
             bridgeExporter.run();
         } catch (Throwable t) {
             t.printStackTrace(System.out);
@@ -57,17 +74,38 @@ public class BridgeExporter {
         }
     }
 
+    private static Set<UploadSchemaKey> extractRedriveTableKeySet(String filename) throws IOException {
+        List<UploadSchemaKey> keyList = BridgeExporterUtil.JSON_MAPPER.readValue(new File(filename),
+                TYPE_REF_SCHEMA_KEY_LIST);
+        return ImmutableSet.copyOf(keyList);
+    }
+
     private final Map<String, Integer> counterMap = new TreeMap<>();
     private final Map<String, Set<String>> setCounterMap = new TreeMap<>();
 
     private DynamoDB ddbClient;
     private ExportWorkerManager manager;
+    private ExportMode mode;
+    private Set<UploadSchemaKey> redriveTableKeySet;
     private UploadSchemaHelper schemaHelper;
     private String uploadDateString;
 
-    public void run() throws IOException, SynapseException {
-        System.out.println("[METRICS] Starting Bridge Exporter for date " + uploadDateString);
+    public void setDate(String dateString) {
+        // validate date
+        LocalDate.parse(dateString);
 
+        this.uploadDateString = dateString;
+    }
+
+    public void setMode(ExportMode mode) {
+        this.mode = mode;
+    }
+
+    public void setRedriveTableKeySet(Set<UploadSchemaKey> redriveTableKeySet) {
+        this.redriveTableKeySet = ImmutableSet.copyOf(redriveTableKeySet);
+    }
+
+    public void run() throws IOException, SynapseException {
         Stopwatch stopwatch = Stopwatch.createStarted();
         try {
             System.out.println("[METRICS] Starting initialization: " + BridgeExporterUtil.getCurrentLocalTimestamp());
@@ -80,13 +118,6 @@ public class BridgeExporter {
             System.out.println("[METRICS] Bridge Exporter done: " + BridgeExporterUtil.getCurrentLocalTimestamp());
             System.out.println("[METRICS] Total time: " + stopwatch.elapsed(TimeUnit.SECONDS) + " seconds");
         }
-    }
-
-    public void setDate(String dateString) {
-        // validate date
-        LocalDate.parse(dateString);
-
-        this.uploadDateString = dateString;
     }
 
     private void init() throws IOException, SynapseException {
@@ -136,6 +167,10 @@ public class BridgeExporter {
         manager.setDdbClient(ddbClient);
         manager.setS3Helper(s3Helper);
         manager.setSchemaHelper(schemaHelper);
+        manager.setSchemaBlacklist(BridgeExporterUtil.SCHEMA_BLACKLIST);
+        if (mode == ExportMode.REDRIVE_TABLES) {
+            manager.setSchemaWhitelist(redriveTableKeySet);
+        }
         manager.setSynapseHelper(synapseHelper);
         manager.setTodaysDateString(todaysDateString);
         manager.init();
@@ -176,6 +211,12 @@ public class BridgeExporter {
                     continue;
                 }
 
+                // basic record data
+                String studyId = oneRecord.getString("studyId");
+                String schemaId = oneRecord.getString("schemaId");
+                int schemaRev = oneRecord.getInt("schemaRevision");
+                UploadSchemaKey schemaKey = new UploadSchemaKey(studyId, schemaId, schemaRev);
+
                 // process/filter by user sharing scope
                 String userSharingScope = oneRecord.getString("userSharingScope");
                 if (Strings.isNullOrEmpty(userSharingScope) || userSharingScope.equalsIgnoreCase("no_sharing")) {
@@ -191,20 +232,8 @@ public class BridgeExporter {
                     continue;
                 }
 
-                // basic record data
-                String studyId = oneRecord.getString("studyId");
-                String schemaId = oneRecord.getString("schemaId");
-                int schemaRev = oneRecord.getInt("schemaRevision");
-                UploadSchemaKey schemaKey = new UploadSchemaKey(studyId, schemaId, schemaRev);
-
                 String healthCode = oneRecord.getString("healthCode");
                 incrementSetCounter("uniqueHealthCodes[" + studyId + "]", healthCode);
-
-                // filter out poorly performing schemas
-                if (BridgeExporterUtil.SCHEMA_BLACKLIST.contains(schemaKey)) {
-                    incrementCounter(schemaKey.toString() + ".filteredCount");
-                    continue;
-                }
 
                 // Multiplex and add the right tasks to the manager. Since Export Tasks are immutable, it's safe to
                 // shared the same export task.

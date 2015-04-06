@@ -1,11 +1,14 @@
 package org.sagebionetworks.bridge.exporter;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 public class UploadSchemaKey {
     private final String studyId;
     private final String schemaId;
     private final int rev;
 
-    public UploadSchemaKey(String studyId, String schemaId, int rev) {
+    public UploadSchemaKey(@JsonProperty("studyId") String studyId, @JsonProperty("schemaId") String schemaId,
+            @JsonProperty("rev") int rev) {
         this.studyId = studyId;
         this.schemaId = schemaId;
         this.rev = rev;
