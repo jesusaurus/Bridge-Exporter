@@ -180,7 +180,6 @@ public class BridgeExporter {
         manager.setDdbClient(ddbClient);
         manager.setS3Helper(s3Helper);
         manager.setSchemaHelper(schemaHelper);
-        manager.setSchemaBlacklist(BridgeExporterUtil.SCHEMA_BLACKLIST);
         if (mode == ExportMode.REDRIVE_TABLES) {
             manager.setSchemaWhitelist(redriveTableKeySet);
         }
