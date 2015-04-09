@@ -43,13 +43,11 @@ public class BridgeExporter {
 
     // Number of records before the script stops processing records. This is used for testing. To make this unlimited,
     // set it to -1.
-    // TODO change back to -1
-    private static final int RECORD_LIMIT = 30;
+    private static final int RECORD_LIMIT = -1;
 
     // Script should report progress after this many records, so users tailing the logs can see that it's still
     // making progress
-    // TODO change back to 2500
-    private static final int PROGRESS_REPORT_PERIOD = 30;
+    private static final int PROGRESS_REPORT_PERIOD = 2500;
 
     public static void main(String[] args) throws IOException {
         try {

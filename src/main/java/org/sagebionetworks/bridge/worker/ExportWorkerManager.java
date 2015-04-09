@@ -12,8 +12,10 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import com.amazonaws.services.dynamodbv2.document.DynamoDB;
+import com.google.common.base.Stopwatch;
 import com.google.common.collect.ImmutableSet;
 
 import org.sagebionetworks.bridge.exceptions.BridgeExporterException;
@@ -28,8 +30,7 @@ import org.sagebionetworks.bridge.util.BridgeExporterUtil;
 public class ExportWorkerManager {
     // Script should report progress after this many tasks remaining, so users tailing the logs can see that it's still
     // making progress.
-    // TODO change back to 250
-    private static final int TASK_REMAINING_REPORT_PERIOD = 10;
+    private static final int TASK_REMAINING_REPORT_PERIOD = 250;
 
     // Configured externally
     private BridgeExporterConfig bridgeExporterConfig;
@@ -277,10 +278,12 @@ public class ExportWorkerManager {
     public void endOfStream() {
         System.out.println("[METRICS] End of stream signaled: " + BridgeExporterUtil.getCurrentLocalTimestamp());
 
+        Stopwatch progressStopwatch = Stopwatch.createStarted();
         while (!outstandingTaskQueue.isEmpty()) {
             int numOutstanding = outstandingTaskQueue.size();
             if (numOutstanding % TASK_REMAINING_REPORT_PERIOD == 0) {
-                System.out.println("[METRICS] Num outstanding tasks: " + numOutstanding);
+                System.out.println("[METRICS] Num outstanding tasks: " + numOutstanding + " after " +
+                        progressStopwatch.elapsed(TimeUnit.SECONDS) + " seconds");
             }
 
             // ExportWorkers have no return value. If Future.get() returns normally, then the task is done.
