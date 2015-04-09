@@ -16,7 +16,7 @@ import com.google.common.base.Strings;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 
-import org.sagebionetworks.bridge.exceptions.ExportWorkerException;
+import org.sagebionetworks.bridge.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.exceptions.SchemaNotFoundException;
 import org.sagebionetworks.bridge.exporter.UploadSchema;
 import org.sagebionetworks.bridge.exporter.UploadSchemaKey;
@@ -24,7 +24,7 @@ import org.sagebionetworks.bridge.synapse.SynapseHelper;
 import org.sagebionetworks.bridge.util.BridgeExporterUtil;
 
 /** Synapse export worker for health data tables. */
-public class HealthDataExportWorker extends SynapseExportWorker {
+public class HealthDataExportHandler extends SynapseExportHandler {
     // Configured externally
     private UploadSchemaKey schemaKey;
 
@@ -164,32 +164,24 @@ public class HealthDataExportWorker extends SynapseExportWorker {
     }
 
     @Override
-    protected List<String> getTsvRowValueList(ExportTask task) throws ExportWorkerException {
+    protected List<String> getTsvRowValueList(ExportTask task) throws BridgeExporterException {
         Item record = task.getRecord();
         if (record == null) {
-            throw new ExportWorkerException("Null record for HealthDataExportWorker");
+            throw new BridgeExporterException("Null record for HealthDataExportWorker");
         }
         String recordId = record.getString("id");
 
-        // Extract data JSON.
-        JsonNode dataJson;
-        switch (task.getType()) {
-            case PROCESS_RECORD:
-                try {
-                    dataJson = BridgeExporterUtil.JSON_MAPPER.readTree(record.getString("data"));
-                } catch (IOException ex) {
-                    throw new ExportWorkerException("Error parsing JSON: " + ex.getMessage(), ex);
-                }
-                break;
-            case PROCESS_IOS_SURVEY:
-                dataJson = task.getDataJsonNode();
-                break;
-            default:
-                throw new ExportWorkerException("Invalid task type for HealthDataExportWorker.getTsvRowValueList():"
-                        + task.getType().name());
+        // Extract data JSON. Try task.getDataJsonNode() first. If not, fall back to record.getString("data").
+        JsonNode dataJson = task.getDataJsonNode();
+        if (dataJson == null || dataJson.isNull()) {
+            try {
+                dataJson = BridgeExporterUtil.JSON_MAPPER.readTree(record.getString("data"));
+            } catch (IOException ex) {
+                throw new BridgeExporterException("Error parsing JSON: " + ex.getMessage(), ex);
+            }
         }
         if (dataJson == null || dataJson.isNull()) {
-            throw new ExportWorkerException("Null data JSON node for HealthDataExportWorker");
+            throw new BridgeExporterException("Null data JSON node for HealthDataExportWorker");
         }
 
         // get phone and app info

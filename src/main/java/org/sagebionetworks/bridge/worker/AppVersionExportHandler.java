@@ -13,11 +13,11 @@ import com.google.common.base.Strings;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 
-import org.sagebionetworks.bridge.exceptions.ExportWorkerException;
+import org.sagebionetworks.bridge.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.util.BridgeExporterUtil;
 
 /** Synapse export worker for app version tables. */
-public class AppVersionExportWorker extends SynapseExportWorker {
+public class AppVersionExportHandler extends SynapseExportHandler {
     private static final Joiner APP_VERSION_JOINER = Joiner.on("; ");
     private final Set<String> uniqueAppVersionSet = new TreeSet<>();
 
@@ -97,10 +97,10 @@ public class AppVersionExportWorker extends SynapseExportWorker {
     }
 
     @Override
-    protected List<String> getTsvRowValueList(ExportTask task) throws ExportWorkerException {
+    protected List<String> getTsvRowValueList(ExportTask task) throws BridgeExporterException {
         Item record = task.getRecord();
         if (record == null) {
-            throw new ExportWorkerException("Null record for AppVersionExportWorker");
+            throw new BridgeExporterException("Null record for AppVersionExportWorker");
         }
         String recordId = record.getString("id");
 

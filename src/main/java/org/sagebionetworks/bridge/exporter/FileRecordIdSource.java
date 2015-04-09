@@ -8,7 +8,7 @@ import java.util.List;
 import com.google.common.base.Charsets;
 import com.google.common.io.Files;
 
-import org.sagebionetworks.bridge.exceptions.ExportWorkerException;
+import org.sagebionetworks.bridge.exceptions.BridgeExporterException;
 
 /** Gets record IDs from a file. This is useful for redrives. */
 public class FileRecordIdSource extends RecordIdSource {
@@ -27,13 +27,13 @@ public class FileRecordIdSource extends RecordIdSource {
     }
 
     @Override
-    public void init() throws ExportWorkerException {
+    public void init() throws BridgeExporterException {
         File file = new File(filename);
         List<String> recordIdList;
         try {
             recordIdList = Files.readLines(file, Charsets.UTF_8);
         } catch (IOException ex) {
-            throw new ExportWorkerException(ex);
+            throw new BridgeExporterException(ex);
         }
         recordIdIter = recordIdList.iterator();
     }

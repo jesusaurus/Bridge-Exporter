@@ -12,6 +12,7 @@ public class BridgeExporterConfig {
     private Map<String, Long> dataAccessTeamIdsByStudy;
     private String ddbPrefix;
     private String username;
+    private int numThreads;
     private String password;
     private long principalId;
     private Map<String, String> projectIdsByStudy;
@@ -55,6 +56,15 @@ public class BridgeExporterConfig {
 
     public void setUsername(String username) {
         this.username = username;
+    }
+
+    /** Number of threads to run in the exporter. */
+    public int getNumThreads() {
+        return numThreads;
+    }
+
+    public void setNumThreads(int numThreads) {
+        this.numThreads = numThreads;
     }
 
     /**

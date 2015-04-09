@@ -27,13 +27,12 @@ import org.sagebionetworks.client.SynapseClient;
 import org.sagebionetworks.client.SynapseClientImpl;
 import org.sagebionetworks.client.exceptions.SynapseException;
 
-import org.sagebionetworks.bridge.exceptions.ExportWorkerException;
+import org.sagebionetworks.bridge.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.exceptions.SchemaNotFoundException;
 import org.sagebionetworks.bridge.s3.S3Helper;
 import org.sagebionetworks.bridge.synapse.SynapseHelper;
 import org.sagebionetworks.bridge.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.worker.ExportTask;
-import org.sagebionetworks.bridge.worker.ExportTaskType;
 import org.sagebionetworks.bridge.worker.ExportWorkerManager;
 
 public class BridgeExporter {
@@ -44,11 +43,13 @@ public class BridgeExporter {
 
     // Number of records before the script stops processing records. This is used for testing. To make this unlimited,
     // set it to -1.
-    private static final int RECORD_LIMIT = -1;
+    // TODO change back to -1
+    private static final int RECORD_LIMIT = 30;
 
     // Script should report progress after this many records, so users tailing the logs can see that it's still
     // making progress
-    private static final int PROGRESS_REPORT_PERIOD = 2500;
+    // TODO change back to 2500
+    private static final int PROGRESS_REPORT_PERIOD = 30;
 
     public static void main(String[] args) throws IOException {
         try {
@@ -118,7 +119,7 @@ public class BridgeExporter {
         this.redriveTableKeySet = ImmutableSet.copyOf(redriveTableKeySet);
     }
 
-    public void run() throws ExportWorkerException, IOException, SynapseException {
+    public void run() throws BridgeExporterException, IOException, SynapseException {
         Stopwatch stopwatch = Stopwatch.createStarted();
         try {
             System.out.println("[METRICS] Starting initialization: " + BridgeExporterUtil.getCurrentLocalTimestamp());
@@ -133,7 +134,7 @@ public class BridgeExporter {
         }
     }
 
-    private void init() throws ExportWorkerException, IOException, SynapseException {
+    private void init() throws BridgeExporterException, IOException, SynapseException {
         LocalDate todaysDate = LocalDate.now(BridgeExporterUtil.LOCAL_TIME_ZONE);
         String todaysDateString = todaysDate.toString(ISODateTimeFormat.date());
 
@@ -267,11 +268,11 @@ public class BridgeExporter {
 
                 // Multiplex and add the right tasks to the manager. Since Export Tasks are immutable, it's safe to
                 // shared the same export task.
-                ExportTask task = new ExportTask(ExportTaskType.PROCESS_RECORD, schemaKey, oneRecord, null);
+                ExportTask task = new ExportTask(schemaKey, oneRecord, null);
                 if ("ios-survey".equals(schemaId)) {
                     try {
                         manager.addIosSurveyExportTask(studyId, task);
-                    } catch (ExportWorkerException ex) {
+                    } catch (BridgeExporterException ex) {
                         System.out.println("[ERROR] Error queueing survey task for record " + recordId + " in study "
                                 + studyId + ": " + ex.getMessage());
                     }
@@ -281,7 +282,7 @@ public class BridgeExporter {
                     } catch (SchemaNotFoundException ex) {
                         System.out.println("[ERROR] Schema not found for record " + recordId + " schema "
                                 + schemaKey.toString() + ": " + ex.getMessage());
-                    } catch (ExportWorkerException ex) {
+                    } catch (BridgeExporterException ex) {
                         System.out.println("[ERROR] Error queueing app version task for record " + recordId + " in study "
                                 + studyId + ": " + ex.getMessage());
                     }

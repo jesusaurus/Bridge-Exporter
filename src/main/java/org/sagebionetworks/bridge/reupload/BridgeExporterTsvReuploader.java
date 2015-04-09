@@ -15,7 +15,7 @@ import org.sagebionetworks.repo.model.table.CsvTableDescriptor;
 import org.sagebionetworks.repo.model.table.TableEntity;
 import org.sagebionetworks.repo.model.table.UploadToTableResult;
 
-import org.sagebionetworks.bridge.exceptions.ExportWorkerException;
+import org.sagebionetworks.bridge.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.exporter.BridgeExporterConfig;
 import org.sagebionetworks.bridge.synapse.SynapseHelper;
 import org.sagebionetworks.bridge.util.BridgeExporterUtil;
@@ -104,7 +104,7 @@ public class BridgeExporterTsvReuploader {
                 }
 
                 System.out.println("[STATUS] Processed: " + oneLine);
-            } catch (ExportWorkerException ex) {
+            } catch (BridgeExporterException ex) {
                 System.out.println("[ERROR] Error reuploading for line: " + oneLine + ": " + ex.getMessage());
             } catch (RuntimeException ex) {
                 System.out.println("[ERROR] RuntimeException reuploading for line: " + oneLine + ": " + ex.getMessage());
@@ -116,7 +116,7 @@ public class BridgeExporterTsvReuploader {
     }
 
     // TODO: This is copy-pasted from SynapseExportWorker. Un-spaghetti this.
-    private static void processFile(String filePath, String tableId) throws ExportWorkerException {
+    private static void processFile(String filePath, String tableId) throws BridgeExporterException {
         File file = new File(filePath);
 
         // get the table, so we can figure out where to upload the file handle to
@@ -124,7 +124,7 @@ public class BridgeExporterTsvReuploader {
         try {
             table = synapseHelper.getTableWithRetry(tableId);
         } catch (SynapseException ex) {
-            throw new ExportWorkerException("Error fetching table " + tableId + " for file " + filePath + ": " +
+            throw new BridgeExporterException("Error fetching table " + tableId + " for file " + filePath + ": " +
                     ex.getMessage(), ex);
         }
         String projectId = table.getParentId();
@@ -134,7 +134,7 @@ public class BridgeExporterTsvReuploader {
         try {
             tableFileHandle = synapseHelper.createFileHandleWithRetry(file, "text/tab-separated-values", projectId);
         } catch (IOException | SynapseException ex) {
-            throw new ExportWorkerException("Error uploading file " + filePath + " to table " + tableId + ": "
+            throw new BridgeExporterException("Error uploading file " + filePath + " to table " + tableId + ": "
                     + ex.getMessage(), ex);
         }
         String fileHandleId = tableFileHandle.getId();
@@ -144,7 +144,7 @@ public class BridgeExporterTsvReuploader {
     }
 
     // TODO: This is copy-pasted from SynapseExportWorker. Un-spaghetti this.
-    private static void processFileHandle(String fileHandleId, String tableId) throws ExportWorkerException {
+    private static void processFileHandle(String fileHandleId, String tableId) throws BridgeExporterException {
         // start tsv import
         CsvTableDescriptor tableDesc = new CsvTableDescriptor();
         tableDesc.setIsFirstLineHeader(true);
@@ -154,7 +154,7 @@ public class BridgeExporterTsvReuploader {
         try {
             jobToken = synapseHelper.uploadTsvStartWithRetry(tableId, fileHandleId, tableDesc);
         } catch (SynapseException ex) {
-            throw new ExportWorkerException("Error starting async import of file handle " + fileHandleId + " to table "
+            throw new BridgeExporterException("Error starting async import of file handle " + fileHandleId + " to table "
                     + tableId + ": " + ex.getMessage(), ex);
         }
 
@@ -181,13 +181,13 @@ public class BridgeExporterTsvReuploader {
             } catch (SynapseResultNotReadyException ex) {
                 // results not ready, sleep some more
             } catch (SynapseException ex) {
-                throw new ExportWorkerException("Error polling job status of importing file handle " + fileHandleId
+                throw new BridgeExporterException("Error polling job status of importing file handle " + fileHandleId
                         + " to table " + tableId + ": " + ex.getMessage(), ex);
             }
         }
 
         if (!success) {
-            throw new ExportWorkerException("Timed out uploading file handle " + fileHandleId + " to table "
+            throw new BridgeExporterException("Timed out uploading file handle " + fileHandleId + " to table "
                     + tableId);
         }
     }

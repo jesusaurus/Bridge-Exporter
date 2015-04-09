@@ -33,7 +33,7 @@ import org.sagebionetworks.repo.model.table.CsvTableDescriptor;
 import org.sagebionetworks.repo.model.table.TableEntity;
 import org.sagebionetworks.repo.model.table.UploadToTableResult;
 
-import org.sagebionetworks.bridge.exceptions.ExportWorkerException;
+import org.sagebionetworks.bridge.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.exceptions.SchemaNotFoundException;
 import org.sagebionetworks.bridge.util.BridgeExporterUtil;
 
@@ -42,7 +42,7 @@ import org.sagebionetworks.bridge.util.BridgeExporterUtil;
  * creates the table, if it doesn't exist, reads through a stream of DDB records to create a TSV, then uploads the
  * TSV to the Synapse table.
  */
-public abstract class SynapseExportWorker extends ExportWorker {
+public abstract class SynapseExportHandler extends ExportHandler {
     // Constants
     private static final Set<ACCESS_TYPE> ACCESS_TYPE_ALL = ImmutableSet.copyOf(ACCESS_TYPE.values());
     private static final Set<ACCESS_TYPE> ACCESS_TYPE_READ = ImmutableSet.of(ACCESS_TYPE.READ, ACCESS_TYPE.DOWNLOAD);
@@ -56,23 +56,162 @@ public abstract class SynapseExportWorker extends ExportWorker {
     private File tsvFile;
     private PrintWriter tsvWriter;
 
+    /**
+     * Initializes the worker. This includes initializing the schema (where applicable), initializing (and potentially
+     * creating) the Synapse table, and initializing the TSV file and writer. This is done outside the run loop and
+     * instead done sequentially by the main thread because concurrent create table requests in Synapse may get
+     * throttled.
+     */
     @Override
-    public void run() {
-        try {
-            try {
-                workerLoop();
-            } catch (RuntimeException ex) {
-                System.out.println("[ERROR] RuntimeException running worker loop for table " + getSynapseTableName()
-                        + ": " + ex.getMessage());
-                ex.printStackTrace(System.out);
-                return;
-            }
+    public void init() throws BridgeExporterException, SchemaNotFoundException {
+        initSchemas();
+        initSynapseTable();
+        initTsvWriter();
+    }
 
+    private void initSynapseTable() throws BridgeExporterException {
+        // check DDB to see if the Synapse table exists
+        Table synapseTableDdbTable = getManager().getDdbClient().getTable(
+                getManager().getBridgeExporterConfig().getDdbPrefix() + getDdbTableName());
+        try {
+            Iterable<Item> tableIterable = synapseTableDdbTable.query(getDdbTableKeyName(), getSynapseTableName());
+            Iterator<Item> tableIterator = tableIterable.iterator();
+            if (tableIterator.hasNext()) {
+                Item oneTable = tableIterator.next();
+                synapseTableId = oneTable.getString("tableId");
+
+                if (!Strings.isNullOrEmpty(synapseTableId)) {
+                    return;
+                }
+            }
+        } catch (AmazonClientException ex) {
+            throw new BridgeExporterException("Error calling DDB for Synapse Table: " + ex.getMessage(), ex);
+        }
+
+        // Synapse table doesn't exist. Create it.
+        // Create columns
+        List<ColumnModel> columnList = getSynapseTableColumnList();
+        List<ColumnModel> createdColumnList;
+        try {
+            createdColumnList = getManager().getSynapseHelper().createColumnModelsWithRetry(columnList);
+        } catch (SynapseException ex) {
+            throw new BridgeExporterException("Error creating Synapse column models: " + ex.getMessage(), ex);
+        }
+        if (columnList.size() != createdColumnList.size()) {
+            throw new BridgeExporterException("Error creating Synapse table " + getSynapseTableName()
+                    + ": Tried to create " + columnList.size() + " columns. Actual: " + createdColumnList.size()
+                    + " columns.");
+        }
+
+        List<String> columnIdList = new ArrayList<>();
+        for (ColumnModel oneCreatedColumn : createdColumnList) {
+            columnIdList.add(oneCreatedColumn.getId());
+        }
+
+        // create table
+        TableEntity synapseTable = new TableEntity();
+        synapseTable.setName(getSynapseTableName());
+        synapseTable.setParentId(getProjectId());
+        synapseTable.setColumnIds(columnIdList);
+        TableEntity createdTable;
+        try {
+            createdTable = getManager().getSynapseHelper().createTableWithRetry(synapseTable);
+        } catch (SynapseException ex) {
+            throw new BridgeExporterException("Error creating Synapse table: " + ex.getMessage(), ex);
+        }
+        synapseTableId = createdTable.getId();
+
+        // create ACLs
+        Set<ResourceAccess> resourceAccessSet = new HashSet<>();
+
+        ResourceAccess exporterOwnerAccess = new ResourceAccess();
+        exporterOwnerAccess.setPrincipalId(getManager().getBridgeExporterConfig().getPrincipalId());
+        exporterOwnerAccess.setAccessType(ACCESS_TYPE_ALL);
+        resourceAccessSet.add(exporterOwnerAccess);
+
+        ResourceAccess dataAccessTeamAccess = new ResourceAccess();
+        dataAccessTeamAccess.setPrincipalId(getDataAccessTeamId());
+        dataAccessTeamAccess.setAccessType(ACCESS_TYPE_READ);
+        resourceAccessSet.add(dataAccessTeamAccess);
+
+        AccessControlList acl = new AccessControlList();
+        acl.setId(synapseTableId);
+        acl.setResourceAccess(resourceAccessSet);
+
+        try {
+            getManager().getSynapseHelper().createAclWithRetry(acl);
+        } catch (SynapseException ex) {
+            throw new BridgeExporterException("Error setting ACLs on Synapse table " + synapseTableId + ": "
+                    + ex.getMessage(), ex);
+        }
+
+        // write back to DDB table
+        Item synapseTableDdbItem = new Item();
+        synapseTableDdbItem.withString(getDdbTableKeyName(), getSynapseTableName());
+        synapseTableDdbItem.withString("tableId", synapseTableId);
+        try {
+            synapseTableDdbTable.putItem(synapseTableDdbItem);
+        } catch (AmazonClientException ex) {
+            throw new BridgeExporterException("Error writing table ID back to DDB: " + ex.getMessage(), ex);
+        }
+    }
+
+    private void initTsvWriter() throws BridgeExporterException {
+        // file
+        try {
+            tsvFile = File.createTempFile(getSynapseTableName() + ".", ".tsv");
+        } catch (IOException ex) {
+            throw new BridgeExporterException("Error creating temp TSV file: " + ex.getMessage(), ex);
+        }
+
+        // writer
+        try {
+        OutputStream stream = new FileOutputStream(tsvFile);
+        tsvWriter = new PrintWriter(new BufferedWriter(new OutputStreamWriter(stream, Charsets.UTF_8)));
+        } catch (IOException ex) {
+            throw new BridgeExporterException("Error creating Stream and PrintWriter to TSV file: " + ex.getMessage(),
+                    ex);
+        }
+
+        // write TSV headers
+        List<String> tsvHeaderList = getTsvHeaderList();
+        tsvWriter.println(JOINER_COLUMN_SEPARATOR.join(tsvHeaderList));
+    }
+
+
+    @Override
+    public void handle(ExportTask task) {
+        Item record = task.getRecord();
+        String recordId = record != null ? record.getString("id") : null;
+
+        try {
+            appendToTsv(task);
+            lineCount++;
+        } catch (BridgeExporterException ex) {
+            errorCount++;
+            System.out.println("[ERROR] Error processing record " + recordId + " for table "
+                    + getSynapseTableName() + ": " + ex.getMessage());
+        } catch (RuntimeException ex) {
+            errorCount++;
+            System.out.println("[ERROR] RuntimeException processing record " + recordId + " for table "
+                    + getSynapseTableName() + ": " + ex.getMessage());
+            ex.printStackTrace(System.out);
+        }
+    }
+
+    private void appendToTsv(ExportTask task) throws BridgeExporterException {
+        List<String> rowValueList = getTsvRowValueList(task);
+        tsvWriter.println(JOINER_COLUMN_SEPARATOR.join(rowValueList));
+    }
+
+    @Override
+    public void endOfStream() {
+        try {
             String tsvPath = tsvFile.getAbsolutePath();
             Stopwatch uploadTsvStopwatch = Stopwatch.createStarted();
             try {
                 uploadTsvToSynapse();
-            } catch (ExportWorkerException ex) {
+            } catch (BridgeExporterException ex) {
                 System.out.println("[ERROR] Error uploading file " + tsvPath + " to Synapse table "
                         + getSynapseTableName() + " with table ID " + synapseTableId + ": " +  ex.getMessage());
                 ex.printStackTrace(System.out);
@@ -100,181 +239,11 @@ public abstract class SynapseExportWorker extends ExportWorker {
         }
     }
 
-    /**
-     * Initializes the worker. This includes initializing the schema (where applicable), initializing (and potentially
-     * creating) the Synapse table, and initializing the TSV file and writer. This is done outside the run loop and
-     * instead done sequentially by the main thread because concurrent create table requests in Synapse may get
-     * throttled.
-     */
-    @Override
-    public void init() throws ExportWorkerException, SchemaNotFoundException {
-        initSchemas();
-        initSynapseTable();
-        initTsvWriter();
-    }
-
-    private void initSynapseTable() throws ExportWorkerException {
-        // check DDB to see if the Synapse table exists
-        Table synapseTableDdbTable = getManager().getDdbClient().getTable(
-                getManager().getBridgeExporterConfig().getDdbPrefix() + getDdbTableName());
-        try {
-            Iterable<Item> tableIterable = synapseTableDdbTable.query(getDdbTableKeyName(), getSynapseTableName());
-            Iterator<Item> tableIterator = tableIterable.iterator();
-            if (tableIterator.hasNext()) {
-                Item oneTable = tableIterator.next();
-                synapseTableId = oneTable.getString("tableId");
-
-                if (!Strings.isNullOrEmpty(synapseTableId)) {
-                    return;
-                }
-            }
-        } catch (AmazonClientException ex) {
-            throw new ExportWorkerException("Error calling DDB for Synapse Table: " + ex.getMessage(), ex);
-        }
-
-        // Synapse table doesn't exist. Create it.
-        // Create columns
-        List<ColumnModel> columnList = getSynapseTableColumnList();
-        List<ColumnModel> createdColumnList;
-        try {
-            createdColumnList = getManager().getSynapseHelper().createColumnModelsWithRetry(columnList);
-        } catch (SynapseException ex) {
-            throw new ExportWorkerException("Error creating Synapse column models: " + ex.getMessage(), ex);
-        }
-        if (columnList.size() != createdColumnList.size()) {
-            throw new ExportWorkerException("Error creating Synapse table " + getSynapseTableName()
-                    + ": Tried to create " + columnList.size() + " columns. Actual: " + createdColumnList.size()
-                    + " columns.");
-        }
-
-        List<String> columnIdList = new ArrayList<>();
-        for (ColumnModel oneCreatedColumn : createdColumnList) {
-            columnIdList.add(oneCreatedColumn.getId());
-        }
-
-        // create table
-        TableEntity synapseTable = new TableEntity();
-        synapseTable.setName(getSynapseTableName());
-        synapseTable.setParentId(getProjectId());
-        synapseTable.setColumnIds(columnIdList);
-        TableEntity createdTable;
-        try {
-            createdTable = getManager().getSynapseHelper().createTableWithRetry(synapseTable);
-        } catch (SynapseException ex) {
-            throw new ExportWorkerException("Error creating Synapse table: " + ex.getMessage(), ex);
-        }
-        synapseTableId = createdTable.getId();
-
-        // create ACLs
-        Set<ResourceAccess> resourceAccessSet = new HashSet<>();
-
-        ResourceAccess exporterOwnerAccess = new ResourceAccess();
-        exporterOwnerAccess.setPrincipalId(getManager().getBridgeExporterConfig().getPrincipalId());
-        exporterOwnerAccess.setAccessType(ACCESS_TYPE_ALL);
-        resourceAccessSet.add(exporterOwnerAccess);
-
-        ResourceAccess dataAccessTeamAccess = new ResourceAccess();
-        dataAccessTeamAccess.setPrincipalId(getDataAccessTeamId());
-        dataAccessTeamAccess.setAccessType(ACCESS_TYPE_READ);
-        resourceAccessSet.add(dataAccessTeamAccess);
-
-        AccessControlList acl = new AccessControlList();
-        acl.setId(synapseTableId);
-        acl.setResourceAccess(resourceAccessSet);
-
-        try {
-            getManager().getSynapseHelper().createAclWithRetry(acl);
-        } catch (SynapseException ex) {
-            throw new ExportWorkerException("Error setting ACLs on Synapse table " + synapseTableId + ": "
-                    + ex.getMessage(), ex);
-        }
-
-        // write back to DDB table
-        Item synapseTableDdbItem = new Item();
-        synapseTableDdbItem.withString(getDdbTableKeyName(), getSynapseTableName());
-        synapseTableDdbItem.withString("tableId", synapseTableId);
-        try {
-            synapseTableDdbTable.putItem(synapseTableDdbItem);
-        } catch (AmazonClientException ex) {
-            throw new ExportWorkerException("Error writing table ID back to DDB: " + ex.getMessage(), ex);
-        }
-    }
-
-    private void initTsvWriter() throws ExportWorkerException {
-        // file
-        try {
-            tsvFile = File.createTempFile(getSynapseTableName() + ".", ".tsv");
-        } catch (IOException ex) {
-            throw new ExportWorkerException("Error creating temp TSV file: " + ex.getMessage(), ex);
-        }
-
-        // writer
-        try {
-        OutputStream stream = new FileOutputStream(tsvFile);
-        tsvWriter = new PrintWriter(new BufferedWriter(new OutputStreamWriter(stream, Charsets.UTF_8)));
-        } catch (IOException ex) {
-            throw new ExportWorkerException("Error creating Stream and PrintWriter to TSV file: " + ex.getMessage(),
-                    ex);
-        }
-
-        // write TSV headers
-        List<String> tsvHeaderList = getTsvHeaderList();
-        tsvWriter.println(JOINER_COLUMN_SEPARATOR.join(tsvHeaderList));
-    }
-
-    private void workerLoop() {
-        while (true) {
-            // take waits for an element to become available
-            ExportTask task;
-            try {
-                task = takeTask();
-            } catch (InterruptedException ex) {
-                // noop
-                continue;
-            }
-
-            Item record = task.getRecord();
-            String recordId = record != null ? record.getString("id") : null;
-
-            try {
-                switch (task.getType()) {
-                    case PROCESS_RECORD:
-                    case PROCESS_IOS_SURVEY:
-                        appendToTsv(task);
-                        lineCount++;
-                        break;
-                    case END_OF_STREAM:
-                        // END_OF_STREAM means we're finished
-                        return;
-                    default:
-                        errorCount++;
-                        System.out.println("[ERROR] Unknown task type " + task.getType().name() + " for record "
-                                + recordId + " table " + getSynapseTableName());
-                        break;
-                }
-            } catch (ExportWorkerException ex) {
-                errorCount++;
-                System.out.println("[ERROR] Error processing record " + recordId + " for table "
-                        + getSynapseTableName() + ": " + ex.getMessage());
-            } catch (RuntimeException ex) {
-                errorCount++;
-                System.out.println("[ERROR] RuntimeException processing record " + recordId + " for table "
-                        + getSynapseTableName() + ": " + ex.getMessage());
-                ex.printStackTrace(System.out);
-            }
-        }
-    }
-
-    private void appendToTsv(ExportTask task) throws ExportWorkerException {
-        List<String> rowValueList = getTsvRowValueList(task);
-        tsvWriter.println(JOINER_COLUMN_SEPARATOR.join(rowValueList));
-    }
-
-    private void uploadTsvToSynapse() throws ExportWorkerException {
+    private void uploadTsvToSynapse() throws BridgeExporterException {
         // flush and close writer, check for errors
         tsvWriter.flush();
         if (tsvWriter.checkError()) {
-            throw new ExportWorkerException("TSV writer has unknown error");
+            throw new BridgeExporterException("TSV writer has unknown error");
         }
         tsvWriter.close();
 
@@ -292,7 +261,7 @@ public abstract class SynapseExportWorker extends ExportWorker {
                     "text/tab-separated-values", getProjectId());
         } catch (IOException | SynapseException ex) {
             System.out.println("[re-upload-tsv] file " + tsvFile.getAbsolutePath() + " " + synapseTableId);
-            throw new ExportWorkerException("Error uploading TSV as a file handle: " + ex.getMessage(), ex);
+            throw new BridgeExporterException("Error uploading TSV as a file handle: " + ex.getMessage(), ex);
         }
         String fileHandleId = tableFileHandle.getId();
 
@@ -310,7 +279,7 @@ public abstract class SynapseExportWorker extends ExportWorker {
                     tableDesc);
         } catch (SynapseException ex) {
             System.out.println("[re-upload-tsv] filehandle " + fileHandleId + " " + synapseTableId);
-            throw new ExportWorkerException("Error starting async import of file handle " + fileHandleId + ": "
+            throw new BridgeExporterException("Error starting async import of file handle " + fileHandleId + ": "
                     + ex.getMessage(), ex);
         }
 
@@ -335,7 +304,7 @@ public abstract class SynapseExportWorker extends ExportWorker {
 
                 Long linesProcessed = uploadResult.getRowsProcessed();
                 if (linesProcessed == null || linesProcessed != lineCount) {
-                    throw new ExportWorkerException("Wrong number of lines processed importing file handle "
+                    throw new BridgeExporterException("Wrong number of lines processed importing file handle "
                             + fileHandleId + ", expected=" + lineCount + ", actual=" + linesProcessed);
                 }
 
@@ -345,13 +314,13 @@ public abstract class SynapseExportWorker extends ExportWorker {
                 // results not ready, sleep some more
             } catch (SynapseException ex) {
                 System.out.println("[re-upload-tsv] filehandle " + fileHandleId + " " + synapseTableId);
-                throw new ExportWorkerException("Error polling job status of importing file handle " + fileHandleId
+                throw new BridgeExporterException("Error polling job status of importing file handle " + fileHandleId
                         + ": " + ex.getMessage(), ex);
             }
         }
 
         if (!success) {
-            throw new ExportWorkerException("Timed out uploading file handle " + fileHandleId);
+            throw new BridgeExporterException("Timed out uploading file handle " + fileHandleId);
         }
     }
 
@@ -392,5 +361,5 @@ public abstract class SynapseExportWorker extends ExportWorker {
      * Creates a row values for a single row from the given export task. The export task shouldn't be an END_OF_STREAM
      * task.
      */
-    protected abstract List<String> getTsvRowValueList(ExportTask task) throws ExportWorkerException;
+    protected abstract List<String> getTsvRowValueList(ExportTask task) throws BridgeExporterException;
 }
