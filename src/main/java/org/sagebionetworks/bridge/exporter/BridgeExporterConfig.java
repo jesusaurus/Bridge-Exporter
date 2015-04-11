@@ -11,6 +11,7 @@ public class BridgeExporterConfig {
     private String apiKey;
     private Map<String, Long> dataAccessTeamIdsByStudy;
     private String ddbPrefix;
+    private Map<String, Boolean> filterV1ByStudy;
     private String username;
     private int numThreads;
     private String password;
@@ -47,6 +48,18 @@ public class BridgeExporterConfig {
 
     public void setDdbPrefix(String ddbPrefix) {
         this.ddbPrefix = ddbPrefix;
+    }
+
+    /**
+     * True if we should filter out data from version 1.0. This is configurable by study. If not specified, defaults to
+     * false (no filtering). Note: This is specific to the original ResearchKit launch.
+     */
+    public Map<String, Boolean> getFilterV1ByStudy() {
+        return filterV1ByStudy;
+    }
+
+    public void setFilterV1ByStudy(Map<String, Boolean> filterV1ByStudy) {
+        this.filterV1ByStudy = filterV1ByStudy;
     }
 
     /** Synapse user name of the Bridge Exporter Synapse account. */

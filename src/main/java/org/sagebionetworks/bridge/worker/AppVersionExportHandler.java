@@ -1,19 +1,18 @@
 package org.sagebionetworks.bridge.worker;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Joiner;
 import com.google.common.base.Strings;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 
 import org.sagebionetworks.bridge.exceptions.BridgeExporterException;
+import org.sagebionetworks.bridge.exporter.PhoneAppVersionInfo;
 import org.sagebionetworks.bridge.util.BridgeExporterUtil;
 
 /** Synapse export worker for app version tables. */
@@ -58,6 +57,13 @@ public class AppVersionExportHandler extends SynapseExportHandler {
         externalIdColumn.setMaximumSize(128L);
         columnList.add(externalIdColumn);
 
+        // NOTE: ColumnType.DATE is actually a timestamp. There is no calendar date type.
+        ColumnModel uploadDateColumn = new ColumnModel();
+        uploadDateColumn.setName("uploadDate");
+        uploadDateColumn.setColumnType(ColumnType.STRING);
+        uploadDateColumn.setMaximumSize(10L);
+        columnList.add(uploadDateColumn);
+
         ColumnModel originalTableColumn = new ColumnModel();
         originalTableColumn.setName("originalTable");
         originalTableColumn.setColumnType(ColumnType.STRING);
@@ -90,6 +96,7 @@ public class AppVersionExportHandler extends SynapseExportHandler {
         fieldNameList.add("recordId");
         fieldNameList.add("healthCode");
         fieldNameList.add("externalId");
+        fieldNameList.add("uploadDate");
         fieldNameList.add("originalTable");
         fieldNameList.add("appVersion");
         fieldNameList.add("phoneInfo");
@@ -105,27 +112,16 @@ public class AppVersionExportHandler extends SynapseExportHandler {
         String recordId = record.getString("id");
 
         // get phone and app info
-        String appVersion = null;
-        String phoneInfo = null;
-        String metadataString = record.getString("metadata");
-        if (!Strings.isNullOrEmpty(metadataString)) {
-            try {
-                JsonNode metadataJson = BridgeExporterUtil.JSON_MAPPER.readTree(metadataString);
-                appVersion = BridgeExporterUtil.getJsonStringRemoveTabsAndTrim(metadataJson, "appVersion", 48,
-                        recordId);
-                phoneInfo = BridgeExporterUtil.getJsonStringRemoveTabsAndTrim(metadataJson, "phoneInfo", 48, recordId);
-            } catch (IOException ex) {
-                // we can recover from this
-                System.out.println("[ERROR] Error parsing metadata for record ID " + recordId + ": "
-                        + ex.getMessage());
-            }
-        }
+        PhoneAppVersionInfo phoneAppVersionInfo = PhoneAppVersionInfo.fromRecord(record);
+        String appVersion = phoneAppVersionInfo.getAppVersion();
+        String phoneInfo = phoneAppVersionInfo.getPhoneInfo();
 
         // construct row
         List<String> rowValueList = new ArrayList<>();
         rowValueList.add(recordId);
         rowValueList.add(record.getString("healthCode"));
         rowValueList.add(BridgeExporterUtil.getDdbStringRemoveTabsAndTrim(record, "userExternalId", 128, recordId));
+        rowValueList.add(getManager().getTodaysDateString());
         rowValueList.add(task.getSchemaKey().toString());
         rowValueList.add(appVersion);
         rowValueList.add(phoneInfo);

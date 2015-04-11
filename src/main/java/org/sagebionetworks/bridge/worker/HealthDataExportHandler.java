@@ -12,12 +12,12 @@ import com.amazonaws.services.dynamodbv2.document.Table;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import com.google.common.base.Charsets;
-import com.google.common.base.Strings;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 
 import org.sagebionetworks.bridge.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.exceptions.SchemaNotFoundException;
+import org.sagebionetworks.bridge.exporter.PhoneAppVersionInfo;
 import org.sagebionetworks.bridge.exporter.UploadSchema;
 import org.sagebionetworks.bridge.exporter.UploadSchemaKey;
 import org.sagebionetworks.bridge.synapse.SynapseHelper;
@@ -185,20 +185,9 @@ public class HealthDataExportHandler extends SynapseExportHandler {
         }
 
         // get phone and app info
-        String appVersion = null;
-        String phoneInfo = null;
-        String metadataString = record.getString("metadata");
-        if (!Strings.isNullOrEmpty(metadataString)) {
-            try {
-                JsonNode metadataJson = BridgeExporterUtil.JSON_MAPPER.readTree(metadataString);
-                appVersion = BridgeExporterUtil.getJsonStringRemoveTabsAndTrim(metadataJson, "appVersion", 48,
-                        recordId);
-                phoneInfo = BridgeExporterUtil.getJsonStringRemoveTabsAndTrim(metadataJson, "phoneInfo", 48, recordId);
-            } catch (IOException ex) {
-                // we can recover from this
-                System.out.println("[ERROR] Error parsing metadata for record ID " + recordId + ": " + ex.getMessage());
-            }
-        }
+        PhoneAppVersionInfo phoneAppVersionInfo = PhoneAppVersionInfo.fromRecord(record);
+        String appVersion = phoneAppVersionInfo.getAppVersion();
+        String phoneInfo = phoneAppVersionInfo.getPhoneInfo();
 
         List<String> rowValueList = new ArrayList<>();
 

@@ -93,6 +93,7 @@ public class BridgeExporter {
     private Set<UploadSchemaKey> redriveTableKeySet;
 
     // Internal state
+    private BridgeExporterConfig config;
     private ExportWorkerManager manager;
     private RecordIdSource recordIdSource;
     private UploadSchemaHelper schemaHelper;
@@ -137,8 +138,7 @@ public class BridgeExporter {
         String todaysDateString = todaysDate.toString(ISODateTimeFormat.date());
 
         File synapseConfigFile = new File(System.getProperty("user.home") + "/bridge-synapse-exporter-config.json");
-        BridgeExporterConfig config = BridgeExporterUtil.JSON_MAPPER.readValue(synapseConfigFile,
-                BridgeExporterConfig.class);
+        config = BridgeExporterUtil.JSON_MAPPER.readValue(synapseConfigFile, BridgeExporterConfig.class);
 
         // Dynamo DB client - move to Spring
         // This gets credentials from the default credential chain. For developer desktops, this is ~/.aws/credentials.
@@ -244,6 +244,21 @@ public class BridgeExporter {
                 String schemaId = oneRecord.getString("schemaId");
                 int schemaRev = oneRecord.getInt("schemaRevision");
                 UploadSchemaKey schemaKey = new UploadSchemaKey(studyId, schemaId, schemaRev);
+
+                // Filter by version, if needed. (Null defaults to false.)
+                // Note: This is specific to the original ResearchKit launch.
+                Boolean filterV1 = config.getFilterV1ByStudy().get(studyId);
+                if (filterV1 != null && filterV1) {
+                    // app versions look like "version 1.0, build 7", where "build 7" can be anything. Anything that
+                    // starts with "version 1.0," is v1, so we need to filter that out.
+                    // To be safe, if the appVersion is not specified, filter it out as well.
+                    PhoneAppVersionInfo phoneAppVersionInfo = PhoneAppVersionInfo.fromRecord(oneRecord);
+                    String appVersion = phoneAppVersionInfo.getAppVersion();
+                    if (Strings.isNullOrEmpty(appVersion) || appVersion.startsWith("version 1.0,")) {
+                        incrementCounter("numV1Filtered");
+                        continue;
+                    }
+                }
 
                 // process/filter by user sharing scope
                 String userSharingScope = oneRecord.getString("userSharingScope");
