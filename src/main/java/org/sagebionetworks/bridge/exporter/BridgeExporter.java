@@ -47,7 +47,7 @@ public class BridgeExporter {
 
     // Script should report progress after this many records, so users tailing the logs can see that it's still
     // making progress
-    private static final int PROGRESS_REPORT_PERIOD = 2500;
+    private static final int PROGRESS_REPORT_PERIOD = 1000;
 
     public static void main(String[] args) throws IOException {
         try {
@@ -212,6 +212,7 @@ public class BridgeExporter {
         Stopwatch progressStopwatch = Stopwatch.createStarted();
 
         // get record IDs from record ID source and query DDB
+        int ddbDelay = config.getDdbDelay();
         while (recordIdSource.hasNext()) {
             String recordId = recordIdSource.next();
 
@@ -223,6 +224,16 @@ public class BridgeExporter {
             }
             if (RECORD_LIMIT > 0 && numTotal > RECORD_LIMIT) {
                 break;
+            }
+
+            if (ddbDelay > 0) {
+                // sleep to rate limit our requests to DDB
+                try {
+                    Thread.sleep(ddbDelay);
+                } catch (InterruptedException ex) {
+                    System.out.println("[ERROR] Interrupted while sleeping: " + ex.getMessage());
+                    ex.printStackTrace(System.out);
+                }
             }
 
             try {

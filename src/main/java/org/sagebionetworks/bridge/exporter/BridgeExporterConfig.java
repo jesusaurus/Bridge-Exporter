@@ -10,6 +10,7 @@ import java.util.Map;
 public class BridgeExporterConfig {
     private String apiKey;
     private Map<String, Long> dataAccessTeamIdsByStudy;
+    private int ddbDelay;
     private String ddbPrefix;
     private Map<String, Boolean> filterV1ByStudy;
     private String username;
@@ -37,6 +38,18 @@ public class BridgeExporterConfig {
 
     public void setDataAccessTeamIdsByStudy(Map<String, Long> dataAccessTeamIdsByStudy) {
         this.dataAccessTeamIdsByStudy = dataAccessTeamIdsByStudy;
+    }
+
+    /**
+     * Millisecond delay between each request to Dynamo DB while querying for records. This is used to rate-limit our
+     * requests to DDB to make sure we don't exceed our DDB capacity.
+     */
+    public int getDdbDelay() {
+        return ddbDelay;
+    }
+
+    public void setDdbDelay(int ddbDelay) {
+        this.ddbDelay = ddbDelay;
     }
 
     /**
