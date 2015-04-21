@@ -183,12 +183,18 @@ public class ExportWorkerManager {
                 continue;
             }
 
+            // check against study ID list
+            String studyId = oneSchemaKey.getStudyId();
+            if (!studyIdSet.contains(studyId)) {
+                continue;
+            }
+
             // create handler
             HealthDataExportHandler oneHealthDataHandler = new HealthDataExportHandler();
             oneHealthDataHandler.setManager(this);
             oneHealthDataHandler.setName("healthDataWorker-" + oneSchemaKey.toString());
             oneHealthDataHandler.setSchemaKey(oneSchemaKey);
-            oneHealthDataHandler.setStudyId(oneSchemaKey.getStudyId());
+            oneHealthDataHandler.setStudyId(studyId);
             healthDataHandlerMap.put(oneSchemaKey, oneHealthDataHandler);
         }
 
