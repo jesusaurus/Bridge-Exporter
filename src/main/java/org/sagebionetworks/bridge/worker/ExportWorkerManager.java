@@ -150,8 +150,7 @@ public class ExportWorkerManager {
 
     /** Initializes the handlers and the executor. */
     public void init() {
-        // dedupe the study id list with a hash set
-        Set<String> studyIdSet = new HashSet<>(bridgeExporterConfig.getStudyIdList());
+        Set<String> studyIdSet = bridgeExporterConfig.getStudyIdSet();
 
         // per-study init
         for (String oneStudyId : studyIdSet) {
@@ -254,13 +253,18 @@ public class ExportWorkerManager {
             return;
         }
 
+        // check against study ID list
+        String studyId = schemaKey.getStudyId();
+        if (!bridgeExporterConfig.getStudyIdSet().contains(studyId)) {
+            return;
+        }
+
         // get handlers
         HealthDataExportHandler healthDataHandler = healthDataHandlerMap.get(schemaKey);
         if (healthDataHandler == null) {
             schemasNotFound.add(schemaKey.toString());
             throw new SchemaNotFoundException("Schema " + schemaKey.toString() + " not found");
         }
-        String studyId = schemaKey.getStudyId();
         AppVersionExportHandler appVersionHandler = appVersionHandlerMap.get(studyId);
         if (appVersionHandler == null) {
             throw new BridgeExporterException("No app version worker for study " + studyId);

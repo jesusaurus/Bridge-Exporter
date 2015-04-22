@@ -2,6 +2,9 @@ package org.sagebionetworks.bridge.exporter;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+
+import com.google.common.collect.ImmutableSet;
 
 /**
  * Bridge Exporter config. This is currently loaded from bridge-synapse-exporter-config.json in the user's home
@@ -19,6 +22,10 @@ public class BridgeExporterConfig {
     private long principalId;
     private Map<String, String> projectIdsByStudy;
     private List<String> studyIdList;
+
+    // Having the study ID list as a set comes up fairly often. The JSON property will be studyIdList (since JSON
+    // doesn't have sets), but also create the studyIdSet so we don't have to regenerate it every time.
+    private Set<String> studyIdSet;
 
     /** Synapse API Key. */
     public String getApiKey() {
@@ -128,7 +135,12 @@ public class BridgeExporterConfig {
         return studyIdList;
     }
 
+    public Set<String> getStudyIdSet() {
+        return studyIdSet;
+    }
+
     public void setStudyIdList(List<String> studyIdList) {
         this.studyIdList = studyIdList;
+        this.studyIdSet = ImmutableSet.copyOf(studyIdList);
     }
 }
