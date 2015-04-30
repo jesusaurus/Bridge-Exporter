@@ -23,11 +23,14 @@ import org.sagebionetworks.repo.model.table.CsvTableDescriptor;
 import org.sagebionetworks.repo.model.table.TableEntity;
 import org.sagebionetworks.repo.model.table.UploadToTableResult;
 
+import org.sagebionetworks.bridge.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.exporter.BridgeExporterConfig;
 import org.sagebionetworks.bridge.s3.S3Helper;
 import org.sagebionetworks.bridge.util.BridgeExporterUtil;
 
 public class SynapseHelper {
+    private static final int ASYNC_UPLOAD_TIMEOUT_SECONDS = 300;
+
     public static final Map<String, ColumnType> BRIDGE_TYPE_TO_SYNAPSE_TYPE =
             ImmutableMap.<String, ColumnType>builder()
                     .put("attachment_blob", ColumnType.FILEHANDLEID)
@@ -167,6 +170,76 @@ public class SynapseHelper {
             // delete temp file
             tempFile.delete();
         }
+    }
+
+    public long uploadTsvFileToTable(String projectId, String tableId, File file) throws BridgeExporterException {
+        // upload file to synapse as a file handle
+        FileHandle tableFileHandle;
+        try {
+            tableFileHandle = createFileHandleWithRetry(file, "text/tab-separated-values", projectId);
+        } catch (IOException | SynapseException ex) {
+            System.out.println("[re-upload-tsv] file " + file.getAbsolutePath() + " " + tableId);
+            throw new BridgeExporterException("Error uploading TSV as a file handle: " + ex.getMessage(), ex);
+        }
+        String fileHandleId = tableFileHandle.getId();
+
+        return uploadFileHandleToTable(tableId, fileHandleId);
+    }
+
+    public long uploadFileHandleToTable(String tableId, String fileHandleId) throws BridgeExporterException {
+        // start tsv import
+        CsvTableDescriptor tableDesc = new CsvTableDescriptor();
+        tableDesc.setIsFirstLineHeader(true);
+        tableDesc.setSeparator("\t");
+
+        String jobToken;
+        try {
+            jobToken = uploadTsvStartWithRetry(tableId, fileHandleId, tableDesc);
+        } catch (SynapseException ex) {
+            System.out.println("[re-upload-tsv] filehandle " + fileHandleId + " " + tableId);
+            throw new BridgeExporterException("Error starting async import of file handle " + fileHandleId + ": "
+                    + ex.getMessage(), ex);
+        }
+
+        // poll asyncGet until success or timeout
+        boolean success = false;
+        Long linesProcessed = null;
+        for (int sec = 0; sec < ASYNC_UPLOAD_TIMEOUT_SECONDS; sec++) {
+            // sleep for 1 sec
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException ex) {
+                // noop
+            }
+
+            // poll
+            try {
+                UploadToTableResult uploadResult = getUploadTsvStatus(jobToken, tableId);
+                if (uploadResult == null) {
+                    // Result not ready. Sleep some more.
+                    continue;
+                }
+
+                linesProcessed = uploadResult.getRowsProcessed();
+                success = true;
+                break;
+            } catch (SynapseResultNotReadyException ex) {
+                // results not ready, sleep some more
+            } catch (SynapseException ex) {
+                System.out.println("[re-upload-tsv] filehandle " + fileHandleId + " " + tableId);
+                throw new BridgeExporterException("Error polling job status of importing file handle " + fileHandleId
+                        + ": " + ex.getMessage(), ex);
+            }
+        }
+
+        if (!success) {
+            throw new BridgeExporterException("Timed out uploading file handle " + fileHandleId);
+        }
+        if (linesProcessed == null) {
+            throw new BridgeExporterException("Null getRowsProcessed()");
+        }
+
+        return linesProcessed;
     }
 
     @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,

@@ -4,14 +4,11 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 import com.amazonaws.AmazonClientException;
 import com.amazonaws.services.dynamodbv2.document.Item;
-import com.amazonaws.services.dynamodbv2.document.Table;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.TextNode;
-import com.google.common.base.Charsets;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 
@@ -215,7 +212,8 @@ public class HealthDataExportHandler extends SynapseExportHandler {
                 bridgeType = "attachment_blob";
                 if (valueNode != null && !valueNode.isNull() && valueNode.isTextual()) {
                     try {
-                        String attachmentId = uploadFreeformTextAsAttachment(recordId, valueNode.textValue());
+                        String attachmentId = getManager().getExportHelper().uploadFreeformTextAsAttachment(recordId,
+                                valueNode.textValue());
                         valueNode = new TextNode(attachmentId);
                     } catch (AmazonClientException | IOException ex) {
                         System.out.println("[ERROR] Error uploading freeform text as attachment for record ID "
@@ -233,22 +231,5 @@ public class HealthDataExportHandler extends SynapseExportHandler {
         }
 
         return rowValueList;
-    }
-
-    private String uploadFreeformTextAsAttachment(String recordId, String text)
-            throws AmazonClientException, IOException {
-        // write to health data attachments table to reserve guid
-        String attachmentId = UUID.randomUUID().toString();
-        Item attachment = new Item();
-        attachment.withString("id", attachmentId);
-        attachment.withString("recordId", recordId);
-
-        Table attachmentsTable = getManager().getDdbClient().getTable("prod-heroku-HealthDataAttachment");
-        attachmentsTable.putItem(attachment);
-
-        // upload to S3
-        getManager().getS3Helper().writeBytesToS3(BridgeExporterUtil.S3_BUCKET_ATTACHMENTS, attachmentId,
-                text.getBytes(Charsets.UTF_8));
-        return attachmentId;
     }
 }

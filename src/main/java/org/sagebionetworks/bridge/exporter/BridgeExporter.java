@@ -154,6 +154,11 @@ public class BridgeExporter {
         S3Helper s3Helper = new S3Helper();
         s3Helper.setS3Client(s3Client);
 
+        // Export Helper
+        ExportHelper exportHelper = new ExportHelper();
+        exportHelper.setDdbClient(ddbClient);
+        exportHelper.setS3Helper(s3Helper);
+
         // synapse client
         SynapseClient synapseClient = new SynapseClientImpl();
         synapseClient.setUserName(config.getUsername());
@@ -178,6 +183,7 @@ public class BridgeExporter {
         manager = new ExportWorkerManager();
         manager.setBridgeExporterConfig(config);
         manager.setDdbClient(ddbClient);
+        manager.setExportHelper(exportHelper);
         manager.setS3Helper(s3Helper);
         manager.setSchemaHelper(schemaHelper);
         if (mode == ExportMode.REDRIVE_TABLES) {

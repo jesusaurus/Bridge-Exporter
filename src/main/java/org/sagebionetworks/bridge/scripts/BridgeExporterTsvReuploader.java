@@ -1,4 +1,4 @@
-package org.sagebionetworks.bridge.reupload;
+package org.sagebionetworks.bridge.scripts;
 
 import java.io.File;
 import java.io.IOException;
@@ -9,11 +9,7 @@ import com.google.common.io.Files;
 import org.sagebionetworks.client.SynapseClient;
 import org.sagebionetworks.client.SynapseClientImpl;
 import org.sagebionetworks.client.exceptions.SynapseException;
-import org.sagebionetworks.client.exceptions.SynapseResultNotReadyException;
-import org.sagebionetworks.repo.model.file.FileHandle;
-import org.sagebionetworks.repo.model.table.CsvTableDescriptor;
 import org.sagebionetworks.repo.model.table.TableEntity;
-import org.sagebionetworks.repo.model.table.UploadToTableResult;
 
 import org.sagebionetworks.bridge.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.exporter.BridgeExporterConfig;
@@ -33,8 +29,6 @@ import org.sagebionetworks.bridge.util.BridgeExporterUtil;
  * those TSVs.
  */
 public class BridgeExporterTsvReuploader {
-    private static final int ASYNC_UPLOAD_TIMEOUT_SECONDS = 300;
-
     // TODO: Global vars are bad. Make these non-static and object oriented.
     private static SynapseHelper synapseHelper;
 
@@ -97,7 +91,7 @@ public class BridgeExporterTsvReuploader {
                 if ("file".equals(type)) {
                     processFile(id, tableId);
                 } else if ("filehandle".equals(type)) {
-                    processFileHandle(id, tableId);
+                    synapseHelper.uploadFileHandleToTable(tableId, id);
                 } else {
                     System.out.println("[ERROR] Unknown type " + type);
                     continue;
@@ -115,7 +109,6 @@ public class BridgeExporterTsvReuploader {
         System.out.println("Done running re-uploader.");
     }
 
-    // TODO: This is copy-pasted from SynapseExportWorker. Un-spaghetti this.
     private static void processFile(String filePath, String tableId) throws BridgeExporterException {
         File file = new File(filePath);
 
@@ -129,66 +122,6 @@ public class BridgeExporterTsvReuploader {
         }
         String projectId = table.getParentId();
 
-        // upload file to synapse as a file handle
-        FileHandle tableFileHandle;
-        try {
-            tableFileHandle = synapseHelper.createFileHandleWithRetry(file, "text/tab-separated-values", projectId);
-        } catch (IOException | SynapseException ex) {
-            throw new BridgeExporterException("Error uploading file " + filePath + " to table " + tableId + ": "
-                    + ex.getMessage(), ex);
-        }
-        String fileHandleId = tableFileHandle.getId();
-        System.out.println("[STATUS] Uploaded file " + filePath + " to file handle " + fileHandleId);
-
-        processFileHandle(fileHandleId, tableId);
-    }
-
-    // TODO: This is copy-pasted from SynapseExportWorker. Un-spaghetti this.
-    private static void processFileHandle(String fileHandleId, String tableId) throws BridgeExporterException {
-        // start tsv import
-        CsvTableDescriptor tableDesc = new CsvTableDescriptor();
-        tableDesc.setIsFirstLineHeader(true);
-        tableDesc.setSeparator("\t");
-
-        String jobToken;
-        try {
-            jobToken = synapseHelper.uploadTsvStartWithRetry(tableId, fileHandleId, tableDesc);
-        } catch (SynapseException ex) {
-            throw new BridgeExporterException("Error starting async import of file handle " + fileHandleId + " to table "
-                    + tableId + ": " + ex.getMessage(), ex);
-        }
-
-        // poll asyncGet until success or timeout
-        boolean success = false;
-        for (int sec = 0; sec < ASYNC_UPLOAD_TIMEOUT_SECONDS; sec++) {
-            // sleep for 1 sec
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException ex) {
-                // noop
-            }
-
-            // poll
-            try {
-                UploadToTableResult uploadResult = synapseHelper.getUploadTsvStatus(jobToken, tableId);
-                if (uploadResult == null) {
-                    // Result not ready. Sleep some more.
-                    continue;
-                }
-
-                success = true;
-                break;
-            } catch (SynapseResultNotReadyException ex) {
-                // results not ready, sleep some more
-            } catch (SynapseException ex) {
-                throw new BridgeExporterException("Error polling job status of importing file handle " + fileHandleId
-                        + " to table " + tableId + ": " + ex.getMessage(), ex);
-            }
-        }
-
-        if (!success) {
-            throw new BridgeExporterException("Timed out uploading file handle " + fileHandleId + " to table "
-                    + tableId);
-        }
+        synapseHelper.uploadTsvFileToTable(projectId, tableId, file);
     }
 }

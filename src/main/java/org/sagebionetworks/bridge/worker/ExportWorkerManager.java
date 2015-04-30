@@ -21,6 +21,7 @@ import com.google.common.collect.ImmutableSet;
 import org.sagebionetworks.bridge.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.exceptions.SchemaNotFoundException;
 import org.sagebionetworks.bridge.exporter.BridgeExporterConfig;
+import org.sagebionetworks.bridge.exporter.ExportHelper;
 import org.sagebionetworks.bridge.exporter.UploadSchemaHelper;
 import org.sagebionetworks.bridge.exporter.UploadSchemaKey;
 import org.sagebionetworks.bridge.s3.S3Helper;
@@ -35,6 +36,7 @@ public class ExportWorkerManager {
     // Configured externally
     private BridgeExporterConfig bridgeExporterConfig;
     private DynamoDB ddbClient;
+    private ExportHelper exportHelper;
     private S3Helper s3Helper;
     private UploadSchemaHelper schemaHelper;
     private Set<UploadSchemaKey> schemaBlacklist;
@@ -68,6 +70,15 @@ public class ExportWorkerManager {
 
     public void setDdbClient(DynamoDB ddbClient) {
         this.ddbClient = ddbClient;
+    }
+
+    /** Export Helper. Configured externally. */
+    public ExportHelper getExportHelper() {
+        return exportHelper;
+    }
+
+    public void setExportHelper(ExportHelper exportHelper) {
+        this.exportHelper = exportHelper;
     }
 
     /** S3 helper. Configured externally. */

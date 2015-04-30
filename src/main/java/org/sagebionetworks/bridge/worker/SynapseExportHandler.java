@@ -23,15 +23,11 @@ import com.google.common.base.Stopwatch;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableSet;
 import org.sagebionetworks.client.exceptions.SynapseException;
-import org.sagebionetworks.client.exceptions.SynapseResultNotReadyException;
 import org.sagebionetworks.repo.model.ACCESS_TYPE;
 import org.sagebionetworks.repo.model.AccessControlList;
 import org.sagebionetworks.repo.model.ResourceAccess;
-import org.sagebionetworks.repo.model.file.FileHandle;
 import org.sagebionetworks.repo.model.table.ColumnModel;
-import org.sagebionetworks.repo.model.table.CsvTableDescriptor;
 import org.sagebionetworks.repo.model.table.TableEntity;
-import org.sagebionetworks.repo.model.table.UploadToTableResult;
 
 import org.sagebionetworks.bridge.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.exceptions.SchemaNotFoundException;
@@ -46,7 +42,6 @@ public abstract class SynapseExportHandler extends ExportHandler {
     // Constants
     private static final Set<ACCESS_TYPE> ACCESS_TYPE_ALL = ImmutableSet.copyOf(ACCESS_TYPE.values());
     private static final Set<ACCESS_TYPE> ACCESS_TYPE_READ = ImmutableSet.of(ACCESS_TYPE.READ, ACCESS_TYPE.DOWNLOAD);
-    private static final int ASYNC_UPLOAD_TIMEOUT_SECONDS = 300;
     private static final Joiner JOINER_COLUMN_SEPARATOR = Joiner.on('\t').useForNull("");
 
     // Internal state
@@ -254,74 +249,15 @@ public abstract class SynapseExportHandler extends ExportHandler {
             return;
         }
 
-        // upload file to synapse as a file handle
-        FileHandle tableFileHandle;
-        try {
-            tableFileHandle = getManager().getSynapseHelper().createFileHandleWithRetry(tsvFile,
-                    "text/tab-separated-values", getProjectId());
-        } catch (IOException | SynapseException ex) {
-            System.out.println("[re-upload-tsv] file " + tsvFile.getAbsolutePath() + " " + synapseTableId);
-            throw new BridgeExporterException("Error uploading TSV as a file handle: " + ex.getMessage(), ex);
+        long linesProcessed = getManager().getSynapseHelper().uploadTsvFileToTable(getProjectId(), synapseTableId,
+                tsvFile);
+        if (linesProcessed != lineCount) {
+            throw new BridgeExporterException("Wrong number of lines processed importing to table " + synapseTableId +
+                    ", expected=" + lineCount + ", actual=" + linesProcessed);
         }
-        String fileHandleId = tableFileHandle.getId();
 
         // We've successfully uploaded the file. We can delete the file now.
         tsvFile.delete();
-
-        // start tsv import
-        CsvTableDescriptor tableDesc = new CsvTableDescriptor();
-        tableDesc.setIsFirstLineHeader(true);
-        tableDesc.setSeparator("\t");
-
-        String jobToken;
-        try {
-            jobToken = getManager().getSynapseHelper().uploadTsvStartWithRetry(synapseTableId, fileHandleId,
-                    tableDesc);
-        } catch (SynapseException ex) {
-            System.out.println("[re-upload-tsv] filehandle " + fileHandleId + " " + synapseTableId);
-            throw new BridgeExporterException("Error starting async import of file handle " + fileHandleId + ": "
-                    + ex.getMessage(), ex);
-        }
-
-        // poll asyncGet until success or timeout
-        boolean success = false;
-        for (int sec = 0; sec < ASYNC_UPLOAD_TIMEOUT_SECONDS; sec++) {
-            // sleep for 1 sec
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException ex) {
-                // noop
-            }
-
-            // poll
-            try {
-                UploadToTableResult uploadResult = getManager().getSynapseHelper().getUploadTsvStatus(jobToken,
-                        synapseTableId);
-                if (uploadResult == null) {
-                    // Result not ready. Sleep some more.
-                    continue;
-                }
-
-                Long linesProcessed = uploadResult.getRowsProcessed();
-                if (linesProcessed == null || linesProcessed != lineCount) {
-                    throw new BridgeExporterException("Wrong number of lines processed importing file handle "
-                            + fileHandleId + ", expected=" + lineCount + ", actual=" + linesProcessed);
-                }
-
-                success = true;
-                break;
-            } catch (SynapseResultNotReadyException ex) {
-                // results not ready, sleep some more
-            } catch (SynapseException ex) {
-                System.out.println("[re-upload-tsv] filehandle " + fileHandleId + " " + synapseTableId);
-                throw new BridgeExporterException("Error polling job status of importing file handle " + fileHandleId
-                        + ": " + ex.getMessage(), ex);
-            }
-        }
-
-        if (!success) {
-            throw new BridgeExporterException("Timed out uploading file handle " + fileHandleId);
-        }
     }
 
     @Override
