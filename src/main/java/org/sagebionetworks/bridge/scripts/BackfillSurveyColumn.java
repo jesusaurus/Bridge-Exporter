@@ -2,15 +2,18 @@ package org.sagebionetworks.bridge.scripts;
 
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
+import java.io.Reader;
 import java.util.LinkedList;
-import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -27,11 +30,13 @@ import com.google.common.base.Charsets;
 import com.google.common.base.Joiner;
 import com.google.common.base.Stopwatch;
 import com.google.common.base.Strings;
-import com.google.common.io.Files;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import org.sagebionetworks.client.SynapseClient;
 import org.sagebionetworks.client.SynapseClientImpl;
 import org.sagebionetworks.client.exceptions.SynapseException;
 import org.sagebionetworks.repo.model.table.TableEntity;
+import org.sagebionetworks.util.csv.CsvNullReader;
 
 import org.sagebionetworks.bridge.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.exceptions.SchemaNotFoundException;
@@ -45,7 +50,7 @@ import org.sagebionetworks.bridge.synapse.SynapseHelper;
 import org.sagebionetworks.bridge.util.BridgeExporterUtil;
 
 /**
- * Usage: BackfillColumn [TSV file] [synapse table ID] [study ID] [schema ID] [schema rev] [column name]
+ * Usage: BackfillColumn [TSV file] [synapse table ID] [study ID] [schema ID] [schema rev] [[column name]...]
  *
  * TSV file is the TSV file of the table of all rows that need to be backfilled, including ROW_ID and ROW_VERSION.
  * Normally, this should be obtained using a query where [column name] is not null.
@@ -54,10 +59,10 @@ import org.sagebionetworks.bridge.util.BridgeExporterUtil;
  *
  * study ID, schema ID, and schema rev are used to convert the data
  *
- * column name is the name of the column to be backfilled
+ * column name is the name of the column to be backfilled. This is a space separated list of columns.
  */
 public class BackfillSurveyColumn {
-    private static final Joiner COLUMN_JOINER = Joiner.on('\t');
+    private static final Joiner COLUMN_JOINER = Joiner.on('\t').useForNull("");
 
     // Script should report progress after this many records, so users tailing the logs can see that it's still
     // making progress
@@ -71,17 +76,16 @@ public class BackfillSurveyColumn {
     private static String synapseTableId;
     private static String studyId;
     private static UploadSchemaKey schemaKey;
-    private static String columnName;
+    private static Set<String> columnNameSet;
 
     // internal state
-    private static String bridgeType;
-    private static Integer columnIndex;
+    private static Map<String, String> columnNameToBridgeType;
+    private static Map<String, Integer> columnNameToIndex;
     private static BridgeExporterConfig config;
     private static int lineCount = 0;
     private static File newTsvFile;
     private static PrintWriter newTsvWriter;
-    private static int numColumns;
-    private static List<String> oldFileLines;
+    private static CsvNullReader oldFileCsvReader;
     private static Integer recordIdIndex;
     private static UploadSchema schema;
 
@@ -96,7 +100,15 @@ public class BackfillSurveyColumn {
         synapseTableId = args[1];
         studyId = args[2];
         schemaKey = new UploadSchemaKey(studyId, args[3], Integer.parseInt(args[4]));
-        columnName = args[5];
+
+        ImmutableSet.Builder<String> columnNameSetBuilder = ImmutableSet.builder();
+        for (int i = 5; i < args.length; i++) {
+            columnNameSetBuilder.add(args[i]);
+        }
+        columnNameSet = columnNameSetBuilder.build();
+        if (columnNameSet.isEmpty()) {
+            throw new IllegalArgumentException("empty column name list specified");
+        }
 
         Stopwatch stopwatch = Stopwatch.createStarted();
         try {
@@ -123,21 +135,19 @@ public class BackfillSurveyColumn {
         config = BridgeExporterUtil.JSON_MAPPER.readValue(synapseConfigFile, BridgeExporterConfig.class);
 
         // parse file and get indices from headers
-        oldFileLines = Files.readLines(new File(filename), Charsets.UTF_8);
-        String headerRow = oldFileLines.get(0);
-        String[] headers = headerRow.split("\t");
-        numColumns = headers.length;
+        Reader fileReader = new InputStreamReader(new FileInputStream(filename), Charsets.UTF_8);
+        oldFileCsvReader = new CsvNullReader(fileReader, '\t');
+        String[] headers = oldFileCsvReader.readNext();
+
+        ImmutableMap.Builder<String, Integer> indexMapBuilder = ImmutableMap.builder();
         boolean hasRowId = false;
         boolean hasRowVersion = false;
-
-        for (int i = 0; i < numColumns; i++) {
-            // TSVs downloaded from Synapse are quoted, so use Jackson to unquote everything.
-            String oneHeader = BridgeExporterUtil.JSON_MAPPER.readValue(headers[i], String.class);
-
+        for (int i = 0; i < headers.length; i++) {
+            String oneHeader = headers[i];
             if (oneHeader.equals("recordId")) {
                 recordIdIndex = i;
-            } else if (oneHeader.equals(columnName)) {
-                columnIndex = i;
+            } else if (columnNameSet.contains(oneHeader)) {
+                indexMapBuilder.put(oneHeader, i);
             } else if (oneHeader.equals("ROW_ID")) {
                 hasRowId = true;
             } else if (oneHeader.equals("ROW_VERSION")) {
@@ -147,8 +157,9 @@ public class BackfillSurveyColumn {
         if (recordIdIndex == null) {
             throw new BridgeExporterException("No recordId column in input file");
         }
-        if (columnIndex == null) {
-            throw new BridgeExporterException("No " + columnName + " column in input file");
+        columnNameToIndex = indexMapBuilder.build();
+        if (!columnNameSet.equals(columnNameToIndex.keySet())) {
+            throw new BridgeExporterException("Header is missing columns");
         }
         if (!hasRowId) {
             throw new BridgeExporterException("No ROW_ID column in input file");
@@ -163,7 +174,7 @@ public class BackfillSurveyColumn {
         newTsvWriter = new PrintWriter(new BufferedWriter(new OutputStreamWriter(stream, Charsets.UTF_8)));
 
         // Write headers. It's the same headers.
-        newTsvWriter.println(headerRow);
+        newTsvWriter.println(COLUMN_JOINER.join(headers));
 
         // Dynamo DB client - move to Spring
         // This gets credentials from the default credential chain. For developer desktops, this is ~/.aws/credentials.
@@ -181,7 +192,12 @@ public class BackfillSurveyColumn {
 
         schema = schemaHelper.getSchema(schemaKey);
         Map<String, String> fieldTypeMap = schema.getFieldTypeMap();
-        bridgeType = fieldTypeMap.get(columnName);
+        ImmutableMap.Builder<String, String> bridgeTypeMapBuilder = ImmutableMap.builder();
+        for (String oneColumnName : columnNameSet) {
+            String bridgeType = fieldTypeMap.get(oneColumnName);
+            bridgeTypeMapBuilder.put(oneColumnName, bridgeType);
+        }
+        columnNameToBridgeType = bridgeTypeMapBuilder.build();
 
         // executor
         executor = Executors.newFixedThreadPool(config.getNumThreads());
@@ -216,7 +232,10 @@ public class BackfillSurveyColumn {
         Stopwatch submitTaskStopwatch = Stopwatch.createStarted();
         int ddbDelay = config.getDdbDelay();
         Queue<Future<?>> outstandingTaskQueue = new LinkedList<>();
-        for (int i = 1; i < oldFileLines.size(); i++) {
+
+        String[] columns;
+        int lineNum = 0;
+        while ((columns = oldFileCsvReader.readNext()) != null) {
             if (ddbDelay > 0) {
                 // sleep to rate limit our requests to DDB
                 try {
@@ -227,11 +246,12 @@ public class BackfillSurveyColumn {
                 }
             }
 
-            Future<?> taskFuture = executor.submit(new Task(i, oldFileLines.get(i)));
+            lineNum++;
+            Future<?> taskFuture = executor.submit(new Task(lineNum, columns));
             outstandingTaskQueue.add(taskFuture);
 
-            if (i % PROGRESS_REPORT_PERIOD == 0) {
-                System.out.println("[METRICS] Num records so far: " + i + " in "
+            if (lineNum % PROGRESS_REPORT_PERIOD == 0) {
+                System.out.println("[METRICS] Num records so far: " + lineNum + " in "
                         + submitTaskStopwatch.elapsed(TimeUnit.SECONDS) + " seconds");
             }
         }
@@ -262,63 +282,58 @@ public class BackfillSurveyColumn {
 
     private static class Task implements Runnable {
         private final int lineNum;
-        private final String oldRow;
+        private final String[] columns;
 
-        public Task(int lineNum, String oldRow) {
+        public Task(int lineNum, String[] columns) {
             this.lineNum = lineNum;
-            this.oldRow = oldRow;
+            this.columns = columns;
         }
 
         @Override
         public void run() {
             try {
-                processRecord(oldRow);
+                processRecord(columns);
             } catch (Throwable t) {
                 throw new RuntimeException("Error processing line " + lineNum + ": " + t.getMessage(), t);
             }
         }
     }
 
-    private static void processRecord(String oldRow) throws BridgeExporterException, IOException {
-        // get columns from row
-        // TSVs downloaded from Synapse are quoted, so use Jackson to unquote everything.
-        String[] columns = oldRow.split("\t");
-        String[] unquotedColumns = new String[numColumns];
-        for (int i = 0; i < columns.length; i++) {
-            if (!Strings.isNullOrEmpty(columns[i])) {
-                unquotedColumns[i] = BridgeExporterUtil.JSON_MAPPER.readValue(columns[i], String.class);
-            } else {
-                unquotedColumns[i] = "";
-            }
-        }
-        // fill remaining columns with empties, if any
-        for (int i = columns.length; i < numColumns; i++) {
-            unquotedColumns[i] = "";
-        }
-
+    private static void processRecord(String[] columns) throws BridgeExporterException, IOException {
         // get record
-        String recordId = unquotedColumns[recordIdIndex];
+        String recordId = columns[recordIdIndex];
         Item record = recordTable.getItem("id", recordId);
 
         // convert record to health data node
         JsonNode convertedSurveyNode = exportHelper.convertSurveyRecordToHealthDataJsonNode(record, schema);
 
-        // get column from JSON and inject it into the columns we already have
-        JsonNode columnValueNode = convertedSurveyNode.get(columnName);
-        String value = synapseHelper.serializeToSynapseType(studyId, recordId, columnName, bridgeType,
-                columnValueNode);
-        if (!Strings.isNullOrEmpty(value)) {
-            unquotedColumns[columnIndex] = value;
-            String newRow = COLUMN_JOINER.join(unquotedColumns);
+        boolean modified = false;
+        for (String columnName : columnNameSet) {
+            int columnIndex = columnNameToIndex.get(columnName);
+            String bridgeType = columnNameToBridgeType.get(columnName);
 
-            // Write the new row back to the TSV writer. We need to synchronize on the TSV writer to make sure we don'
+            // get column from JSON and inject it into the columns we already have
+            JsonNode columnValueNode = convertedSurveyNode.get(columnName);
+            String value = synapseHelper.serializeToSynapseType(studyId, recordId, columnName, bridgeType,
+                    columnValueNode);
+            if (!Strings.isNullOrEmpty(value)) {
+                columns[columnIndex] = value;
+                modified = true;
+            }
+        }
+
+        // if we modified anything, write the new row
+        if (modified) {
+            String newRow = COLUMN_JOINER.join(columns);
+
+            // Write the new row back to the TSV writer. We need to synchronize on the TSV writer to make sure we
+            // don'
             // conflict with other threads
             synchronized (newTsvWriter) {
                 newTsvWriter.println(newRow);
                 lineCount++;
             }
         }
-
     }
 
     private static void uploadTsv() throws BridgeExporterException {
