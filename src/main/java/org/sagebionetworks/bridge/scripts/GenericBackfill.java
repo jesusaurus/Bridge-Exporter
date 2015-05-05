@@ -10,7 +10,9 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.Reader;
+import java.util.HashMap;
 import java.util.LinkedList;
+import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -46,6 +48,7 @@ import org.sagebionetworks.bridge.util.BridgeExporterUtil;
 
 /**
  * Usage: GenericBackfill [UPDATE/APPEND] [TSV file] [synapse table ID] [study ID] [schema ID] [schema rev]
+ * [[old column name] [new column name]...]
  *
  * [UPDATE/APPEND] is UPDATE if we're writing to existing rows (in which case ROW_ID and ROW_VERSION must be present),
  * APPEND if we're writing to new rows (in which case ROW_ID and ROW_VERSION must be absent)
@@ -58,6 +61,9 @@ import org.sagebionetworks.bridge.util.BridgeExporterUtil;
  * synapse table ID is the table to write to
  *
  * study ID, schema ID, and schema rev are the schema of the table to write to
+ *
+ * old column name and new column name are for renaming columns, such as backfilling a column submitted with the wrong
+ * name (QoL slider).
  */
 public class GenericBackfill {
     private static final Joiner COLUMN_JOINER = Joiner.on('\t').useForNull("");
@@ -74,6 +80,7 @@ public class GenericBackfill {
     private String synapseTableId;
     private String studyId;
     private UploadSchemaKey schemaKey;
+    private Map<String, String> newColumnToOldColumn;
 
     // internal state
     private BridgeExporterConfig config;
@@ -94,9 +101,9 @@ public class GenericBackfill {
     private SynapseHelper synapseHelper;
 
     public static void main(String[] args) {
-        if (args.length != 6) {
-            throw new IllegalArgumentException(
-                    "Usage: GenericBackfill [TSV file] [synapse table ID] [study ID] [schema ID] [schema rev]");
+        if (args.length < 6 || args.length % 2 != 0) {
+            throw new IllegalArgumentException("Usage: GenericBackfill [TSV file] [synapse table ID] [study ID] " +
+                    "[schema ID] [schema rev] [[old column name] [new column name]...]");
         }
 
         GenericBackfill backfill = new GenericBackfill();
@@ -106,6 +113,12 @@ public class GenericBackfill {
         String studyId = args[3];
         backfill.setStudyId(studyId);
         backfill.setSchemaKey(new UploadSchemaKey(studyId, args[4], Integer.parseInt(args[5])));
+
+        Map<String, String> newColumnToOldColumn = new HashMap<>();
+        for (int i = 6; i < args.length; i += 2) {
+            newColumnToOldColumn.put(args[i + 1], args[i]);
+        }
+        backfill.setNewColumnToOldColumn(newColumnToOldColumn);
 
         backfill.run();
     }
@@ -128,6 +141,10 @@ public class GenericBackfill {
 
     public void setSchemaKey(UploadSchemaKey schemaKey) {
         this.schemaKey = schemaKey;
+    }
+
+    public void setNewColumnToOldColumn(Map<String, String> newColumnToOldColumn) {
+        this.newColumnToOldColumn = newColumnToOldColumn;
     }
 
     private enum Mode {
@@ -357,7 +374,13 @@ public class GenericBackfill {
         for (int i = 0; i < numSchemaColumns; i++) {
             String columnName = schema.getFieldNameList().get(i);
             String bridgeType = schema.getFieldTypeMap().get(columnName);
+
             JsonNode columnValueNode = convertedSurveyNode.get(columnName);
+            if (columnValueNode == null || columnValueNode.isNull()) {
+                // fall back to old column name
+                columnValueNode = convertedSurveyNode.get(newColumnToOldColumn.get(columnName));
+            }
+
             String value = synapseHelper.serializeToSynapseType(studyId, recordId, columnName, bridgeType,
                     columnValueNode);
             newColumns[numCommonAndRowVersionColumns + i] = value;
