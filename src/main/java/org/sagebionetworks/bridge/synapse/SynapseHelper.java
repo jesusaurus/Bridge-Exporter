@@ -30,6 +30,7 @@ import org.sagebionetworks.bridge.util.BridgeExporterUtil;
 
 public class SynapseHelper {
     private static final int ASYNC_UPLOAD_TIMEOUT_SECONDS = 300;
+    public static final int DEFAULT_MAX_LENGTH = 100;
 
     public static final Map<String, ColumnType> BRIDGE_TYPE_TO_SYNAPSE_TYPE =
             ImmutableMap.<String, ColumnType>builder()
@@ -48,8 +49,8 @@ public class SynapseHelper {
 
     public static final Map<String, Integer> BRIDGE_TYPE_TO_MAX_LENGTH = ImmutableMap.<String, Integer>builder()
             .put("calendar_date", 10)
-            .put("inline_json_blob", 1000)
-            .put("string", 1000)
+            .put("inline_json_blob", 100)
+            .put("string", 100)
             .build();
 
     private BridgeExporterConfig bridgeExporterConfig;
@@ -139,7 +140,7 @@ public class SynapseHelper {
                 Integer maxLength = BRIDGE_TYPE_TO_MAX_LENGTH.get(bridgeType);
                 if (maxLength == null) {
                     System.out.println("[ERROR] No max length found for Bridge type " + bridgeType);
-                    maxLength = 1000;
+                    maxLength = DEFAULT_MAX_LENGTH;
                 }
                 String filtered = BridgeExporterUtil.removeTabs(nodeValue);
                 String trimmed =  BridgeExporterUtil.trimToLengthAndWarn(filtered, maxLength, recordId);

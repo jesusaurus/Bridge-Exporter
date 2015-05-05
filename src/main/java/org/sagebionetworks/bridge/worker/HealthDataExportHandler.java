@@ -125,7 +125,7 @@ public class HealthDataExportHandler extends SynapseExportHandler {
                 Integer maxLength = SynapseHelper.BRIDGE_TYPE_TO_MAX_LENGTH.get(bridgeType);
                 if (maxLength == null) {
                     System.out.println("[ERROR] No max length found for Bridge type " + bridgeType);
-                    maxLength = 1000;
+                    maxLength = SynapseHelper.DEFAULT_MAX_LENGTH;
                 }
                 oneColumn.setMaximumSize(Long.valueOf(maxLength));
             }
