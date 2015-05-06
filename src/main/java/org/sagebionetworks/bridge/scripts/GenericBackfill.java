@@ -282,8 +282,10 @@ public class GenericBackfill {
         // see https://sagebionetworks.jira.com/browse/PLFM-3310
         synapseClient.login(config.getUsername(), config.getPassword());
 
-        // synapse helper - for this use case, we only need the synapse client
+        // synapse helper
         synapseHelper = new SynapseHelper();
+        synapseHelper.setBridgeExporterConfig(config);
+        synapseHelper.setS3Helper(s3Helper);
         synapseHelper.setSynapseClient(synapseClient);
     }
 
