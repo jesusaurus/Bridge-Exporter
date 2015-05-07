@@ -18,7 +18,7 @@ import org.sagebionetworks.bridge.synapse.SynapseTableIterator;
 import org.sagebionetworks.bridge.util.BridgeExporterUtil;
 
 public class SynapseRecordDedupe {
-    private static final int PROGRESS_REPORT_INTERVAL = 1000;
+    private static final int PROGRESS_REPORT_INTERVAL = 10000;
 
     public static void main(String[] args) throws Exception {
         // args
@@ -80,6 +80,12 @@ public class SynapseRecordDedupe {
                             + stopwatch.elapsed(TimeUnit.SECONDS) + " seconds");
                 }
             }
+        }
+
+        // short-circuit if there are no dupes
+        if (rowIdsToDelete.isEmpty()) {
+            System.out.println("No rows to delete");
+            return;
         }
 
         // delete rows from Synapse table
