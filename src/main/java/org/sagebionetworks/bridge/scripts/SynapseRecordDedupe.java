@@ -3,8 +3,9 @@ package org.sagebionetworks.bridge.scripts;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
-import com.google.common.base.Joiner;
+import com.google.common.base.Stopwatch;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ListMultimap;
 import org.sagebionetworks.client.SynapseClient;
@@ -17,7 +18,7 @@ import org.sagebionetworks.bridge.synapse.SynapseTableIterator;
 import org.sagebionetworks.bridge.util.BridgeExporterUtil;
 
 public class SynapseRecordDedupe {
-    private static final Joiner COLUMN_JOINER = Joiner.on(", ").useForNull("null");
+    private static final int PROGRESS_REPORT_INTERVAL = 1000;
 
     public static void main(String[] args) throws Exception {
         // args
@@ -43,21 +44,41 @@ public class SynapseRecordDedupe {
         // Iterate over table rows. Use a ListMultimap instead of a SetMultimap, so we can choose to keep the "first"
         // rowId.
         ListMultimap<String, Long> recordIdToRowId = ArrayListMultimap.create();
-        while (tableIter.hasNext()) {
-            Row row = tableIter.next();
-            Long rowId = row.getRowId();
+        System.out.println("Loading table...");
+        {
+            int numRows = 0;
+            Stopwatch stopwatch = Stopwatch.createStarted();
+            while (tableIter.hasNext()) {
+                Row row = tableIter.next();
+                Long rowId = row.getRowId();
 
-            // We only select recordId, so values should have size 1, and the only entry is the record ID.
-            String recordId = row.getValues().get(0);
-            recordIdToRowId.put(recordId, rowId);
+                // We only select recordId, so values should have size 1, and the only entry is the record ID.
+                String recordId = row.getValues().get(0);
+                recordIdToRowId.put(recordId, rowId);
+
+                if ((++numRows) % PROGRESS_REPORT_INTERVAL == 0) {
+                    System.out.println("Loading table: " + numRows + " rows in " + stopwatch.elapsed(TimeUnit.SECONDS)
+                            + " seconds");
+                }
+            }
         }
 
         // find duplicate record IDs
         List<Long> rowIdsToDelete = new ArrayList<>();
-        for (String oneRecordId : recordIdToRowId.keySet()) {
-            List<Long> recordRowIdList = recordIdToRowId.get(oneRecordId);
-            if (recordRowIdList.size() > 1) {
-                rowIdsToDelete.addAll(recordRowIdList.subList(1, recordRowIdList.size()));
+        System.out.println("Searching table for duplicates...");
+        {
+            int numRows = 0;
+            Stopwatch stopwatch = Stopwatch.createStarted();
+            for (String oneRecordId : recordIdToRowId.keySet()) {
+                List<Long> recordRowIdList = recordIdToRowId.get(oneRecordId);
+                if (recordRowIdList.size() > 1) {
+                    rowIdsToDelete.addAll(recordRowIdList.subList(1, recordRowIdList.size()));
+                }
+
+                if ((++numRows) % PROGRESS_REPORT_INTERVAL == 0) {
+                    System.out.println("Searching table: " + numRows + " rows in "
+                            + stopwatch.elapsed(TimeUnit.SECONDS) + " seconds");
+                }
             }
         }
 
