@@ -18,7 +18,6 @@ public class BridgeExporterConfig {
     private Map<String, Boolean> filterV1ByStudy;
     private String username;
     private int numThreads;
-    private String password;
     private long principalId;
     private Map<String, String> projectIdsByStudy;
     private List<String> studyIdList;
@@ -98,18 +97,6 @@ public class BridgeExporterConfig {
 
     public void setNumThreads(int numThreads) {
         this.numThreads = numThreads;
-    }
-
-    /**
-     * Synapse password of the Bridge Exporter Synapse account. Due to bug
-     * https://sagebionetworks.jira.com/browse/PLFM-3310, this is needed to create file handles.
-     */
-    public String getPassword() {
-        return password;
-    }
-
-    public void setPassword(String password) {
-        this.password = password;
     }
 
     /** Synapse principal ID of the Bridge Exporter Synapse account. */

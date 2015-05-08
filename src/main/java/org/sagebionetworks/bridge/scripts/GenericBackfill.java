@@ -278,10 +278,6 @@ public class GenericBackfill {
         synapseClient.setUserName(config.getUsername());
         synapseClient.setApiKey(config.getApiKey());
 
-        // because of a bug in the Java client, we need to properly log in to upload file handles
-        // see https://sagebionetworks.jira.com/browse/PLFM-3310
-        synapseClient.login(config.getUsername(), config.getPassword());
-
         // synapse helper
         synapseHelper = new SynapseHelper();
         synapseHelper.setBridgeExporterConfig(config);
