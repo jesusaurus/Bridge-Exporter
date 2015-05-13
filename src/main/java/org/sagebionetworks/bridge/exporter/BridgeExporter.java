@@ -262,12 +262,10 @@ public class BridgeExporter {
                 // Note: This is specific to the original ResearchKit launch.
                 Boolean filterV1 = config.getFilterV1ByStudy().get(studyId);
                 if (filterV1 != null && filterV1) {
-                    // app versions look like "version 1.0, build 7", where "build 7" can be anything. Anything that
-                    // starts with "version 1.0," is v1, so we need to filter that out.
                     // To be safe, if the appVersion is not specified, filter it out as well.
                     PhoneAppVersionInfo phoneAppVersionInfo = PhoneAppVersionInfo.fromRecord(oneRecord);
                     String appVersion = phoneAppVersionInfo.getAppVersion();
-                    if (Strings.isNullOrEmpty(appVersion) || appVersion.startsWith("version 1.0,")) {
+                    if (Strings.isNullOrEmpty(appVersion) || appVersion.startsWith(BridgeExporterUtil.V1_PREFIX)) {
                         incrementCounter("numV1Filtered");
                         continue;
                     }

@@ -17,6 +17,10 @@ public class BridgeExporterUtil {
     public static final DateTimeZone LOCAL_TIME_ZONE = DateTimeZone.forID("America/Los_Angeles");
     public static final String S3_BUCKET_ATTACHMENTS = "org-sagebridge-attachment-prod";
 
+    // app versions look like "version 1.0, build 7", where "build 7" can be anything. Anything that
+    // starts with "version 1.0," is v1, so we need to filter that out.
+    public static final String V1_PREFIX = "version 1.0,";
+
     public static String getCurrentLocalTimestamp() {
         return DateTime.now(LOCAL_TIME_ZONE).toString(ISODateTimeFormat.dateTime());
     }
