@@ -3,6 +3,7 @@ package org.sagebionetworks.bridge.scripts;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -39,7 +40,7 @@ import org.sagebionetworks.bridge.util.BridgeExporterUtil;
  * (b) querying each table for all entries for that health code within 20 minutes of that first entry
  * (c) updating those rows with MomentInDay, if the MomentInDay fields are blank
  *
- * Usage: PdMomentInDay [[synapse table ID]...]
+ * Usage: PdMomentInDay [upload date] [[synapse table ID]...]
  */
 public class PdMomentInDay {
     private static final long APPEND_TIMEOUT_MILLISECONDS = 30 * 1000;
@@ -54,10 +55,11 @@ public class PdMomentInDay {
 
     public static void main(String[] args) throws InterruptedException, IOException, SynapseException {
         // args
-        if (args.length == 0) {
-            throw new IllegalArgumentException("Usage: PdMomentInDay [[synapse table ID]...]");
+        if (args.length < 2) {
+            throw new IllegalArgumentException("Usage: PdMomentInDay [upload date] [[synapse table ID]...]");
         }
-        String[] tableIdArray = args;
+        String uploadDate = args[0];
+        String[] tableIdArray = Arrays.copyOfRange(args, 1, args.length);
         Map<String, TableMetadata> tableMetadataMap = new HashMap<>();
 
         // init config
@@ -121,7 +123,8 @@ public class PdMomentInDay {
             selectColumnSet.add("createdOn");
             selectColumnSet.addAll(oneTableMetadata.momentInDayColumnSet);
             String sql = "SELECT \"" + SELECT_COLUMN_JOINER.join(selectColumnSet) + "\" FROM " + oneTableId
-                    + " WHERE \"" + oneTableMetadata.queryColumn + "\" IS NOT NULL";
+                    + " WHERE \"" + oneTableMetadata.queryColumn + "\" IS NOT NULL AND uploadDate='" + uploadDate
+                    + "'";
 
             // Iterate table results
             SynapseTableIterator tableIter = new SynapseTableIterator(synapseClient, sql, oneTableId);
