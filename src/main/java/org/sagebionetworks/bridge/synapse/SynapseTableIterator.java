@@ -12,6 +12,7 @@ import org.sagebionetworks.repo.model.table.QueryNextPageToken;
 import org.sagebionetworks.repo.model.table.QueryResult;
 import org.sagebionetworks.repo.model.table.QueryResultBundle;
 import org.sagebionetworks.repo.model.table.Row;
+import org.sagebionetworks.repo.model.table.SelectColumn;
 
 /** Helper class to query Synapse tables and iterate over the results, abstracting away pagination. */
 // This doesn't implement Iterator, since Iterator's methods can't throw checked exceptions.
@@ -28,6 +29,7 @@ public class SynapseTableIterator {
     private int curRowNumInPage = 0;
     private String etag;
     private boolean firstPage = true;
+    private List<SelectColumn> headers;
     private Row nextRow;
 
     /**
@@ -149,6 +151,23 @@ public class SynapseTableIterator {
         return etag;
     }
 
+    /**
+     * Returns the headers (selected columns) from the first page of results. This will remain the same for all
+     * subsequent pages.
+     *
+     * @return list of headers (selected columns
+     * @throws SynapseException
+     *         if an underlying Synapse call fails
+     */
+    public List<SelectColumn> getHeaders() throws SynapseException {
+        if (headers == null) {
+            // Force initialization by calling hasNext(), which fetches the page. This is safe, because hasNext() will
+            // only fetch the page if it hasn't already been fetched.
+            hasNext();
+        }
+        return headers;
+    }
+
     private void fetchNextPage() throws SynapseException {
         // poll asyncGet until success or timeout
         boolean success = false;
@@ -170,6 +189,7 @@ public class SynapseTableIterator {
 
                     // fetch etag
                     etag = curResult.getQueryResults().getEtag();
+                    headers = curResult.getQueryResults().getHeaders();
 
                     // This is no longer the first page.
                     firstPage = false;

@@ -5,6 +5,7 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
@@ -13,17 +14,20 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
 
+import com.google.common.collect.ImmutableList;
 import org.sagebionetworks.client.SynapseClient;
 import org.sagebionetworks.repo.model.table.QueryNextPageToken;
 import org.sagebionetworks.repo.model.table.QueryResult;
 import org.sagebionetworks.repo.model.table.QueryResultBundle;
 import org.sagebionetworks.repo.model.table.Row;
 import org.sagebionetworks.repo.model.table.RowSet;
+import org.sagebionetworks.repo.model.table.SelectColumn;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 @SuppressWarnings("unchecked")
 public class SynapseTableIteratorTest {
+    private static final List<SelectColumn> DUMMY_HEADER_LIST = ImmutableList.of();
     private static final String TEST_SYNAPSE_TABLE_ID = "test-syn001";
 
     @DataProvider(name = "dataProvider")
@@ -72,6 +76,7 @@ public class SynapseTableIteratorTest {
                 RowSet rowSet = new RowSet();
                 rowSet.setRows(rowList);
                 rowSet.setEtag("etag" + i);
+                rowSet.setHeaders(DUMMY_HEADER_LIST);
 
                 // Query result.
                 results[i] = new QueryResult();
@@ -116,12 +121,17 @@ public class SynapseTableIteratorTest {
             assertEquals(tableIter.next().getRowId().longValue(), i);
 
             // getEtag() should always return etag0, which is etag of the first page
-            assertEquals("etag0", tableIter.getEtag());
+            assertEquals(tableIter.getEtag(), "etag0");
+
+            // check that headers is set
+            assertSame(tableIter.getHeaders(), DUMMY_HEADER_LIST);
         }
 
         // End of stream. hasNext() returns false. next() throws. getEtag() still returns etag of the first page.
+        // getHeaders() still returns headers
         assertFalse(tableIter.hasNext());
-        assertEquals("etag0", tableIter.getEtag());
+        assertEquals(tableIter.getEtag(), "etag0");
+        assertSame(tableIter.getHeaders(), DUMMY_HEADER_LIST);
         Exception thrownEx = null;
         try {
             tableIter.next();

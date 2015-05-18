@@ -29,7 +29,7 @@ public class SynapsePartialRowTest {
         // construct partial row update request
         PartialRow partialRow = new PartialRow();
         partialRow.setRowId(0L);
-        partialRow.setValues(ImmutableMap.of("foo", "updated value"));
+        partialRow.setValues(ImmutableMap.of("3635", "updated value 2"));
 
         PartialRowSet partialRowSet = new PartialRowSet();
         partialRowSet.setTableId("syn3735779");
