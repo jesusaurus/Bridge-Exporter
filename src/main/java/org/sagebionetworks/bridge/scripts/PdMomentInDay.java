@@ -6,9 +6,15 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -46,12 +52,17 @@ public class PdMomentInDay {
     private static final long APPEND_TIMEOUT_MILLISECONDS = 30 * 1000;
     private static final String MOMENT_IN_DAY_FORMAT_JSON = "momentInDayFormat.json";
     private static final String MOMENT_IN_DAY_FORMAT_JSON_CHOICE_ANSWERS = "momentInDayFormat.json.choiceAnswers";
-    private static final int PROGRESS_REPORT_INTERVAL = 10;
+    private static final int TASK_REMAINING_REPORT_INTERVAL = 50;
     private static final long TWENTY_MINUTES_IN_MILLISECONDS = 20 * 60 * 1000;
 
     // Join column names for select clause. We have to double quote all column names, because some of them contain
     // periods.
     private static final Joiner SELECT_COLUMN_JOINER = Joiner.on("\", \"");
+
+    // refactor this. global vars are bad
+    private static SynapseClient synapseClient;
+    private static String[] tableIdArray;
+    private final static Map<String, TableMetadata> tableMetadataMap = new HashMap<>();
 
     public static void main(String[] args) throws InterruptedException, IOException, SynapseException {
         // args
@@ -59,8 +70,7 @@ public class PdMomentInDay {
             throw new IllegalArgumentException("Usage: PdMomentInDay [upload date] [[synapse table ID]...]");
         }
         String uploadDate = args[0];
-        String[] tableIdArray = Arrays.copyOfRange(args, 1, args.length);
-        Map<String, TableMetadata> tableMetadataMap = new HashMap<>();
+        tableIdArray = Arrays.copyOfRange(args, 1, args.length);
 
         // init config
         File synapseConfigFile = new File(System.getProperty("user.home") + "/bridge-synapse-exporter-config.json");
@@ -68,13 +78,16 @@ public class PdMomentInDay {
                 BridgeExporterConfig.class);
 
         // init synapse client
-        SynapseClient synapseClient = new SynapseClientImpl();
+        synapseClient = new SynapseClientImpl();
         synapseClient.setUserName(config.getUsername());
         synapseClient.setApiKey(config.getApiKey());
 
         // init synapse helper with synapse client
         SynapseHelper synapseHelper = new SynapseHelper();
         synapseHelper.setSynapseClient(synapseClient);
+
+        // executor
+        ExecutorService executor = Executors.newFixedThreadPool(config.getNumThreads());
 
         // query synapse for each table to get its parent project ID and column info
         System.out.println("Initializing table metadata...");
@@ -112,6 +125,7 @@ public class PdMomentInDay {
         }
 
         // Any table may have the momentInDay, so we need to check all of them.
+        Queue<Future<?>> outstandingTaskQueue = new LinkedList<>();
         for (String oneTableId : tableIdArray) {
             System.out.println("Scanning table " + oneTableId);
             TableMetadata oneTableMetadata = tableMetadataMap.get(oneTableId);
@@ -130,113 +144,34 @@ public class PdMomentInDay {
             SynapseTableIterator tableIter = new SynapseTableIterator(synapseClient, sql, oneTableId);
             List<SelectColumn> selectColumnList = tableIter.getHeaders();
             int numColumns = selectColumnList.size();
-            int numRows = 0;
-            Stopwatch progressStopwatch = Stopwatch.createStarted();
             while (tableIter.hasNext()) {
-                if ((++numRows) % PROGRESS_REPORT_INTERVAL == 0) {
-                    System.out.println("Rows processed: " + numRows + " in "
-                            + progressStopwatch.elapsed(TimeUnit.SECONDS) + " seconds");
-                }
-
                 Row rowWithMomentInDay = tableIter.next();
-                List<String> columnValueList = rowWithMomentInDay.getValues();
-                if (columnValueList.size() != numColumns) {
-                    throw new IllegalStateException("mismatch number of columns for table " + oneTableId);
-                }
+                Task task = new Task();
+                task.numColumns = numColumns;
+                task.row = rowWithMomentInDay;
+                task.selectColumnList = selectColumnList;
+                task.tableId = oneTableId;
+                Future<?> taskFuture = executor.submit(task);
+                outstandingTaskQueue.add(taskFuture);
+            }
+        }
 
-                // parse the columns
-                String recordId = null;
-                String healthCode = null;
-                Long createdOn = null;
-                Map<String, String> momentInDayColumnValueMap = new HashMap<>();
-                byte[] momentInDayJsonBytes = null;
-                for (int i = 0; i < numColumns; i++) {
-                    String columnName = selectColumnList.get(i).getName();
-                    String columnValue = columnValueList.get(i);
+        // Wait for outstanding tasks
+        Stopwatch outstandingTaskStopwatch = Stopwatch.createStarted();
+        while (!outstandingTaskQueue.isEmpty()) {
+            int numOutstanding = outstandingTaskQueue.size();
+            if (numOutstanding % TASK_REMAINING_REPORT_INTERVAL == 0) {
+                System.out.println("Num outstanding tasks: " + numOutstanding + " after " +
+                        outstandingTaskStopwatch.elapsed(TimeUnit.SECONDS) + " seconds");
+            }
 
-                    if (columnName.equals("recordId")) {
-                        recordId = columnValue;
-                    } else if (columnName.equals("healthCode")) {
-                        healthCode = columnValue;
-                    } else if (columnName.equals("createdOn")) {
-                        createdOn = Long.parseLong(columnValue);
-                    } else if (columnName.equals(MOMENT_IN_DAY_FORMAT_JSON)) {
-                        // download the JSON and parse out the choiceAnswers column
-                        File tmpFile = File.createTempFile("momentInDayFormat", ".json");
-                        synapseClient.downloadFromFileHandleTemporaryUrl(columnValue, tmpFile);
-                        momentInDayJsonBytes = Files.toByteArray(tmpFile);
-                        tmpFile.delete();
-
-                        JsonNode momentInDayJson = BridgeExporterUtil.JSON_MAPPER.readTree(momentInDayJsonBytes);
-                        momentInDayColumnValueMap.put(MOMENT_IN_DAY_FORMAT_JSON_CHOICE_ANSWERS,
-                                momentInDayJson.get("choiceAnswers").toString());
-                    } else if (columnName.startsWith(MOMENT_IN_DAY_FORMAT_JSON)) {
-                        momentInDayColumnValueMap.put(columnName, columnValue);
-
-                        if (columnName.equals(MOMENT_IN_DAY_FORMAT_JSON_CHOICE_ANSWERS)) {
-                            // if this is the choice answers field, copy it to the JSON
-                            JsonNode choiceAnswersJson = BridgeExporterUtil.JSON_MAPPER.readTree(columnValue);
-                            ObjectNode momentInDayJson = BridgeExporterUtil.JSON_MAPPER.createObjectNode();
-                            momentInDayJson.set("choiceAnswers", choiceAnswersJson);
-                            String momentInDayJsonString = BridgeExporterUtil.JSON_MAPPER
-                                    .writerWithDefaultPrettyPrinter().writeValueAsString(momentInDayJson);
-                            momentInDayJsonBytes = momentInDayJsonString.getBytes(Charsets.UTF_8);
-                        }
-                    }
-                }
-
-                // validate fields
-                if (Strings.isNullOrEmpty(recordId)) {
-                    throw new IllegalStateException("No recordId for table " + oneTableId);
-                }
-                if (Strings.isNullOrEmpty(healthCode)) {
-                    throw new IllegalStateException("No healthCode for record " + recordId + " in table "
-                            + oneTableId);
-                }
-                if (createdOn == null) {
-                    throw new IllegalStateException("No createdOn for record " + recordId + " in table "
-                            + oneTableId);
-                }
-                if (momentInDayColumnValueMap.isEmpty()) {
-                    throw new IllegalStateException("No momentInDayFormat fields for record " + recordId + " in table "
-                            + oneTableId);
-                }
-                if (momentInDayJsonBytes == null) {
-                    throw new IllegalStateException("No momentInDayFormat.json for record " + recordId + " in table "
-                            + oneTableId);
-                }
-
-                // check for all records in all tables that happened within the next 20 minutes of this record
-                for (String innerTableId : tableIdArray) {
-                    // Figure out how we want to update this table.
-                    TableMetadata innerTableMetadata = tableMetadataMap.get(innerTableId);
-                    Map<String, String> innerColumnMap = new HashMap<>();
-                    byte[] innerJsonBytes = null;
-                    for (String oneInnerColumn : innerTableMetadata.momentInDayColumnSet) {
-                        if (oneInnerColumn.equals(MOMENT_IN_DAY_FORMAT_JSON)) {
-                            innerJsonBytes = momentInDayJsonBytes;
-                        } else {
-                            innerColumnMap.put(oneInnerColumn, momentInDayColumnValueMap.get(oneInnerColumn));
-                        }
-                    }
-
-                    // get record IDs and row IDs of rows we want to update
-                    String innerSql = "SELECT recordId FROM " + innerTableId + " WHERE healthCode='" + healthCode
-                            + "' AND createdOn >= " + createdOn + " AND createdOn <= "
-                            + (createdOn + TWENTY_MINUTES_IN_MILLISECONDS) + " AND \"" + innerTableMetadata.queryColumn
-                            + "\" IS NULL";
-                    SynapseTableIterator innerTableIter = new SynapseTableIterator(synapseClient, innerSql,
-                            innerTableId);
-                    while (innerTableIter.hasNext()) {
-                        Row innerRow = innerTableIter.next();
-                        TableRowUpdate innerRowUpdate = new TableRowUpdate();
-                        innerRowUpdate.columnValueMap = innerColumnMap;
-                        innerRowUpdate.momentInDayJsonBytes = innerJsonBytes;
-                        innerRowUpdate.recordId = innerRow.getValues().get(0);
-                        innerRowUpdate.rowId = innerRow.getRowId();
-                        innerTableMetadata.rowUpdateList.add(innerRowUpdate);
-                    }
-                }
+            // Tasks have no return value. If Future.get() returns normally, then the task is done.
+            Future<?> oneFuture = outstandingTaskQueue.remove();
+            try {
+                oneFuture.get();
+            } catch (ExecutionException | InterruptedException ex) {
+                System.out.println("[ERROR] Error finishing task: " + ex.getMessage());
+                ex.printStackTrace(System.out);
             }
         }
 
@@ -327,5 +262,119 @@ public class PdMomentInDay {
         private byte[] momentInDayJsonBytes;
         private String recordId;
         private long rowId;
+    }
+
+    private static class Task implements Runnable {
+        private int numColumns;
+        private Row row;
+        private List<SelectColumn> selectColumnList;
+        private String tableId;
+
+        @Override
+        public void run() {
+            List<String> columnValueList = row.getValues();
+            if (columnValueList.size() != numColumns) {
+                throw new IllegalStateException("mismatch number of columns for table " + tableId);
+            }
+
+            // parse the columns
+            String recordId = null;
+            String healthCode = null;
+            Long createdOn = null;
+            Map<String, String> momentInDayColumnValueMap = new HashMap<>();
+            byte[] momentInDayJsonBytes = null;
+
+            try {
+                for (int i = 0; i < numColumns; i++) {
+                    String columnName = selectColumnList.get(i).getName();
+                    String columnValue = columnValueList.get(i);
+
+                    if (columnName.equals("recordId")) {
+                        recordId = columnValue;
+                    } else if (columnName.equals("healthCode")) {
+                        healthCode = columnValue;
+                    } else if (columnName.equals("createdOn")) {
+                        createdOn = Long.parseLong(columnValue);
+                    } else if (columnName.equals(MOMENT_IN_DAY_FORMAT_JSON)) {
+                        // download the JSON and parse out the choiceAnswers column
+                        File tmpFile = File.createTempFile("momentInDayFormat", ".json");
+                        synapseClient.downloadFromFileHandleTemporaryUrl(columnValue, tmpFile);
+                        momentInDayJsonBytes = Files.toByteArray(tmpFile);
+                        tmpFile.delete();
+
+                        JsonNode momentInDayJson = BridgeExporterUtil.JSON_MAPPER.readTree(momentInDayJsonBytes);
+                        momentInDayColumnValueMap.put(MOMENT_IN_DAY_FORMAT_JSON_CHOICE_ANSWERS,
+                                momentInDayJson.get("choiceAnswers").toString());
+                    } else if (columnName.startsWith(MOMENT_IN_DAY_FORMAT_JSON)) {
+                        momentInDayColumnValueMap.put(columnName, columnValue);
+
+                        if (columnName.equals(MOMENT_IN_DAY_FORMAT_JSON_CHOICE_ANSWERS)) {
+                            // if this is the choice answers field, copy it to the JSON
+                            JsonNode choiceAnswersJson = BridgeExporterUtil.JSON_MAPPER.readTree(columnValue);
+                            ObjectNode momentInDayJson = BridgeExporterUtil.JSON_MAPPER.createObjectNode();
+                            momentInDayJson.set("choiceAnswers", choiceAnswersJson);
+                            String momentInDayJsonString = BridgeExporterUtil.JSON_MAPPER
+                                    .writerWithDefaultPrettyPrinter().writeValueAsString(momentInDayJson);
+                            momentInDayJsonBytes = momentInDayJsonString.getBytes(Charsets.UTF_8);
+                        }
+                    }
+                }
+
+                // validate fields
+                if (Strings.isNullOrEmpty(recordId)) {
+                    throw new IllegalStateException("No recordId for table " + tableId);
+                }
+                if (Strings.isNullOrEmpty(healthCode)) {
+                    throw new IllegalStateException("No healthCode for record " + recordId + " in table "
+                            + tableId);
+                }
+                if (createdOn == null) {
+                    throw new IllegalStateException("No createdOn for record " + recordId + " in table "
+                            + tableId);
+                }
+                if (momentInDayColumnValueMap.isEmpty()) {
+                    throw new IllegalStateException("No momentInDayFormat fields for record " + recordId + " in table "
+                            + tableId);
+                }
+                if (momentInDayJsonBytes == null) {
+                    throw new IllegalStateException("No momentInDayFormat.json for record " + recordId + " in table "
+                            + tableId);
+                }
+
+                // check for all records in all tables that happened within the next 20 minutes of this record
+                for (String innerTableId : tableIdArray) {
+                    // Figure out how we want to update this table.
+                    TableMetadata innerTableMetadata = tableMetadataMap.get(innerTableId);
+                    Map<String, String> innerColumnMap = new HashMap<>();
+                    byte[] innerJsonBytes = null;
+                    for (String oneInnerColumn : innerTableMetadata.momentInDayColumnSet) {
+                        if (oneInnerColumn.equals(MOMENT_IN_DAY_FORMAT_JSON)) {
+                            innerJsonBytes = momentInDayJsonBytes;
+                        } else {
+                            innerColumnMap.put(oneInnerColumn, momentInDayColumnValueMap.get(oneInnerColumn));
+                        }
+                    }
+
+                    // get record IDs and row IDs of rows we want to update
+                    String innerSql = "SELECT recordId FROM " + innerTableId + " WHERE healthCode='" + healthCode
+                            + "' AND createdOn >= " + createdOn + " AND createdOn <= "
+                            + (createdOn + TWENTY_MINUTES_IN_MILLISECONDS) + " AND \"" + innerTableMetadata.queryColumn
+                            + "\" IS NULL";
+                    SynapseTableIterator innerTableIter = new SynapseTableIterator(synapseClient, innerSql,
+                            innerTableId);
+                    while (innerTableIter.hasNext()) {
+                        Row innerRow = innerTableIter.next();
+                        TableRowUpdate innerRowUpdate = new TableRowUpdate();
+                        innerRowUpdate.columnValueMap = innerColumnMap;
+                        innerRowUpdate.momentInDayJsonBytes = innerJsonBytes;
+                        innerRowUpdate.recordId = innerRow.getValues().get(0);
+                        innerRowUpdate.rowId = innerRow.getRowId();
+                        innerTableMetadata.rowUpdateList.add(innerRowUpdate);
+                    }
+                }
+            } catch (IOException | SynapseException ex) {
+                throw new RuntimeException("Error handling record " + recordId + ": " + ex.getMessage(), ex);
+            }
+        }
     }
 }
