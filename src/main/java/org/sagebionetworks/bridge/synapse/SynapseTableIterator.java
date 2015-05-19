@@ -2,8 +2,10 @@ package org.sagebionetworks.bridge.synapse;
 
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.concurrent.TimeUnit;
 
 import com.google.common.base.Strings;
+import com.jcabi.aspects.RetryOnFailure;
 import org.sagebionetworks.client.SynapseClient;
 import org.sagebionetworks.client.exceptions.SynapseClientException;
 import org.sagebionetworks.client.exceptions.SynapseException;
@@ -52,8 +54,7 @@ public class SynapseTableIterator {
 
         this.synapseClient = synapseClient;
         this.synapseTableId = synapseTableId;
-        this.asyncJobToken = synapseClient.queryTableEntityBundleAsyncStart(sql, null, null, true,
-                SynapseClient.QUERY_PARTMASK, synapseTableId);
+        this.asyncJobToken = queryTableAsyncStartWithRetry(sql);
     }
 
     /**
@@ -96,8 +97,7 @@ public class SynapseTableIterator {
                 // next page.
                 QueryNextPageToken nextPageToken = curResult.getNextPageToken();
                 if (nextPageToken != null) {
-                    asyncJobToken = synapseClient.queryTableEntityNextPageAsyncStart(nextPageToken.getToken(),
-                            synapseTableId);
+                    asyncJobToken = queryTableNextPageAsyncStartWithRetry(nextPageToken.getToken());
                 }
 
                 // Wipe out the curResult, since we're done with it. This allows the iterator to remember that we
@@ -180,34 +180,111 @@ public class SynapseTableIterator {
             }
 
             // poll
-            try {
-                if (firstPage) {
-                    // This is the first page, so we call bundle get instead of next page get.
-                    QueryResultBundle resultBundle = synapseClient.queryTableEntityBundleAsyncGet(asyncJobToken,
-                            synapseTableId);
-                    curResult = resultBundle.getQueryResult();
-
-                    // fetch etag
-                    etag = curResult.getQueryResults().getEtag();
-                    headers = curResult.getQueryResults().getHeaders();
-
-                    // This is no longer the first page.
-                    firstPage = false;
-                } else {
-                    // We're getting a next page.
-                    curResult = synapseClient.queryTableEntityNextPageAsyncGet(asyncJobToken, synapseTableId);
+            if (firstPage) {
+                // This is the first page, so we call bundle get instead of next page get.
+                QueryResultBundle resultBundle = queryTableAsyncGetWithRetry(asyncJobToken);
+                if (resultBundle == null) {
+                    // not ready, loop around again
+                    continue;
                 }
+                curResult = resultBundle.getQueryResult();
 
-                // If this doesn't throw, we've successfully fetched the page.
-                success = true;
-                break;
-            } catch (SynapseResultNotReadyException ex) {
-                // results not ready, sleep some more
+                // fetch etag
+                etag = curResult.getQueryResults().getEtag();
+                headers = curResult.getQueryResults().getHeaders();
+
+                // This is no longer the first page.
+                firstPage = false;
+            } else {
+                // We're getting a next page.
+                curResult = queryTableNextPageAsyncGetWithRetry(asyncJobToken);
+                if (curResult == null) {
+                    // not ready, loop around again
+                    continue;
+                }
             }
+
+            // If we made it this far, we've successfully fetched the page.
+            success = true;
+            break;
         }
 
         if (!success) {
             throw new SynapseClientException("Timed out querying table " + synapseTableId);
+        }
+    }
+
+    /**
+     * Kicks off an async SQL query against the specified table. This uses jcabi-retry to retry the call on failure.
+     *
+     * @param sql
+     *         SQL to run against table
+     * @return the async job token
+     * @throws SynapseException
+     *         if the Synapse call fails
+     */
+    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
+            randomize = false)
+    private String queryTableAsyncStartWithRetry(String sql) throws SynapseException {
+        return synapseClient.queryTableEntityBundleAsyncStart(sql, null, null, true, SynapseClient.QUERY_PARTMASK,
+                synapseTableId);
+    }
+
+    /**
+     * Fetches the result of an async query, or returns null if the result is not ready. This uses jcabi-retry to
+     * retry the call on failure.
+     *
+     * @param asyncJobToken
+     *         async job token of the result to be fetched
+     * @return the result of the async query, or null if the result is not ready
+     * @throws SynapseException
+     *         if the Synapse call fails
+     */
+    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
+            randomize = false)
+    private QueryResultBundle queryTableAsyncGetWithRetry(String asyncJobToken) throws SynapseException {
+        try {
+            return synapseClient.queryTableEntityBundleAsyncGet(asyncJobToken, synapseTableId);
+        } catch (SynapseResultNotReadyException ex) {
+            // catch this and return null so we don't retry on "not ready"
+            return null;
+        }
+    }
+
+    /**
+     * Asynchronously gets the next page of the query for the specified table. This uses jcabi-retry to retry the call
+     * on failure.
+     *
+     * @param nextPageToken
+     *         token used to fetch the next page
+     * @return the async job token
+     * @throws SynapseException
+     *         if the Synapse call fails
+     */
+    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
+            randomize = false)
+    private String queryTableNextPageAsyncStartWithRetry(String nextPageToken) throws SynapseException {
+        return synapseClient.queryTableEntityNextPageAsyncStart(nextPageToken, synapseTableId);
+    }
+
+    /**
+     * Fetches the result of an async query next page, or returns null if the result is not ready. This uses
+     * jcabi-retry to retry the call on failure.
+     *
+     * @param asyncJobToken
+     *         async job token of the result to be fetched
+     * @return the result of the async query, or null if the result is not ready
+     * @throws SynapseException
+     *         if the Synapse call fails
+     */
+    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
+            randomize = false)
+    private QueryResult queryTableNextPageAsyncGetWithRetry(String asyncJobToken) throws SynapseException {
+        try {
+            return synapseClient.queryTableEntityNextPageAsyncGet(asyncJobToken, synapseTableId);
+        } catch (SynapseResultNotReadyException ex) {
+            // catch this and return null so we don't retry on "not ready"
+            return null;
         }
     }
 }

@@ -17,6 +17,7 @@ import org.sagebionetworks.client.exceptions.SynapseException;
 import org.sagebionetworks.client.exceptions.SynapseResultNotReadyException;
 import org.sagebionetworks.repo.model.AccessControlList;
 import org.sagebionetworks.repo.model.file.FileHandle;
+import org.sagebionetworks.repo.model.table.AppendableRowSet;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 import org.sagebionetworks.repo.model.table.CsvTableDescriptor;
@@ -29,6 +30,7 @@ import org.sagebionetworks.bridge.s3.S3Helper;
 import org.sagebionetworks.bridge.util.BridgeExporterUtil;
 
 public class SynapseHelper {
+    private static final long APPEND_TIMEOUT_MILLISECONDS = 30 * 1000;
     private static final int ASYNC_UPLOAD_TIMEOUT_SECONDS = 300;
     public static final int DEFAULT_MAX_LENGTH = 100;
 
@@ -243,6 +245,13 @@ public class SynapseHelper {
         return linesProcessed;
     }
 
+    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS,
+            types = { InterruptedException.class, SynapseException.class }, randomize = false)
+    public void appendRowsToTableWithRetry(AppendableRowSet rowSet, String tableId) throws InterruptedException,
+            SynapseException {
+        synapseClient.appendRowsToTable(rowSet, APPEND_TIMEOUT_MILLISECONDS, tableId);
+    }
+
     @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
             randomize = false)
     public AccessControlList createAclWithRetry(AccessControlList acl) throws SynapseException {
@@ -255,10 +264,8 @@ public class SynapseHelper {
         return synapseClient.createColumnModels(columnList);
     }
 
-    @RetryOnFailure(attempts = 5, delay = 1, unit = TimeUnit.SECONDS, types = {
-            AmazonClientException.class,
-            SynapseException.class
-    }, randomize = false)
+    @RetryOnFailure(attempts = 5, delay = 1, unit = TimeUnit.SECONDS,
+            types = { AmazonClientException.class, SynapseException.class }, randomize = false)
     public FileHandle createFileHandleWithRetry(File file, String contentType, String parentId) throws IOException,
             SynapseException {
         return synapseClient.createFileHandle(file, contentType, parentId);
@@ -268,6 +275,18 @@ public class SynapseHelper {
             randomize = false)
     public TableEntity createTableWithRetry(TableEntity table) throws SynapseException {
         return synapseClient.createEntity(table);
+    }
+
+    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
+            randomize = false)
+    public void downloadFileHandleWithRetry(String fileHandleId, File toFile) throws SynapseException {
+        synapseClient.downloadFromFileHandleTemporaryUrl(fileHandleId, toFile);
+    }
+
+    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
+            randomize = false)
+    public List<ColumnModel> getColumnModelsForTableWithRetry(String tableId) throws SynapseException {
+        return synapseClient.getColumnModelsForTableEntity(tableId);
     }
 
     @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,

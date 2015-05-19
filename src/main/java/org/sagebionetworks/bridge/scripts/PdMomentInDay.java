@@ -49,7 +49,6 @@ import org.sagebionetworks.bridge.util.BridgeExporterUtil;
  * Usage: PdMomentInDay [upload date] [[synapse table ID]...]
  */
 public class PdMomentInDay {
-    private static final long APPEND_TIMEOUT_MILLISECONDS = 30 * 1000;
     private static final int APPEND_PAGE_SIZE = 64;
     private static final String MOMENT_IN_DAY_FORMAT_JSON = "momentInDayFormat.json";
     private static final String MOMENT_IN_DAY_FORMAT_JSON_CHOICE_ANSWERS = "momentInDayFormat.json.choiceAnswers";
@@ -62,6 +61,7 @@ public class PdMomentInDay {
 
     // refactor this. global vars are bad
     private static SynapseClient synapseClient;
+    private static SynapseHelper synapseHelper;
     private static String[] tableIdArray;
     private final static Map<String, TableMetadata> tableMetadataMap = new HashMap<>();
 
@@ -85,7 +85,7 @@ public class PdMomentInDay {
             synapseClient.setApiKey(config.getApiKey());
 
             // init synapse helper with synapse client
-            SynapseHelper synapseHelper = new SynapseHelper();
+            synapseHelper = new SynapseHelper();
             synapseHelper.setSynapseClient(synapseClient);
 
             // executor
@@ -101,7 +101,7 @@ public class PdMomentInDay {
                 oneTableMetadata.parentId = oneTable.getParentId();
 
                 // get column data
-                List<ColumnModel> columnList = synapseClient.getColumnModelsForTableEntity(oneTableId);
+                List<ColumnModel> columnList = synapseHelper.getColumnModelsForTableWithRetry(oneTableId);
                 for (ColumnModel oneColumn : columnList) {
                     String columnName = oneColumn.getName();
 
@@ -129,7 +129,6 @@ public class PdMomentInDay {
 
             // Any table may have the momentInDay, so we need to check all of them.
             Queue<Future<?>> outstandingTaskQueue = new LinkedList<>();
-            int numRows = 0;
             for (String oneTableId : tableIdArray) {
                 System.out.println("Scanning table " + oneTableId);
                 TableMetadata oneTableMetadata = tableMetadataMap.get(oneTableId);
@@ -238,11 +237,13 @@ public class PdMomentInDay {
                     PartialRowSet partialRowSet = new PartialRowSet();
                     partialRowSet.setTableId(oneTableId);
                     partialRowSet.setRows(partialRowList);
-                    synapseClient.appendRowsToTable(partialRowSet, APPEND_TIMEOUT_MILLISECONDS, oneTableId);
+                    synapseHelper.appendRowsToTableWithRetry(partialRowSet, oneTableId);
                 }
             }
 
             System.out.println("Done");
+        } catch (Throwable t) {
+            t.printStackTrace(System.out);
         } finally {
             System.exit(0);
         }
@@ -310,7 +311,7 @@ public class PdMomentInDay {
                     } else if (columnName.equals(MOMENT_IN_DAY_FORMAT_JSON)) {
                         // download the JSON and parse out the choiceAnswers column
                         File tmpFile = File.createTempFile("momentInDayFormat", ".json");
-                        synapseClient.downloadFromFileHandleTemporaryUrl(columnValue, tmpFile);
+                        synapseHelper.downloadFileHandleWithRetry(columnValue, tmpFile);
                         momentInDayJsonBytes = Files.toByteArray(tmpFile);
                         tmpFile.delete();
 
