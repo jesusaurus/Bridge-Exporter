@@ -200,24 +200,8 @@ public class PdMomentInDay {
 
                     List<PartialRow> partialRowList = new ArrayList<>();
                     for (TableRowUpdate oneRowUpdate : rowUpdatePage) {
-                        // special handling if we need to upload the JSON file
-                        if (oneRowUpdate.momentInDayJsonBytes != null) {
-                            // upload the JSON file as a file handle
-                            File tmpFile = File.createTempFile("momentInDayFormat", ".json");
-                            Files.write(oneRowUpdate.momentInDayJsonBytes, tmpFile);
-                            FileHandle fileHandle = synapseHelper.createFileHandleWithRetry(tmpFile, "text/json",
-                                    oneTableMetadata.parentId);
-                            tmpFile.delete();
-
-                            // write that file handle ID to the map of columns
-                            String fileHandleId = fileHandle.getId();
-                            oneRowUpdate.columnValueMap.put(MOMENT_IN_DAY_FORMAT_JSON, fileHandleId);
-                        }
-
                         // construct a map of column ID to value instead of name to value (since append rows takes
-                        // column
-                        // IDs,
-                        // not names)
+                        // column IDs, not names)
                         Map<String, String> columnIdToValue = new HashMap<>();
                         for (Map.Entry<String, String> columnNameValuePair : oneRowUpdate.columnValueMap.entrySet()) {
                             String columnName = columnNameValuePair.getKey();
@@ -272,7 +256,6 @@ public class PdMomentInDay {
     // This class (really a struct) contains data needed to update a table row.
     private static class TableRowUpdate {
         private Map<String, String> columnValueMap;
-        private byte[] momentInDayJsonBytes;
         private String recordId;
         private long rowId;
     }
@@ -289,13 +272,13 @@ public class PdMomentInDay {
             if (columnValueList.size() != numColumns) {
                 throw new IllegalStateException("mismatch number of columns for table " + tableId);
             }
+            TableMetadata tableMetadata = tableMetadataMap.get(tableId);
 
             // parse the columns
             String recordId = null;
             String healthCode = null;
             Long createdOn = null;
             Map<String, String> momentInDayColumnValueMap = new HashMap<>();
-            byte[] momentInDayJsonBytes = null;
 
             try {
                 for (int i = 0; i < numColumns; i++) {
@@ -308,16 +291,6 @@ public class PdMomentInDay {
                         healthCode = columnValue;
                     } else if (columnName.equals("createdOn")) {
                         createdOn = Long.parseLong(columnValue);
-                    } else if (columnName.equals(MOMENT_IN_DAY_FORMAT_JSON)) {
-                        // download the JSON and parse out the choiceAnswers column
-                        File tmpFile = File.createTempFile("momentInDayFormat", ".json");
-                        synapseHelper.downloadFileHandleWithRetry(columnValue, tmpFile);
-                        momentInDayJsonBytes = Files.toByteArray(tmpFile);
-                        tmpFile.delete();
-
-                        JsonNode momentInDayJson = BridgeExporterUtil.JSON_MAPPER.readTree(momentInDayJsonBytes);
-                        momentInDayColumnValueMap.put(MOMENT_IN_DAY_FORMAT_JSON_CHOICE_ANSWERS,
-                                momentInDayJson.get("choiceAnswers").toString());
                     } else if (columnName.startsWith(MOMENT_IN_DAY_FORMAT_JSON)) {
                         momentInDayColumnValueMap.put(columnName, columnValue);
 
@@ -328,7 +301,27 @@ public class PdMomentInDay {
                             momentInDayJson.set("choiceAnswers", choiceAnswersJson);
                             String momentInDayJsonString = BridgeExporterUtil.JSON_MAPPER
                                     .writerWithDefaultPrettyPrinter().writeValueAsString(momentInDayJson);
-                            momentInDayJsonBytes = momentInDayJsonString.getBytes(Charsets.UTF_8);
+                            byte[] momentInDayJsonBytes = momentInDayJsonString.getBytes(Charsets.UTF_8);
+
+                            // upload the file to Synapse and record the file handle ID
+                            File tmpFile = File.createTempFile("momentInDayFormat", ".json");
+                            Files.write(momentInDayJsonBytes, tmpFile);
+                            FileHandle fileHandle = synapseHelper.createFileHandleWithRetry(tmpFile, "text/json",
+                                    tableMetadata.parentId);
+                            tmpFile.delete();
+
+                            // write that file handle ID to the map of columns
+                            momentInDayColumnValueMap.put(MOMENT_IN_DAY_FORMAT_JSON, fileHandle.getId());
+                        } else if (columnName.equals(MOMENT_IN_DAY_FORMAT_JSON)) {
+                            // download the JSON and parse out the choiceAnswers column
+                            File tmpFile = File.createTempFile("momentInDayFormat", ".json");
+                            synapseHelper.downloadFileHandleWithRetry(columnValue, tmpFile);
+                            byte[] momentInDayJsonBytes = Files.toByteArray(tmpFile);
+                            tmpFile.delete();
+
+                            JsonNode momentInDayJson = BridgeExporterUtil.JSON_MAPPER.readTree(momentInDayJsonBytes);
+                            momentInDayColumnValueMap.put(MOMENT_IN_DAY_FORMAT_JSON_CHOICE_ANSWERS,
+                                    momentInDayJson.get("choiceAnswers").toString());
                         }
                     }
                 }
@@ -349,10 +342,6 @@ public class PdMomentInDay {
                     throw new IllegalStateException("No momentInDayFormat fields for record " + recordId + " in table "
                             + tableId);
                 }
-                if (momentInDayJsonBytes == null) {
-                    throw new IllegalStateException("No momentInDayFormat.json for record " + recordId + " in table "
-                            + tableId);
-                }
 
                 // check for all records in all tables that happened within the next 20 minutes of this record
                 for (String innerTableId : tableIdArray) {
@@ -361,11 +350,7 @@ public class PdMomentInDay {
                     Map<String, String> innerColumnMap = new HashMap<>();
                     byte[] innerJsonBytes = null;
                     for (String oneInnerColumn : innerTableMetadata.momentInDayColumnSet) {
-                        if (oneInnerColumn.equals(MOMENT_IN_DAY_FORMAT_JSON)) {
-                            innerJsonBytes = momentInDayJsonBytes;
-                        } else {
-                            innerColumnMap.put(oneInnerColumn, momentInDayColumnValueMap.get(oneInnerColumn));
-                        }
+                        innerColumnMap.put(oneInnerColumn, momentInDayColumnValueMap.get(oneInnerColumn));
                     }
 
                     // get record IDs and row IDs of rows we want to update
@@ -379,7 +364,6 @@ public class PdMomentInDay {
                         Row innerRow = innerTableIter.next();
                         TableRowUpdate innerRowUpdate = new TableRowUpdate();
                         innerRowUpdate.columnValueMap = innerColumnMap;
-                        innerRowUpdate.momentInDayJsonBytes = innerJsonBytes;
                         innerRowUpdate.recordId = innerRow.getValues().get(0);
                         innerRowUpdate.rowId = innerRow.getRowId();
                         innerTableMetadata.rowUpdateList.add(innerRowUpdate);
