@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -16,6 +17,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -60,6 +62,7 @@ public class PdMomentInDay {
     private static final Joiner SELECT_COLUMN_JOINER = Joiner.on("\", \"");
 
     // refactor this. global vars are bad
+    private static final AtomicInteger numRecordsNotFound = new AtomicInteger();
     private static SynapseClient synapseClient;
     private static SynapseHelper synapseHelper;
     private static String[] tableIdArray;
@@ -133,26 +136,16 @@ public class PdMomentInDay {
                 System.out.println("Scanning table " + oneTableId);
                 TableMetadata oneTableMetadata = tableMetadataMap.get(oneTableId);
 
+                // find rows that are missing momentInDayFormat
                 // always include recordId, healthCode, and createdOn
-                Set<String> selectColumnSet = new HashSet<>();
-                selectColumnSet.add("recordId");
-                selectColumnSet.add("healthCode");
-                selectColumnSet.add("createdOn");
-                selectColumnSet.addAll(oneTableMetadata.momentInDayColumnSet);
-                String sql = "SELECT \"" + SELECT_COLUMN_JOINER.join(selectColumnSet) + "\" FROM " + oneTableId
-                        + " WHERE \"" + oneTableMetadata.queryColumn + "\" IS NOT NULL AND uploadDate='" + uploadDate
-                        + "'";
+                String sql = "SELECT recordId, healthCode, createdOn FROM " + oneTableId + " WHERE \""
+                        + oneTableMetadata.queryColumn + "\" IS NULL AND uploadDate='" + uploadDate + "'";
 
                 // Iterate table results
                 SynapseTableIterator tableIter = new SynapseTableIterator(synapseClient, sql, oneTableId);
-                List<SelectColumn> selectColumnList = tableIter.getHeaders();
-                int numColumns = selectColumnList.size();
                 while (tableIter.hasNext()) {
-                    Row rowWithMomentInDay = tableIter.next();
                     Task task = new Task();
-                    task.numColumns = numColumns;
-                    task.row = rowWithMomentInDay;
-                    task.selectColumnList = selectColumnList;
+                    task.row = tableIter.next();
                     task.tableId = oneTableId;
                     Future<?> taskFuture = executor.submit(task);
                     outstandingTaskQueue.add(taskFuture);
@@ -183,6 +176,7 @@ public class PdMomentInDay {
                 TableMetadata oneTableMetadata = tableMetadataMap.get(oneTableId);
                 System.out.println("Rows to update in " + oneTableId + ": " + oneTableMetadata.rowUpdateList.size());
             }
+            System.out.println("Rows that couldn't be matched: " + numRecordsNotFound.intValue());
 
             // Update rows
             for (String oneTableId : tableIdArray) {
@@ -200,20 +194,10 @@ public class PdMomentInDay {
 
                     List<PartialRow> partialRowList = new ArrayList<>();
                     for (TableRowUpdate oneRowUpdate : rowUpdatePage) {
-                        // construct a map of column ID to value instead of name to value (since append rows takes
-                        // column IDs, not names)
-                        Map<String, String> columnIdToValue = new HashMap<>();
-                        for (Map.Entry<String, String> columnNameValuePair : oneRowUpdate.columnValueMap.entrySet()) {
-                            String columnName = columnNameValuePair.getKey();
-                            String columnValue = columnNameValuePair.getValue();
-                            String columnId = oneTableMetadata.columnNameToId.get(columnName);
-                            columnIdToValue.put(columnId, columnValue);
-                        }
-
                         // make partial row set
                         PartialRow partialRow = new PartialRow();
                         partialRow.setRowId(oneRowUpdate.rowId);
-                        partialRow.setValues(columnIdToValue);
+                        partialRow.setValues(oneRowUpdate.columnIdToValue);
                         partialRowList.add(partialRow);
                     }
 
@@ -250,53 +234,78 @@ public class PdMomentInDay {
         private String queryColumn;
 
         // List of rows to update
-        private final List<TableRowUpdate> rowUpdateList = new ArrayList<>();
+        private final List<TableRowUpdate> rowUpdateList = Collections.synchronizedList(
+                new ArrayList<TableRowUpdate>());
     }
 
     // This class (really a struct) contains data needed to update a table row.
     private static class TableRowUpdate {
-        private Map<String, String> columnValueMap;
+        private final Map<String, String> columnIdToValue = new HashMap<>();
         private String recordId;
         private long rowId;
     }
 
     private static class Task implements Runnable {
-        private int numColumns;
         private Row row;
-        private List<SelectColumn> selectColumnList;
         private String tableId;
 
         @Override
         public void run() {
             List<String> columnValueList = row.getValues();
-            if (columnValueList.size() != numColumns) {
-                throw new IllegalStateException("mismatch number of columns for table " + tableId);
-            }
             TableMetadata tableMetadata = tableMetadataMap.get(tableId);
 
-            // parse the columns
-            String recordId = null;
-            String healthCode = null;
-            Long createdOn = null;
-            Map<String, String> momentInDayColumnValueMap = new HashMap<>();
+            // columns are, in order, recordId, healthCode, createdOn
+            String recordId = columnValueList.get(0);
+            String healthCode = columnValueList.get(1);
+            long createdOn = Long.parseLong(columnValueList.get(2));
 
             try {
-                for (int i = 0; i < numColumns; i++) {
-                    String columnName = selectColumnList.get(i).getName();
-                    String columnValue = columnValueList.get(i);
+                // check for all records in all tables that happened within the last 20 minutes of this record, looking
+                // for any row with momentInDayFormat
+                Map<String, String> momentInDayColumnValueMap = new HashMap<>();
+                for (String innerTableId : tableIdArray) {
+                    TableMetadata innerTableMetadata = tableMetadataMap.get(innerTableId);
+                    String innerSql = "SELECT \"" + SELECT_COLUMN_JOINER.join(innerTableMetadata.momentInDayColumnSet)
+                            + "\" FROM " + innerTableId + " WHERE healthCode='" + healthCode + "' AND createdOn >= "
+                            + (createdOn - TWENTY_MINUTES_IN_MILLISECONDS) + " AND createdOn <= " + createdOn
+                            + " AND \"" + innerTableMetadata.queryColumn + "\" IS NOT NULL LIMIT 1";
+                    SynapseTableIterator innerTableIter = new SynapseTableIterator(synapseClient, innerSql,
+                            innerTableId);
 
-                    if (columnName.equals("recordId")) {
-                        recordId = columnValue;
-                    } else if (columnName.equals("healthCode")) {
-                        healthCode = columnValue;
-                    } else if (columnName.equals("createdOn")) {
-                        createdOn = Long.parseLong(columnValue);
-                    } else if (columnName.startsWith(MOMENT_IN_DAY_FORMAT_JSON)) {
-                        momentInDayColumnValueMap.put(columnName, columnValue);
+                    if (innerTableIter.hasNext()) {
+                        // We found one. Get values.
+                        Row innerRow = innerTableIter.next();
+                        List<String> innerColumnValueList = innerRow.getValues();
+                        List<SelectColumn> innerSelectColumnList = innerTableIter.getHeaders();
+                        for (int i = 0; i < innerSelectColumnList.size(); i++) {
+                            String columnName = innerSelectColumnList.get(i).getName();
+                            String columnValue = innerColumnValueList.get(i);
+                            momentInDayColumnValueMap.put(columnName, columnValue);
+                        }
+                    }
+                }
 
-                        if (columnName.equals(MOMENT_IN_DAY_FORMAT_JSON_CHOICE_ANSWERS)) {
-                            // if this is the choice answers field, copy it to the JSON
-                            JsonNode choiceAnswersJson = BridgeExporterUtil.JSON_MAPPER.readTree(columnValue);
+                if (momentInDayColumnValueMap.isEmpty()) {
+                    // This is sadly all too common. Increment a counter and silently return.
+                    numRecordsNotFound.incrementAndGet();
+                    return;
+                }
+
+                // Figure out how we want to update this row.
+                TableRowUpdate rowUpdate = new TableRowUpdate();
+                rowUpdate.recordId = recordId;
+                rowUpdate.rowId = row.getRowId();
+
+                for (String oneUpdateColumn : tableMetadata.momentInDayColumnSet) {
+                    String innerColumnValue = momentInDayColumnValueMap.get(oneUpdateColumn);
+
+                    if (Strings.isNullOrEmpty(innerColumnValue)) {
+                        if (oneUpdateColumn.equals(MOMENT_IN_DAY_FORMAT_JSON)) {
+                            // copy it from the choice answers field
+                            String choiceAnswersString = momentInDayColumnValueMap.get(
+                                    MOMENT_IN_DAY_FORMAT_JSON_CHOICE_ANSWERS);
+                            JsonNode choiceAnswersJson = BridgeExporterUtil.JSON_MAPPER.readTree(choiceAnswersString);
+
                             ObjectNode momentInDayJson = BridgeExporterUtil.JSON_MAPPER.createObjectNode();
                             momentInDayJson.set("choiceAnswers", choiceAnswersJson);
                             String momentInDayJsonString = BridgeExporterUtil.JSON_MAPPER
@@ -311,64 +320,27 @@ public class PdMomentInDay {
                             tmpFile.delete();
 
                             // write that file handle ID to the map of columns
-                            momentInDayColumnValueMap.put(MOMENT_IN_DAY_FORMAT_JSON, fileHandle.getId());
-                        } else if (columnName.equals(MOMENT_IN_DAY_FORMAT_JSON)) {
-                            // download the JSON and parse out the choiceAnswers column
+                            innerColumnValue = fileHandle.getId();
+                        } else if (oneUpdateColumn.equals(MOMENT_IN_DAY_FORMAT_JSON_CHOICE_ANSWERS)) {
+                            // download from the momentInDayFormat.json attachment and parse out the choiceAnswers
+                            String momentInDayFormatFileHandleId = momentInDayColumnValueMap.get(
+                                    MOMENT_IN_DAY_FORMAT_JSON);
                             File tmpFile = File.createTempFile("momentInDayFormat", ".json");
-                            synapseHelper.downloadFileHandleWithRetry(columnValue, tmpFile);
+                            synapseHelper.downloadFileHandleWithRetry(momentInDayFormatFileHandleId, tmpFile);
                             byte[] momentInDayJsonBytes = Files.toByteArray(tmpFile);
                             tmpFile.delete();
 
-                            JsonNode momentInDayJson = BridgeExporterUtil.JSON_MAPPER.readTree(momentInDayJsonBytes);
-                            momentInDayColumnValueMap.put(MOMENT_IN_DAY_FORMAT_JSON_CHOICE_ANSWERS,
-                                    momentInDayJson.get("choiceAnswers").toString());
+                            JsonNode momentInDayJson = BridgeExporterUtil.JSON_MAPPER.readTree(
+                                    momentInDayJsonBytes);
+                            innerColumnValue = momentInDayJson.get("choiceAnswers").toString();
                         }
                     }
+
+                    String columnId = tableMetadata.columnNameToId.get(oneUpdateColumn);
+                    rowUpdate.columnIdToValue.put(columnId, innerColumnValue);
                 }
 
-                // validate fields
-                if (Strings.isNullOrEmpty(recordId)) {
-                    throw new IllegalStateException("No recordId for table " + tableId);
-                }
-                if (Strings.isNullOrEmpty(healthCode)) {
-                    throw new IllegalStateException("No healthCode for record " + recordId + " in table "
-                            + tableId);
-                }
-                if (createdOn == null) {
-                    throw new IllegalStateException("No createdOn for record " + recordId + " in table "
-                            + tableId);
-                }
-                if (momentInDayColumnValueMap.isEmpty()) {
-                    throw new IllegalStateException("No momentInDayFormat fields for record " + recordId + " in table "
-                            + tableId);
-                }
-
-                // check for all records in all tables that happened within the next 20 minutes of this record
-                for (String innerTableId : tableIdArray) {
-                    // Figure out how we want to update this table.
-                    TableMetadata innerTableMetadata = tableMetadataMap.get(innerTableId);
-                    Map<String, String> innerColumnMap = new HashMap<>();
-                    byte[] innerJsonBytes = null;
-                    for (String oneInnerColumn : innerTableMetadata.momentInDayColumnSet) {
-                        innerColumnMap.put(oneInnerColumn, momentInDayColumnValueMap.get(oneInnerColumn));
-                    }
-
-                    // get record IDs and row IDs of rows we want to update
-                    String innerSql = "SELECT recordId FROM " + innerTableId + " WHERE healthCode='" + healthCode
-                            + "' AND createdOn >= " + createdOn + " AND createdOn <= "
-                            + (createdOn + TWENTY_MINUTES_IN_MILLISECONDS) + " AND \"" + innerTableMetadata.queryColumn
-                            + "\" IS NULL";
-                    SynapseTableIterator innerTableIter = new SynapseTableIterator(synapseClient, innerSql,
-                            innerTableId);
-                    while (innerTableIter.hasNext()) {
-                        Row innerRow = innerTableIter.next();
-                        TableRowUpdate innerRowUpdate = new TableRowUpdate();
-                        innerRowUpdate.columnValueMap = innerColumnMap;
-                        innerRowUpdate.recordId = innerRow.getValues().get(0);
-                        innerRowUpdate.rowId = innerRow.getRowId();
-                        innerTableMetadata.rowUpdateList.add(innerRowUpdate);
-                    }
-                }
+                tableMetadata.rowUpdateList.add(rowUpdate);
             } catch (IOException | SynapseException ex) {
                 throw new RuntimeException("Error handling record " + recordId + ": " + ex.getMessage(), ex);
             }
