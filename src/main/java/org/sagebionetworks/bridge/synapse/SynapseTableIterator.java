@@ -19,7 +19,7 @@ import org.sagebionetworks.repo.model.table.SelectColumn;
 /** Helper class to query Synapse tables and iterate over the results, abstracting away pagination. */
 // This doesn't implement Iterator, since Iterator's methods can't throw checked exceptions.
 public class SynapseTableIterator {
-    private static final int ASYNC_QUERY_TIMEOUT_SECONDS = 60;
+    private static final int ASYNC_QUERY_TIMEOUT_SECONDS = 300;
 
     // Constructor args.
     private final SynapseClient synapseClient;
