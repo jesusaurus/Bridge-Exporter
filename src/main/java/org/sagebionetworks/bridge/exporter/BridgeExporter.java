@@ -147,7 +147,7 @@ public class BridgeExporter {
         // http://docs.aws.amazon.com/AWSSdkDocsJava/latest/DeveloperGuide/java-dg-setup.html#set-up-creds for more
         // info.
         DynamoDB ddbClient = new DynamoDB(new AmazonDynamoDBClient());
-        recordTable = ddbClient.getTable("prod-heroku-HealthDataRecord3");
+        recordTable = ddbClient.getTable(config.getBridgeDataDdbPrefix() + "HealthDataRecord3");
 
         // S3 client - move to Spring
         AmazonS3Client s3Client = new AmazonS3Client();
@@ -156,6 +156,7 @@ public class BridgeExporter {
 
         // Export Helper
         ExportHelper exportHelper = new ExportHelper();
+        exportHelper.setConfig(config);
         exportHelper.setDdbClient(ddbClient);
         exportHelper.setS3Helper(s3Helper);
 
@@ -172,6 +173,7 @@ public class BridgeExporter {
 
         // schema Helper
         schemaHelper = new UploadSchemaHelper();
+        schemaHelper.setConfig(config);
         schemaHelper.setDdbClient(ddbClient);
         schemaHelper.init();
 
@@ -195,6 +197,7 @@ public class BridgeExporter {
             case REDRIVE_TABLES:
                 // export and redrive tables both get their records from DDB
                 DynamoRecordIdSource dynamoRecordIdSource = new DynamoRecordIdSource();
+                dynamoRecordIdSource.setConfig(config);
                 dynamoRecordIdSource.setDdbClient(ddbClient);
                 dynamoRecordIdSource.setUploadDateString(uploadDateString);
                 recordIdSource = dynamoRecordIdSource;

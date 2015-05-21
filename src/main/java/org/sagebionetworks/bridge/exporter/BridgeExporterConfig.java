@@ -12,6 +12,8 @@ import com.google.common.collect.ImmutableSet;
  */
 public class BridgeExporterConfig {
     private String apiKey;
+    private String bridgeAttachmentsBucket;
+    private String bridgeDataDdbPrefix;
     private Map<String, Long> dataAccessTeamIdsByStudy;
     private int ddbDelay;
     private String ddbPrefix;
@@ -33,6 +35,24 @@ public class BridgeExporterConfig {
 
     public void setApiKey(String apiKey) {
         this.apiKey = apiKey;
+    }
+
+    /** S3 Bucket for bridge health data attachments (eg "org-sagebridge-attachment-prod") */
+    public String getBridgeAttachmentsBucket() {
+        return bridgeAttachmentsBucket;
+    }
+
+    public void setBridgeAttachmentsBucket(String bridgeAttachmentsBucket) {
+        this.bridgeAttachmentsBucket = bridgeAttachmentsBucket;
+    }
+
+    /** DDB prefix for Bridge tables (eg "prod-heroku-" or "uat-heroku-") */
+    public String getBridgeDataDdbPrefix() {
+        return bridgeDataDdbPrefix;
+    }
+
+    public void setBridgeDataDdbPrefix(String bridgeDataDdbPrefix) {
+        this.bridgeDataDdbPrefix = bridgeDataDdbPrefix;
     }
 
     /**
