@@ -136,7 +136,7 @@ public class SynapseHelper {
                 if ("inline_json_blob".equalsIgnoreCase(bridgeType)) {
                     nodeValue = node.toString();
                 } else {
-                    nodeValue = node.textValue();
+                    nodeValue = node.asText();
                 }
 
                 Integer maxLength = BRIDGE_TYPE_TO_MAX_LENGTH.get(bridgeType);
