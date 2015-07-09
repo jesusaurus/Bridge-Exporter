@@ -13,7 +13,7 @@
         <java.version>1.7</java.version>
         <maven.compiler.source>${java.version}</maven.compiler.source>
         <maven.compiler.target>${java.version}</maven.compiler.target>
-        <synapse.version>2015-05-07-1737-4345a74</synapse.version>
+        <synapse.version>2015-06-10-1782-3e0dada</synapse.version>
     </properties>
 
     <dependencies>
