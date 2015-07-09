@@ -1,7 +1,5 @@
 package org.sagebionetworks.bridge.util;
 
-import java.util.Set;
-
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -15,7 +13,6 @@ public class BridgeExporterUtil {
     public static final ObjectMapper JSON_MAPPER = new ObjectMapper();
     // TODO: make timezone configurable
     public static final DateTimeZone LOCAL_TIME_ZONE = DateTimeZone.forID("America/Los_Angeles");
-    public static final String S3_BUCKET_ATTACHMENTS = "org-sagebridge-attachment-prod";
 
     // app versions look like "version 1.0, build 7", where "build 7" can be anything. Anything that
     // starts with "version 1.0," is v1, so we need to filter that out.

@@ -24,8 +24,18 @@ import org.sagebionetworks.bridge.util.BridgeExporterUtil;
  * other helpers.
  */
 public class ExportHelper {
+    private BridgeExporterConfig config;
     private DynamoDB ddbClient;
     private S3Helper s3Helper;
+
+    /** Bridge Exporter configuration. Configured externally. */
+    public BridgeExporterConfig getConfig() {
+        return config;
+    }
+
+    public void setConfig(BridgeExporterConfig config) {
+        this.config = config;
+    }
 
     /** DynamoDB client. Configured externally. */
     public DynamoDB getDdbClient() {
@@ -70,7 +80,7 @@ public class ExportHelper {
         String answerLink = answerLinkNode.textValue();
         String answerText;
         try {
-            answerText = s3Helper.readS3FileAsString(BridgeExporterUtil.S3_BUCKET_ATTACHMENTS, answerLink);
+            answerText = s3Helper.readS3FileAsString(config.getBridgeAttachmentsBucket(), answerLink);
         } catch (AmazonClientException | IOException ex) {
             throw new BridgeExporterException("Error getting survey answers from S3 file " + answerLink + ": "
                     + ex.getMessage(), ex);
@@ -207,11 +217,11 @@ public class ExportHelper {
         attachment.withString("id", attachmentId);
         attachment.withString("recordId", recordId);
 
-        Table attachmentsTable = ddbClient.getTable("prod-heroku-HealthDataAttachment");
+        Table attachmentsTable = ddbClient.getTable(config.getBridgeDataDdbPrefix() + "HealthDataAttachment");
         attachmentsTable.putItem(attachment);
 
         // upload to S3
-        s3Helper.writeBytesToS3(BridgeExporterUtil.S3_BUCKET_ATTACHMENTS, attachmentId, text.getBytes(Charsets.UTF_8));
+        s3Helper.writeBytesToS3(config.getBridgeAttachmentsBucket(), attachmentId, text.getBytes(Charsets.UTF_8));
         return attachmentId;
     }
 }

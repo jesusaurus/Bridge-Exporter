@@ -15,11 +15,21 @@ import org.sagebionetworks.bridge.exceptions.SchemaNotFoundException;
 
 public class UploadSchemaHelper {
     // Externally configured.
+    private BridgeExporterConfig config;
     private DynamoDB ddbClient;
 
     // Internal state.
     private final Map<UploadSchemaKey, UploadSchema> schemaMap = new HashMap<>();
     private final Set<String> schemasNotFound = new HashSet<>();
+
+    /** Bridge Exporter configuration. Configured externally. */
+    public BridgeExporterConfig getConfig() {
+        return config;
+    }
+
+    public void setConfig(BridgeExporterConfig config) {
+        this.config = config;
+    }
 
     /** DynamoDB client. Externally configured. */
     public void setDdbClient(DynamoDB ddbClient) {
@@ -33,7 +43,7 @@ public class UploadSchemaHelper {
 
     public void init() throws IOException {
         // schemas
-        Table uploadSchemaTable = ddbClient.getTable("prod-heroku-UploadSchema");
+        Table uploadSchemaTable = ddbClient.getTable(config.getBridgeDataDdbPrefix() + "UploadSchema");
         Iterable<Item> schemaIter = uploadSchemaTable.scan();
         for (Item oneDdbSchema : schemaIter) {
             String schemaTableKey = oneDdbSchema.getString("key");

@@ -232,10 +232,11 @@ public class GenericBackfill {
         // http://docs.aws.amazon.com/AWSSdkDocsJava/latest/DeveloperGuide/java-dg-setup.html#set-up-creds for more
         // info.
         DynamoDB ddbClient = new DynamoDB(new AmazonDynamoDBClient());
-        recordTable = ddbClient.getTable("prod-heroku-HealthDataRecord3");
+        recordTable = ddbClient.getTable(config.getBridgeDataDdbPrefix() + "HealthDataRecord3");
 
         // schema Helper
         UploadSchemaHelper schemaHelper = new UploadSchemaHelper();
+        schemaHelper.setConfig(config);
         schemaHelper.setDdbClient(ddbClient);
         schemaHelper.init();
         schema = schemaHelper.getSchema(schemaKey);
@@ -270,6 +271,7 @@ public class GenericBackfill {
 
         // Export Helper
         exportHelper = new ExportHelper();
+        exportHelper.setConfig(config);
         exportHelper.setDdbClient(ddbClient);
         exportHelper.setS3Helper(s3Helper);
 

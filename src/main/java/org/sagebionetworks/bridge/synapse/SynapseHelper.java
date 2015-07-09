@@ -162,7 +162,7 @@ public class SynapseHelper {
         try {
             // download from S3
             // TODO: update S3Helper to stream directly to a file instead of holding it in memory first
-            byte[] fileBytes = s3Helper.readS3FileAsBytes(BridgeExporterUtil.S3_BUCKET_ATTACHMENTS, s3Key);
+            byte[] fileBytes = s3Helper.readS3FileAsBytes(bridgeExporterConfig.getBridgeAttachmentsBucket(), s3Key);
             Files.write(fileBytes, tempFile);
 
             // upload to Synapse

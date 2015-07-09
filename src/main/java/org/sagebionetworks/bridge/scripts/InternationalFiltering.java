@@ -88,12 +88,13 @@ public class InternationalFiltering {
         }
 
         // delete rows from Synapse table
-        RowSelection rowSelectionToDelete = new RowSelection();
-        rowSelectionToDelete.setEtag(etag);
-        rowSelectionToDelete.setRowIds(rowIdsToDelete);
-        rowSelectionToDelete.setTableId(synapseTableId);
-        synapseClient.deleteRowsFromTable(rowSelectionToDelete);
-
-        System.out.println("Deleted " + rowIdsToDelete.size() + " rows");
+        //RowSelection rowSelectionToDelete = new RowSelection();
+        //rowSelectionToDelete.setEtag(etag);
+        //rowSelectionToDelete.setRowIds(rowIdsToDelete);
+        //rowSelectionToDelete.setTableId(synapseTableId);
+        //synapseClient.deleteRowsFromTable(rowSelectionToDelete);
+        //
+        //System.out.println("Deleted " + rowIdsToDelete.size() + " rows");
+        System.out.println("Would delete " + rowIdsToDelete.size() + " rows");
     }
 }
