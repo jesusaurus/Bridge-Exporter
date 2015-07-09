@@ -34,7 +34,7 @@ import org.sagebionetworks.bridge.util.BridgeExporterUtil;
  */
 @SuppressWarnings("unchecked")
 public class PublicRecordIdExporter {
-    private static final int PROGRESS_REPORT_INTERVAL = 100;
+    private static final int PROGRESS_REPORT_INTERVAL = 1000;
 
     public static void main(String[] args) throws IOException {
         // args
@@ -85,11 +85,6 @@ public class PublicRecordIdExporter {
                 if ((++numRows) % PROGRESS_REPORT_INTERVAL == 0) {
                     System.out.println("Found " + numRows + " rows in " + stopwatch.elapsed(TimeUnit.SECONDS)
                             + " seconds");
-
-                    // TODO: remove rate limiter
-                    if (numRows >= 500) {
-                        break;
-                    }
                 }
 
                 try {
