@@ -281,9 +281,9 @@ public class BridgeExporter {
                     incrementCounter("numNotShared");
                     continue;
                 } else if (userSharingScope.equalsIgnoreCase("sponsors_and_partners")) {
-                    incrementCounter("numSharingBroadly");
+                    incrementCounter("numSharingSparsely-Fixed");
                 } else if (userSharingScope.equalsIgnoreCase("all_qualified_researchers")) {
-                    incrementCounter("numSharingSparsely");
+                    incrementCounter("numSharingBroadly-Fixed");
                 } else {
                     System.out.println("[ERROR] Unknown sharing scope: " + userSharingScope);
                     continue;
