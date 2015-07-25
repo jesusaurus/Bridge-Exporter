@@ -2,6 +2,7 @@ package org.sagebionetworks.bridge.exporter;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +38,11 @@ import org.sagebionetworks.bridge.worker.ExportWorkerManager;
 
 public class BridgeExporter {
     private static final Joiner SCHEMAS_NOT_FOUND_JOINER = Joiner.on(", ");
+    private static final String SHARING_SCOPE_NO_SHARING = "NO_SHARING";
+    private static final String SHARING_SCOPE_SPARSE = "SPONSORS_AND_PARTNERS";
+    private static final String SHARING_SCOPE_BROAD = "ALL_QUALIFIED_RESEARCHERS";
+    private static final Set<String> VALID_SHARING_SCOPE_SET = ImmutableSet.of(SHARING_SCOPE_NO_SHARING,
+            SHARING_SCOPE_SPARSE, SHARING_SCOPE_BROAD);
     private static final TypeReference<List<UploadSchemaKey>> TYPE_REF_SCHEMA_KEY_LIST =
             new TypeReference<List<UploadSchemaKey>>() {
             };
@@ -95,9 +101,11 @@ public class BridgeExporter {
     // Internal state
     private BridgeExporterConfig config;
     private ExportWorkerManager manager;
+    private Table participantOptionsTable;
     private RecordIdSource recordIdSource;
     private UploadSchemaHelper schemaHelper;
     private Table recordTable;
+    private final Map<String, String> userSharingScopeCache = new HashMap<>();
 
     public void setDate(String dateString) {
         // validate date
@@ -147,6 +155,7 @@ public class BridgeExporter {
         // http://docs.aws.amazon.com/AWSSdkDocsJava/latest/DeveloperGuide/java-dg-setup.html#set-up-creds for more
         // info.
         DynamoDB ddbClient = new DynamoDB(new AmazonDynamoDBClient());
+        participantOptionsTable = ddbClient.getTable(config.getBridgeDataDdbPrefix() + "ParticipantOptions");
         recordTable = ddbClient.getTable(config.getBridgeDataDdbPrefix() + "HealthDataRecord3");
 
         // S3 client - move to Spring
@@ -275,17 +284,7 @@ public class BridgeExporter {
                 }
 
                 // process/filter by user sharing scope
-                String userSharingScope = oneRecord.getString("userSharingScope");
-                if (Strings.isNullOrEmpty(userSharingScope) || userSharingScope.equalsIgnoreCase("no_sharing")) {
-                    // must not be exported
-                    incrementCounter("numNotShared");
-                    continue;
-                } else if (userSharingScope.equalsIgnoreCase("sponsors_and_partners")) {
-                    incrementCounter("numSharingSparsely-Fixed");
-                } else if (userSharingScope.equalsIgnoreCase("all_qualified_researchers")) {
-                    incrementCounter("numSharingBroadly-Fixed");
-                } else {
-                    System.out.println("[ERROR] Unknown sharing scope: " + userSharingScope);
+                if (!shouldExport(oneRecord)) {
                     continue;
                 }
 
@@ -313,7 +312,7 @@ public class BridgeExporter {
                                 + studyId + ": " + ex.getMessage());
                     }
                 }
-            } catch (RuntimeException ex) {
+            } catch (IOException | RuntimeException ex) {
                 System.out.println("[ERROR] Unknown error processing record " + recordId + ": " + ex.getMessage());
                 ex.printStackTrace(System.out);
             }
@@ -335,6 +334,69 @@ public class BridgeExporter {
         if (!schemasNotFound.isEmpty()) {
             System.out.println("[METRICS] The following schemas were referenced but not found: "
                     + SCHEMAS_NOT_FOUND_JOINER.join(schemasNotFound));
+        }
+    }
+
+    // Given the record, checks the record's sharing scope and the user's sharing scope, and takes the most restrictive
+    // of those. If the record should be shared (sharing sparsely or sharing broadly), this returns true. If the record
+    // shouldn't be shared ("no_sharing", or blank sharing scope), this returns false.
+    private boolean shouldExport(Item record) throws IOException {
+        // record sharing scope
+        String recordSharingScope = record.getString("userSharingScope");
+        if (Strings.isNullOrEmpty(recordSharingScope)) {
+            // default to no_sharing
+            recordSharingScope = SHARING_SCOPE_NO_SHARING;
+        } else {
+            // validate sharing scope
+            if (!VALID_SHARING_SCOPE_SET.contains(recordSharingScope)) {
+                throw new IllegalStateException("Unknown record sharing scope: " + recordSharingScope);
+            }
+        }
+
+        // user sharing scope, check cache first
+        String healthCode = record.getString("healthCode");
+        String userSharingScope = userSharingScopeCache.get(healthCode);
+        if (Strings.isNullOrEmpty(userSharingScope)) {
+            // fall back to participant options table
+            Item participantOption = participantOptionsTable.getItem("healthDataCode", healthCode);
+            if (participantOption != null) {
+                String participantOptionData = participantOption.getString("data");
+                @SuppressWarnings("unchecked")
+                Map<String, String> participantOptionDataMap = BridgeExporterUtil.JSON_MAPPER.readValue(
+                        participantOptionData, Map.class);
+                userSharingScope = participantOptionDataMap.get("SHARING_SCOPE");
+            } else {
+                // no participant options, default to no_sharing
+                userSharingScope = SHARING_SCOPE_NO_SHARING;
+            }
+
+            if (Strings.isNullOrEmpty(userSharingScope)) {
+                // no scope from participant options table, default to no_sharing
+                userSharingScope = SHARING_SCOPE_NO_SHARING;
+            } else {
+                // validate this too
+                if (!VALID_SHARING_SCOPE_SET.contains(userSharingScope)) {
+                    throw new IllegalStateException("Unknown user sharing scope: " + userSharingScope);
+                }
+            }
+
+            // write it back into the cache
+            userSharingScopeCache.put(healthCode, userSharingScope);
+        }
+
+        // determine minimum (most restrictive) sharing scope)
+        if (SHARING_SCOPE_NO_SHARING.equals(recordSharingScope) || SHARING_SCOPE_NO_SHARING.equals(userSharingScope)) {
+            // must not be exported
+            incrementCounter("numNotShared");
+            return false;
+        } else if (SHARING_SCOPE_SPARSE.equals(recordSharingScope) || SHARING_SCOPE_SPARSE.equals(userSharingScope)) {
+            incrementCounter("numSharingSparsely-Fixed");
+            return true;
+        } else if (SHARING_SCOPE_BROAD.equals(recordSharingScope) || SHARING_SCOPE_BROAD.equals(userSharingScope)) {
+            incrementCounter("numSharingBroadly-Fixed");
+            return true;
+        } else {
+            throw new IllegalStateException("Impossible code path in BridgeExporter.shouldExport()");
         }
     }
 
