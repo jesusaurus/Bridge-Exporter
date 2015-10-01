@@ -38,7 +38,6 @@ import org.sagebionetworks.util.csv.CsvNullReader;
 import org.sagebionetworks.bridge.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.exceptions.SchemaNotFoundException;
 import org.sagebionetworks.bridge.exporter.BridgeExporterConfig;
-import org.sagebionetworks.bridge.exporter.ExportHelper;
 import org.sagebionetworks.bridge.exporter.UploadSchema;
 import org.sagebionetworks.bridge.exporter.UploadSchemaHelper;
 import org.sagebionetworks.bridge.exporter.UploadSchemaKey;
@@ -96,7 +95,6 @@ public class GenericBackfill {
 
     // services
     private ExecutorService executor;
-    private ExportHelper exportHelper;
     private Table recordTable;
     private SynapseHelper synapseHelper;
 
@@ -269,12 +267,6 @@ public class GenericBackfill {
         S3Helper s3Helper = new S3Helper();
         s3Helper.setS3Client(s3Client);
 
-        // Export Helper
-        exportHelper = new ExportHelper();
-        exportHelper.setConfig(config);
-        exportHelper.setDdbClient(ddbClient);
-        exportHelper.setS3Helper(s3Helper);
-
         // synapse client
         SynapseClient synapseClient = new SynapseClientImpl();
         synapseClient.setUserName(config.getUsername());
@@ -366,7 +358,7 @@ public class GenericBackfill {
         Item record = recordTable.getItem("id", recordId);
 
         // convert record to health data node
-        JsonNode convertedSurveyNode = exportHelper.convertSurveyRecordToHealthDataJsonNode(record, schema);
+        JsonNode dataNode = BridgeExporterUtil.JSON_MAPPER.readTree(record.getString("data"));
 
         // Make new columns. First 9 (7 on append) are the same)
         String[] newColumns = new String[numTotalColumns];
@@ -375,10 +367,10 @@ public class GenericBackfill {
             String columnName = schema.getFieldNameList().get(i);
             String bridgeType = schema.getFieldTypeMap().get(columnName);
 
-            JsonNode columnValueNode = convertedSurveyNode.get(columnName);
+            JsonNode columnValueNode = dataNode.get(columnName);
             if (columnValueNode == null || columnValueNode.isNull()) {
                 // fall back to old column name
-                columnValueNode = convertedSurveyNode.get(newColumnToOldColumn.get(columnName));
+                columnValueNode = dataNode.get(newColumnToOldColumn.get(columnName));
             }
 
             String value = synapseHelper.serializeToSynapseType(studyId, recordId, columnName, bridgeType,
