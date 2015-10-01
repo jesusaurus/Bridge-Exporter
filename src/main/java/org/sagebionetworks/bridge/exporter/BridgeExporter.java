@@ -74,6 +74,15 @@ public class BridgeExporter {
                 // format: BridgeExporter yyyy-mm-dd
                 bridgeExporter.setDate(args[0]);
                 bridgeExporter.setMode(ExportMode.EXPORT);
+
+                // extra flags
+                if (args.length >= 2) {
+                    if ("--public-only".equals(args[1])) {
+                        bridgeExporter.setShouldExportSparse(false);
+                    } else {
+                        throw new IllegalArgumentException("Unknown arg: " + args[1]);
+                    }
+                }
             }
             bridgeExporter.run();
         } catch (Throwable t) {
@@ -97,6 +106,7 @@ public class BridgeExporter {
     private ExportMode mode;
     private String recordIdFilename;
     private Set<UploadSchemaKey> redriveTableKeySet;
+    private boolean shouldExportSparse = true;
 
     // Internal state
     private BridgeExporterConfig config;
@@ -107,23 +117,31 @@ public class BridgeExporter {
     private Table recordTable;
     private final Map<String, String> userSharingScopeCache = new HashMap<>();
 
-    public void setDate(String dateString) {
+    public final void setDate(String dateString) {
         // validate date
         LocalDate.parse(dateString);
 
         this.uploadDateString = dateString;
     }
 
-    public void setMode(ExportMode mode) {
+    public final void setMode(ExportMode mode) {
         this.mode = mode;
     }
 
-    public void setRecordIdFilename(String recordIdFilename) {
+    public final void setRecordIdFilename(String recordIdFilename) {
         this.recordIdFilename = recordIdFilename;
     }
 
-    public void setRedriveTableKeySet(Set<UploadSchemaKey> redriveTableKeySet) {
+    public final void setRedriveTableKeySet(Set<UploadSchemaKey> redriveTableKeySet) {
         this.redriveTableKeySet = ImmutableSet.copyOf(redriveTableKeySet);
+    }
+
+    /**
+     * Whether "sharing sparsely" data should be exported. Defaults to true. If the --public-only flag is set, this
+     * flips to false.
+     */
+    public final void setShouldExportSparse(boolean shouldExportSparse) {
+        this.shouldExportSparse = shouldExportSparse;
     }
 
     public void run() throws BridgeExporterException, IOException, SynapseException {
@@ -390,8 +408,13 @@ public class BridgeExporter {
             incrementCounter("numNotShared");
             return false;
         } else if (SHARING_SCOPE_SPARSE.equals(recordSharingScope) || SHARING_SCOPE_SPARSE.equals(userSharingScope)) {
-            incrementCounter("numSharingSparsely-Fixed");
-            return true;
+            if (shouldExportSparse) {
+                incrementCounter("numSharingSparsely-Fixed");
+                return true;
+            } else {
+                incrementCounter("numSharingSparsely (Not Exported)");
+                return false;
+            }
         } else if (SHARING_SCOPE_BROAD.equals(recordSharingScope) || SHARING_SCOPE_BROAD.equals(userSharingScope)) {
             incrementCounter("numSharingBroadly-Fixed");
             return true;
