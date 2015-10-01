@@ -288,6 +288,11 @@ public class BridgeExporter {
                 int schemaRev = oneRecord.getInt("schemaRevision");
                 UploadSchemaKey schemaKey = new UploadSchemaKey(studyId, schemaId, schemaRev);
 
+                // filter out studies that we're not configured for
+                if (!config.getStudyIdSet().contains(studyId)) {
+                    continue;
+                }
+
                 // Filter by version, if needed. (Null defaults to false.)
                 // Note: This is specific to the original ResearchKit launch.
                 Boolean filterV1 = config.getFilterV1ByStudy().get(studyId);
