@@ -70,6 +70,17 @@ public class BridgeExporter {
                 // Note that redrive-records doesn't need an upload date, since it doesn't talk to the uploadDate index
                 bridgeExporter.setMode(ExportMode.REDRIVE_RECORDS);
                 bridgeExporter.setRecordIdFilename(args[1]);
+
+                // TODO: refactor this somehow so we don't end up copy-pasting this everywhere
+                // extra flags
+                if (args.length >= 3) {
+                    if ("--public-only".equals(args[2])) {
+                        System.out.println("[METRICS] Public-Only Mode");
+                        bridgeExporter.setShouldExportSparse(false);
+                    } else {
+                        throw new IllegalArgumentException("Unknown arg: " + args[1]);
+                    }
+                }
             } else {
                 // format: BridgeExporter yyyy-mm-dd
                 bridgeExporter.setDate(args[0]);
@@ -78,6 +89,7 @@ public class BridgeExporter {
                 // extra flags
                 if (args.length >= 2) {
                     if ("--public-only".equals(args[1])) {
+                        System.out.println("[METRICS] Public-Only Mode");
                         bridgeExporter.setShouldExportSparse(false);
                     } else {
                         throw new IllegalArgumentException("Unknown arg: " + args[1]);
