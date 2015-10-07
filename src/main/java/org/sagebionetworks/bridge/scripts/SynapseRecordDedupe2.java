@@ -74,6 +74,7 @@ public class SynapseRecordDedupe2 {
     // internal helpers and state
     private Table ddbSynapseMetaTables;
     private Table ddbSynapseTables;
+    private final Map<String, String> schemaToTable = new HashMap<>();
     private final Map<String, RowSelection> rowsToDeleteByTable = new HashMap<>();
     private SynapseClient synapseClient;
 
@@ -134,8 +135,7 @@ public class SynapseRecordDedupe2 {
                         markDupeRowsToDelete(appVersionTableId, appVersionTableIter.getEtag(), appVersionRowList);
 
                         // Get original table ID from DDB.
-                        Item origTableRecord = ddbSynapseTables.getItem("schemaKey", originalTableSchemaKey);
-                        String origTableId = origTableRecord.getString("tableId");
+                        String origTableId = getTableIdForSchema(originalTableSchemaKey);
 
                         // Get rows from original table and dedupe.
                         SynapseTableIterator origTableIter = new SynapseTableIterator(synapseClient,
@@ -189,6 +189,16 @@ public class SynapseRecordDedupe2 {
             rowList.add(tableIter.next());
         }
         return rowList;
+    }
+
+    private String getTableIdForSchema(String schemaKey) {
+        String tableId = schemaToTable.get(schemaKey);
+        if (tableId == null) {
+            Item tableRecord = ddbSynapseTables.getItem("schemaKey", schemaKey);
+            tableId = tableRecord.getString("tableId");
+            schemaToTable.put(schemaKey, tableId);
+        }
+        return tableId;
     }
 
     private void markDupeRowsToDelete(String tableId, String etag, List<Row> rowList) {
