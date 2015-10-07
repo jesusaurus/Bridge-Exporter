@@ -16,6 +16,7 @@ import com.amazonaws.services.dynamodbv2.document.Table;
 import com.google.common.base.Charsets;
 import com.google.common.base.Stopwatch;
 import com.google.common.io.Files;
+import org.joda.time.DateTime;
 import org.sagebionetworks.client.SynapseClient;
 import org.sagebionetworks.client.SynapseClientImpl;
 import org.sagebionetworks.client.exceptions.SynapseException;
@@ -38,7 +39,7 @@ import org.sagebionetworks.bridge.util.BridgeExporterUtil;
  * </p>
  */
 public class SynapseRecordDedupe2 {
-    private static final int PROGRESS_REPORT_INTERVAL = 1000;
+    private static final int PROGRESS_REPORT_INTERVAL = 100;
 
     public static void main(String[] args) {
         // args
@@ -107,6 +108,7 @@ public class SynapseRecordDedupe2 {
     public void execute() throws IOException {
         Item metaTableRecord = ddbSynapseMetaTables.getItem("tableName", studyId + "-appVersion");
         String appVersionTableId = metaTableRecord.getString("tableId");
+        System.out.println("Started " + DateTime.now().toString());
 
         // loop over record IDs
         try (BufferedReader recordIdReader = Files.newReader(recordIdFile, Charsets.UTF_8)) {
