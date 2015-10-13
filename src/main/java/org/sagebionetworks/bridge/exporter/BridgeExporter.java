@@ -55,7 +55,7 @@ public class BridgeExporter {
     // making progress
     private static final int PROGRESS_REPORT_PERIOD = 1000;
 
-    public static void main(String[] args) throws IOException {
+    public static void run(String... args) throws IOException {
         try {
             System.out.println("[METRICS] Starting Bridge Exporter for args " + Joiner.on(' ').join(args));
 
