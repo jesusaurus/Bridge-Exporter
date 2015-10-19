@@ -18,13 +18,19 @@ import com.amazonaws.services.dynamodbv2.document.DynamoDB;
 import com.google.common.base.Stopwatch;
 import com.google.common.collect.ImmutableSet;
 
-import org.sagebionetworks.bridge.exceptions.BridgeExporterException;
-import org.sagebionetworks.bridge.exceptions.SchemaNotFoundException;
+import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
+import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
 import org.sagebionetworks.bridge.exporter.BridgeExporterConfig;
 import org.sagebionetworks.bridge.exporter.ExportHelper;
 import org.sagebionetworks.bridge.exporter.UploadSchemaHelper;
-import org.sagebionetworks.bridge.exporter.UploadSchemaKey;
+import org.sagebionetworks.bridge.exporter.worker.AppVersionExportHandler;
+import org.sagebionetworks.bridge.exporter.worker.ExportHandler;
+import org.sagebionetworks.bridge.exporter.worker.ExportSubtask;
+import org.sagebionetworks.bridge.exporter.worker.ExportWorker;
+import org.sagebionetworks.bridge.exporter.worker.HealthDataExportHandler;
+import org.sagebionetworks.bridge.exporter.worker.IosSurveyExportHandler;
 import org.sagebionetworks.bridge.s3.S3Helper;
+import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 import org.sagebionetworks.bridge.synapse.SynapseHelper;
 import org.sagebionetworks.bridge.util.BridgeExporterUtil;
 
@@ -237,7 +243,7 @@ public class ExportWorkerManager {
      * Queues up an iOS survey export task to the manager. This task will also transparently queue up the corresponding
      * task to the right health data export worker and to the study's app version worker.
      */
-    public void addIosSurveyExportTask(String studyId, ExportTask task) throws BridgeExporterException {
+    public void addIosSurveyExportTask(String studyId, ExportSubtask task) throws BridgeExporterException {
         // get handler
         IosSurveyExportHandler surveyHandler = surveyHandlerMap.get(studyId);
         if (surveyHandler == null) {
@@ -252,7 +258,7 @@ public class ExportWorkerManager {
      * Queues up a health data export task to the manager. This also queues up the corresponding app version export
      * task. This is called by the Bridge Exporter as well as the iOS survey export workers.
      */
-    public void addHealthDataExportTask(UploadSchemaKey schemaKey, ExportTask task) throws BridgeExporterException,
+    public void addHealthDataExportTask(UploadSchemaKey schemaKey, ExportSubtask task) throws BridgeExporterException,
             SchemaNotFoundException {
         // check black list
         if (schemaBlacklist != null && schemaBlacklist.contains(schemaKey)) {
@@ -286,7 +292,7 @@ public class ExportWorkerManager {
         queueWorker(appVersionHandler, task);
     }
 
-    private void queueWorker(ExportHandler handler, ExportTask task) {
+    private void queueWorker(ExportHandler handler, ExportSubtask task) {
         ExportWorker worker = new ExportWorker(handler, task);
         Future<?> future = executor.submit(worker);
         outstandingTaskQueue.add(future);

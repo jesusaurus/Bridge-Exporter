@@ -1,4 +1,4 @@
-package org.sagebionetworks.bridge.worker;
+package org.sagebionetworks.bridge.exporter.worker;
 
 import java.io.IOException;
 
@@ -6,11 +6,11 @@ import com.amazonaws.services.dynamodbv2.document.Item;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Strings;
 
-import org.sagebionetworks.bridge.exceptions.BridgeExporterException;
-import org.sagebionetworks.bridge.exceptions.SchemaNotFoundException;
-import org.sagebionetworks.bridge.exporter.UploadSchema;
-import org.sagebionetworks.bridge.exporter.UploadSchemaKey;
-import org.sagebionetworks.bridge.util.BridgeExporterUtil;
+import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
+import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
+import org.sagebionetworks.bridge.json.DefaultObjectMapper;
+import org.sagebionetworks.bridge.schema.UploadSchema;
+import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
 /**
  * This class is responsible for converting the raw survey answers into a form the Synapse Export Worker can consume.
@@ -28,7 +28,7 @@ public class IosSurveyExportHandler extends ExportHandler {
     }
 
     @Override
-    public void handle(ExportTask task) {
+    public void handle(ExportSubtask task) {
         Item record = task.getRecord();
         String recordId = record != null ? record.getString("id") : null;
 
@@ -51,7 +51,7 @@ public class IosSurveyExportHandler extends ExportHandler {
         }
     }
 
-    private void processRecordAsSurvey(ExportTask task) throws BridgeExporterException, SchemaNotFoundException {
+    private void processRecordAsSurvey(ExportSubtask task) throws BridgeExporterException, SchemaNotFoundException {
         // validate record
         Item record = task.getRecord();
         if (record == null) {
@@ -61,7 +61,7 @@ public class IosSurveyExportHandler extends ExportHandler {
         // get data node and item
         JsonNode oldDataJson;
         try {
-            oldDataJson = BridgeExporterUtil.JSON_MAPPER.readTree(record.getString("data"));
+            oldDataJson = DefaultObjectMapper.INSTANCE.readTree(record.getString("data"));
         } catch (IOException ex) {
             throw new BridgeExporterException("Error parsing JSON data: " + ex.getMessage(), ex);
         }
@@ -80,7 +80,8 @@ public class IosSurveyExportHandler extends ExportHandler {
         // what schema should we forward this to?
         String schemaId = item;
         int schemaRev = 1;
-        UploadSchemaKey surveySchemaKey = new UploadSchemaKey(getStudyId(), schemaId, schemaRev);
+        UploadSchemaKey surveySchemaKey = new UploadSchemaKey.Builder().withStudyId(getStudyId())
+                .withSchemaId(schemaId).withRevision(schemaRev).build();
 
         // get schema and field type map, so we can process attachments
         UploadSchema surveySchema = getManager().getSchemaHelper().getSchema(surveySchemaKey);
@@ -89,7 +90,7 @@ public class IosSurveyExportHandler extends ExportHandler {
         JsonNode convertedSurveyNode = getManager().getExportHelper().convertSurveyRecordToHealthDataJsonNode(record,
                 surveySchema);
 
-        ExportTask convertedTask = new ExportTask(surveySchemaKey, record, convertedSurveyNode);
+        ExportSubtask convertedTask = new ExportSubtask(surveySchemaKey, record, convertedSurveyNode);
         getManager().addHealthDataExportTask(surveySchemaKey, convertedTask);
     }
 

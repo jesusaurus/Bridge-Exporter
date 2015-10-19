@@ -1,10 +1,10 @@
-package org.sagebionetworks.bridge.worker;
+package org.sagebionetworks.bridge.exporter.worker;
 
 public class ExportWorker implements Runnable {
     private final ExportHandler handler;
-    private final ExportTask task;
+    private final ExportSubtask task;
 
-    public ExportWorker(ExportHandler handler, ExportTask task) {
+    public ExportWorker(ExportHandler handler, ExportSubtask task) {
         this.handler = handler;
         this.task = task;
     }

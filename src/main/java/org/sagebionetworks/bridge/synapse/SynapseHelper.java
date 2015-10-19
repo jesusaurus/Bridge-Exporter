@@ -24,7 +24,7 @@ import org.sagebionetworks.repo.model.table.CsvTableDescriptor;
 import org.sagebionetworks.repo.model.table.TableEntity;
 import org.sagebionetworks.repo.model.table.UploadToTableResult;
 
-import org.sagebionetworks.bridge.exceptions.BridgeExporterException;
+import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.exporter.BridgeExporterConfig;
 import org.sagebionetworks.bridge.s3.S3Helper;
 import org.sagebionetworks.bridge.util.BridgeExporterUtil;

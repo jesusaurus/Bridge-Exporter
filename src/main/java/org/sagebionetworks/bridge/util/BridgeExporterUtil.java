@@ -2,15 +2,13 @@ package org.sagebionetworks.bridge.util;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
 import org.joda.time.format.ISODateTimeFormat;
 
-import org.sagebionetworks.bridge.exporter.UploadSchemaKey;
+import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
 public class BridgeExporterUtil {
-    public static final ObjectMapper JSON_MAPPER = new ObjectMapper();
     // TODO: make timezone configurable
     public static final DateTimeZone LOCAL_TIME_ZONE = DateTimeZone.forID("America/Los_Angeles");
 
@@ -30,12 +28,12 @@ public class BridgeExporterUtil {
 
         if ("breastcancer".equals(schemaKey.getStudyId())) {
             if ("BreastCancer-DailyJournal".equals(schemaKey.getSchemaId())) {
-                if (schemaKey.getRev() == 1) {
+                if (schemaKey.getRevision() == 1) {
                     return "content_data.APHMoodLogNoteText".equals(fieldName)
                             || "DailyJournalStep103_data.content".equals(fieldName);
                 }
             } else if ("BreastCancer-ExerciseSurvey".equals(schemaKey.getSchemaId())) {
-                if (schemaKey.getRev() == 1) {
+                if (schemaKey.getRevision() == 1) {
                     return "exercisesurvey101_data.result".equals(fieldName)
                             || "exercisesurvey102_data.result".equals(fieldName)
                             || "exercisesurvey103_data.result".equals(fieldName)

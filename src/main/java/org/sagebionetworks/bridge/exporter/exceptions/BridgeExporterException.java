@@ -1,4 +1,4 @@
-package org.sagebionetworks.bridge.exceptions;
+package org.sagebionetworks.bridge.exporter.exceptions;
 
 @SuppressWarnings("serial")
 public class BridgeExporterException extends Exception {

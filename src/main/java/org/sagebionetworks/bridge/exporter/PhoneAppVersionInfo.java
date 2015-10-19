@@ -6,6 +6,7 @@ import com.amazonaws.services.dynamodbv2.document.Item;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Strings;
 
+import org.sagebionetworks.bridge.json.DefaultObjectMapper;
 import org.sagebionetworks.bridge.util.BridgeExporterUtil;
 
 public class PhoneAppVersionInfo {
@@ -20,7 +21,7 @@ public class PhoneAppVersionInfo {
         String metadataString = record.getString("metadata");
         if (!Strings.isNullOrEmpty(metadataString)) {
             try {
-                JsonNode metadataJson = BridgeExporterUtil.JSON_MAPPER.readTree(metadataString);
+                JsonNode metadataJson = DefaultObjectMapper.INSTANCE.readTree(metadataString);
                 appVersion = BridgeExporterUtil.getJsonStringRemoveTabsAndTrim(metadataJson, "appVersion", 48,
                         recordId);
                 phoneInfo = BridgeExporterUtil.getJsonStringRemoveTabsAndTrim(metadataJson, "phoneInfo", 48, recordId);

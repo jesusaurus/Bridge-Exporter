@@ -1,4 +1,4 @@
-package org.sagebionetworks.bridge.worker;
+package org.sagebionetworks.bridge.exporter.worker;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -11,7 +11,7 @@ import com.google.common.base.Strings;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 
-import org.sagebionetworks.bridge.exceptions.BridgeExporterException;
+import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.exporter.PhoneAppVersionInfo;
 import org.sagebionetworks.bridge.util.BridgeExporterUtil;
 
@@ -104,7 +104,7 @@ public class AppVersionExportHandler extends SynapseExportHandler {
     }
 
     @Override
-    protected List<String> getTsvRowValueList(ExportTask task) throws BridgeExporterException {
+    protected List<String> getTsvRowValueList(ExportSubtask task) throws BridgeExporterException {
         Item record = task.getRecord();
         if (record == null) {
             throw new BridgeExporterException("Null record for AppVersionExportWorker");

@@ -1,4 +1,4 @@
-package org.sagebionetworks.bridge.worker;
+package org.sagebionetworks.bridge.exporter.worker;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -12,11 +12,12 @@ import com.fasterxml.jackson.databind.node.TextNode;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 
-import org.sagebionetworks.bridge.exceptions.BridgeExporterException;
-import org.sagebionetworks.bridge.exceptions.SchemaNotFoundException;
+import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
+import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
 import org.sagebionetworks.bridge.exporter.PhoneAppVersionInfo;
-import org.sagebionetworks.bridge.exporter.UploadSchema;
-import org.sagebionetworks.bridge.exporter.UploadSchemaKey;
+import org.sagebionetworks.bridge.json.DefaultObjectMapper;
+import org.sagebionetworks.bridge.schema.UploadSchema;
+import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 import org.sagebionetworks.bridge.synapse.SynapseHelper;
 import org.sagebionetworks.bridge.util.BridgeExporterUtil;
 
@@ -161,18 +162,18 @@ public class HealthDataExportHandler extends SynapseExportHandler {
     }
 
     @Override
-    protected List<String> getTsvRowValueList(ExportTask task) throws BridgeExporterException {
+    protected List<String> getTsvRowValueList(ExportSubtask task) throws BridgeExporterException {
         Item record = task.getRecord();
         if (record == null) {
             throw new BridgeExporterException("Null record for HealthDataExportWorker");
         }
         String recordId = record.getString("id");
 
-        // Extract data JSON. Try task.getDataJsonNode() first. If not, fall back to record.getString("data").
-        JsonNode dataJson = task.getDataJsonNode();
+        // Extract data JSON. Try task.getRecordData() first. If not, fall back to record.getString("data").
+        JsonNode dataJson = task.getRecordData();
         if (dataJson == null || dataJson.isNull()) {
             try {
-                dataJson = BridgeExporterUtil.JSON_MAPPER.readTree(record.getString("data"));
+                dataJson = DefaultObjectMapper.INSTANCE.readTree(record.getString("data"));
             } catch (IOException ex) {
                 throw new BridgeExporterException("Error parsing JSON: " + ex.getMessage(), ex);
             }

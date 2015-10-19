@@ -1,4 +1,4 @@
-package org.sagebionetworks.bridge.worker;
+package org.sagebionetworks.bridge.exporter.worker;
 
 import java.io.BufferedWriter;
 import java.io.File;
@@ -29,8 +29,8 @@ import org.sagebionetworks.repo.model.ResourceAccess;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.TableEntity;
 
-import org.sagebionetworks.bridge.exceptions.BridgeExporterException;
-import org.sagebionetworks.bridge.exceptions.SchemaNotFoundException;
+import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
+import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
 import org.sagebionetworks.bridge.util.BridgeExporterUtil;
 
 /**
@@ -175,7 +175,7 @@ public abstract class SynapseExportHandler extends ExportHandler {
 
 
     @Override
-    public void handle(ExportTask task) {
+    public void handle(ExportSubtask task) {
         Item record = task.getRecord();
         String recordId = record != null ? record.getString("id") : null;
 
@@ -194,7 +194,7 @@ public abstract class SynapseExportHandler extends ExportHandler {
         }
     }
 
-    private void appendToTsv(ExportTask task) throws BridgeExporterException {
+    private void appendToTsv(ExportSubtask task) throws BridgeExporterException {
         List<String> rowValueList = getTsvRowValueList(task);
         tsvWriter.println(JOINER_COLUMN_SEPARATOR.join(rowValueList));
     }
@@ -297,5 +297,5 @@ public abstract class SynapseExportHandler extends ExportHandler {
      * Creates a row values for a single row from the given export task. The export task shouldn't be an END_OF_STREAM
      * task.
      */
-    protected abstract List<String> getTsvRowValueList(ExportTask task) throws BridgeExporterException;
+    protected abstract List<String> getTsvRowValueList(ExportSubtask task) throws BridgeExporterException;
 }

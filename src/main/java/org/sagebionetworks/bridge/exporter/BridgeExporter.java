@@ -28,12 +28,17 @@ import org.sagebionetworks.client.SynapseClient;
 import org.sagebionetworks.client.SynapseClientImpl;
 import org.sagebionetworks.client.exceptions.SynapseException;
 
-import org.sagebionetworks.bridge.exceptions.BridgeExporterException;
-import org.sagebionetworks.bridge.exceptions.SchemaNotFoundException;
+import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
+import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
+import org.sagebionetworks.bridge.exporter.record.DynamoRecordIdSource;
+import org.sagebionetworks.bridge.exporter.record.FileRecordIdSource;
+import org.sagebionetworks.bridge.exporter.record.RecordIdSourceOld;
+import org.sagebionetworks.bridge.json.DefaultObjectMapper;
 import org.sagebionetworks.bridge.s3.S3Helper;
+import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 import org.sagebionetworks.bridge.synapse.SynapseHelper;
 import org.sagebionetworks.bridge.util.BridgeExporterUtil;
-import org.sagebionetworks.bridge.worker.ExportTask;
+import org.sagebionetworks.bridge.exporter.worker.ExportSubtask;
 import org.sagebionetworks.bridge.worker.ExportWorkerManager;
 
 public class BridgeExporter {
@@ -105,7 +110,7 @@ public class BridgeExporter {
     }
 
     private static Set<UploadSchemaKey> extractRedriveTableKeySet(String filename) throws IOException {
-        List<UploadSchemaKey> keyList = BridgeExporterUtil.JSON_MAPPER.readValue(new File(filename),
+        List<UploadSchemaKey> keyList = DefaultObjectMapper.INSTANCE.readValue(new File(filename),
                 TYPE_REF_SCHEMA_KEY_LIST);
         return ImmutableSet.copyOf(keyList);
     }
@@ -124,7 +129,7 @@ public class BridgeExporter {
     private BridgeExporterConfig config;
     private ExportWorkerManager manager;
     private Table participantOptionsTable;
-    private RecordIdSource recordIdSource;
+    private RecordIdSourceOld recordIdSource;
     private UploadSchemaHelper schemaHelper;
     private Table recordTable;
     private final Map<String, String> userSharingScopeCache = new HashMap<>();
@@ -176,7 +181,7 @@ public class BridgeExporter {
         String todaysDateString = todaysDate.toString(ISODateTimeFormat.date());
 
         File synapseConfigFile = new File(System.getProperty("user.home") + "/bridge-synapse-exporter-config.json");
-        config = BridgeExporterUtil.JSON_MAPPER.readValue(synapseConfigFile, BridgeExporterConfig.class);
+        config = DefaultObjectMapper.INSTANCE.readValue(synapseConfigFile, BridgeExporterConfig.class);
 
         // Dynamo DB client - move to Spring
         // This gets credentials from the default credential chain. For developer desktops, this is ~/.aws/credentials.
@@ -298,7 +303,8 @@ public class BridgeExporter {
                 String studyId = oneRecord.getString("studyId");
                 String schemaId = oneRecord.getString("schemaId");
                 int schemaRev = oneRecord.getInt("schemaRevision");
-                UploadSchemaKey schemaKey = new UploadSchemaKey(studyId, schemaId, schemaRev);
+                UploadSchemaKey schemaKey = new UploadSchemaKey.Builder().withStudyId(studyId).withSchemaId(schemaId)
+                        .withRevision(schemaRev).build();
 
                 // filter out studies that we're not configured for
                 if (!config.getStudyIdSet().contains(studyId)) {
@@ -328,7 +334,7 @@ public class BridgeExporter {
 
                 // Multiplex and add the right tasks to the manager. Since Export Tasks are immutable, it's safe to
                 // shared the same export task.
-                ExportTask task = new ExportTask(schemaKey, oneRecord, null);
+                ExportSubtask task = new ExportSubtask(schemaKey, oneRecord, null);
                 if ("ios-survey".equals(schemaId)) {
                     try {
                         manager.addIosSurveyExportTask(studyId, task);
@@ -397,7 +403,7 @@ public class BridgeExporter {
             if (participantOption != null) {
                 String participantOptionData = participantOption.getString("data");
                 @SuppressWarnings("unchecked")
-                Map<String, String> participantOptionDataMap = BridgeExporterUtil.JSON_MAPPER.readValue(
+                Map<String, String> participantOptionDataMap = DefaultObjectMapper.INSTANCE.readValue(
                         participantOptionData, Map.class);
                 userSharingScope = participantOptionDataMap.get("SHARING_SCOPE");
             } else {

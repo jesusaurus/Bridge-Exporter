@@ -14,10 +14,11 @@ import com.google.common.base.Charsets;
 import com.google.common.base.Strings;
 import org.sagebionetworks.repo.model.table.ColumnType;
 
-import org.sagebionetworks.bridge.exceptions.BridgeExporterException;
+import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
+import org.sagebionetworks.bridge.json.DefaultObjectMapper;
 import org.sagebionetworks.bridge.s3.S3Helper;
+import org.sagebionetworks.bridge.schema.UploadSchema;
 import org.sagebionetworks.bridge.synapse.SynapseHelper;
-import org.sagebionetworks.bridge.util.BridgeExporterUtil;
 
 /**
  * This class contains utility methods that call multiple backend services that doesn't really fit into any of the
@@ -64,7 +65,7 @@ public class ExportHelper {
         // get data node and item
         JsonNode oldDataJson;
         try {
-            oldDataJson = BridgeExporterUtil.JSON_MAPPER.readTree(record.getString("data"));
+            oldDataJson = DefaultObjectMapper.INSTANCE.readTree(record.getString("data"));
         } catch (IOException ex) {
             throw new BridgeExporterException("Error parsing JSON data: " + ex.getMessage(), ex);
         }
@@ -88,7 +89,7 @@ public class ExportHelper {
 
         JsonNode answerArrayNode;
         try {
-            answerArrayNode = BridgeExporterUtil.JSON_MAPPER.readTree(answerText);
+            answerArrayNode = DefaultObjectMapper.INSTANCE.readTree(answerText);
         } catch (IOException ex) {
             throw new BridgeExporterException("Error parsing JSON survey answers from S3 file " + answerLink + ": "
                     + ex.getMessage(), ex);
@@ -101,7 +102,7 @@ public class ExportHelper {
         Map<String, String> surveyFieldTypeMap = surveySchema.getFieldTypeMap();
 
         // copy fields to "non-survey" format
-        ObjectNode convertedSurveyNode = BridgeExporterUtil.JSON_MAPPER.createObjectNode();
+        ObjectNode convertedSurveyNode = DefaultObjectMapper.INSTANCE.createObjectNode();
         int numAnswers = answerArrayNode.size();
         for (int i = 0; i < numAnswers; i++) {
             JsonNode oneAnswerNode = answerArrayNode.get(i);

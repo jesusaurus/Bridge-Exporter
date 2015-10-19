@@ -1,4 +1,4 @@
-package org.sagebionetworks.bridge.config;
+package org.sagebionetworks.bridge.exporter.config;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

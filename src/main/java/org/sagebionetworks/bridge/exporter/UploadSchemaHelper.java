@@ -11,7 +11,9 @@ import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
 import com.google.common.collect.ImmutableSet;
 
-import org.sagebionetworks.bridge.exceptions.SchemaNotFoundException;
+import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
+import org.sagebionetworks.bridge.schema.UploadSchema;
+import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
 public class UploadSchemaHelper {
     // Externally configured.
@@ -46,16 +48,8 @@ public class UploadSchemaHelper {
         Table uploadSchemaTable = ddbClient.getTable(config.getBridgeDataDdbPrefix() + "UploadSchema");
         Iterable<Item> schemaIter = uploadSchemaTable.scan();
         for (Item oneDdbSchema : schemaIter) {
-            String schemaTableKey = oneDdbSchema.getString("key");
-            String[] parts = schemaTableKey.split(":", 2);
-            String studyId = parts[0];
-            String schemaId = parts[1];
-
-            int schemaRev = oneDdbSchema.getInt("revision");
-            UploadSchemaKey schemaKey = new UploadSchemaKey(studyId, schemaId, schemaRev);
-            UploadSchema schema = UploadSchema.fromDdbItem(schemaKey, oneDdbSchema);
-
-            schemaMap.put(schemaKey, schema);
+            UploadSchema schema = UploadSchema.fromDdbItem(oneDdbSchema);
+            schemaMap.put(schema.getKey(), schema);
         }
     }
 

@@ -1,4 +1,4 @@
-package org.sagebionetworks.bridge.config;
+package org.sagebionetworks.bridge.exporter.config;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

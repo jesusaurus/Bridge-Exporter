@@ -1,7 +1,7 @@
-package org.sagebionetworks.bridge.worker;
+package org.sagebionetworks.bridge.exporter.worker;
 
-import org.sagebionetworks.bridge.exceptions.BridgeExporterException;
-import org.sagebionetworks.bridge.exceptions.SchemaNotFoundException;
+import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
+import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
 
 /**
  * Generic export handler. This class encapsulates basic configuration, helpers, and clients needed by export workers
@@ -26,7 +26,7 @@ public abstract class ExportHandler {
         return manager;
     }
 
-    public void setManager(ExportWorkerManager manager) {
+    public final void setManager(ExportWorkerManager manager) {
         this.manager = manager;
     }
 
@@ -60,7 +60,7 @@ public abstract class ExportHandler {
     public abstract void init() throws BridgeExporterException, SchemaNotFoundException;
 
     /** Handles the task. Whatever it might be. */
-    public abstract void handle(ExportTask task);
+    public abstract void handle(ExportSubtask task);
 
     /**
      * Signals the end of stream to the handler. This tells the handler to do things like upload the TSV to Synapse.
