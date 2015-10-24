@@ -1,30 +1,20 @@
-package org.sagebionetworks.bridge.exporter.worker;
+package org.sagebionetworks.bridge.exporter.handler;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
-import java.util.TreeSet;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
-import com.google.common.base.Joiner;
 import com.google.common.base.Strings;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 
-import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
-import org.sagebionetworks.bridge.exporter.PhoneAppVersionInfo;
-import org.sagebionetworks.bridge.util.BridgeExporterUtil;
+import org.sagebionetworks.bridge.exporter.worker.ExportSubtask;
+import org.sagebionetworks.bridge.exporter.worker.ExportTask;
+import org.sagebionetworks.bridge.exporter.worker.TsvInfo;
+import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 
 /** Synapse export worker for app version tables. */
 public class AppVersionExportHandler extends SynapseExportHandler {
-    private static final Joiner APP_VERSION_JOINER = Joiner.on("; ");
-    private final Set<String> uniqueAppVersionSet = new TreeSet<>();
-
-    @Override
-    protected void initSchemas() {
-        // noop
-    }
-
     @Override
     protected String getDdbTableName() {
         return "SynapseMetaTables";
@@ -33,6 +23,11 @@ public class AppVersionExportHandler extends SynapseExportHandler {
     @Override
     protected String getDdbTableKeyName() {
         return "tableName";
+    }
+
+    @Override
+    protected String getDdbTableKeyValue() {
+        return getStudyId() + "-appVersion";
     }
 
     @Override
@@ -86,11 +81,6 @@ public class AppVersionExportHandler extends SynapseExportHandler {
     }
 
     @Override
-    protected String getSynapseTableName() {
-        return getStudyId() + "-appVersion";
-    }
-
-    @Override
     protected List<String> getTsvHeaderList() {
         List<String> fieldNameList = new ArrayList<>();
         fieldNameList.add("recordId");
@@ -104,11 +94,19 @@ public class AppVersionExportHandler extends SynapseExportHandler {
     }
 
     @Override
-    protected List<String> getTsvRowValueList(ExportSubtask task) throws BridgeExporterException {
-        Item record = task.getRecord();
-        if (record == null) {
-            throw new BridgeExporterException("Null record for AppVersionExportWorker");
-        }
+    protected TsvInfo getTsvInfoForTask(ExportTask task) {
+        return task.getAppVersionTsvInfoForStudy(getStudyId());
+    }
+
+    @Override
+    protected void setTsvInfoForTask(ExportTask task, TsvInfo tsvInfo) {
+        task.setAppVersionTsvInfoForStudy(getStudyId(), tsvInfo);
+    }
+
+    @Override
+    protected List<String> getTsvRowValueList(ExportSubtask subtask) {
+        ExportTask task = subtask.getParentTask();
+        Item record = subtask.getOriginalRecord();
         String recordId = record.getString("id");
 
         // get phone and app info
@@ -121,26 +119,16 @@ public class AppVersionExportHandler extends SynapseExportHandler {
         rowValueList.add(recordId);
         rowValueList.add(record.getString("healthCode"));
         rowValueList.add(BridgeExporterUtil.getDdbStringRemoveTabsAndTrim(record, "userExternalId", 128, recordId));
-        rowValueList.add(getManager().getTodaysDateString());
-        rowValueList.add(task.getSchemaKey().toString());
+        rowValueList.add(task.getExporterDate().toString());
+        rowValueList.add(subtask.getSchemaKey().toString());
         rowValueList.add(appVersion);
         rowValueList.add(phoneInfo);
 
         // book keeping
         if (!Strings.isNullOrEmpty(appVersion)) {
-            uniqueAppVersionSet.add(appVersion);
+            task.getMetrics().addKeyValuePair("uniqueAppVersions[" + getStudyId() + "]", appVersion);
         }
 
         return rowValueList;
-    }
-
-    @Override
-    public void reportMetrics() {
-        super.reportMetrics();
-
-        if (!uniqueAppVersionSet.isEmpty()) {
-            System.out.println("[METRICS] Unique app versions for study " + getStudyId() + ": "
-                    + APP_VERSION_JOINER.join(uniqueAppVersionSet));
-        }
     }
 }

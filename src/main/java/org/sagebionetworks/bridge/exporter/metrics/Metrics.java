@@ -1,37 +1,43 @@
 package org.sagebionetworks.bridge.exporter.metrics;
 
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeMap;
+import com.google.common.collect.Multimap;
+import com.google.common.collect.Multiset;
+import com.google.common.collect.TreeMultimap;
+import com.google.common.collect.TreeMultiset;
 
 // TODO doc
 public class Metrics {
-    private final Map<String, Integer> counterMap = new TreeMap<>();
-    private final Map<String, Set<String>> setCounterMap = new TreeMap<>();
+    private final Multiset<String> counterMap = TreeMultiset.create();
+    private final Multimap<String, String> keyValuesMap = TreeMultimap.create();
+    private final Multimap<String, String> setCounterMap = TreeMultimap.create();
+
+    public Multiset<String> getCounterMap() {
+        return counterMap;
+    }
 
     public int incrementCounter(String name) {
-        Integer oldValue = counterMap.get(name);
-        int newValue;
-        if (oldValue == null) {
-            newValue = 1;
-        } else {
-            newValue = oldValue + 1;
-        }
+        counterMap.add(name);
+        return counterMap.count(name);
+    }
 
-        counterMap.put(name, newValue);
-        return newValue;
+    // Metrics value sets under a metrics name. Used for things like app versions or schemas not found.
+    public Multimap<String, String> getKeyValuesMap() {
+        return keyValuesMap;
+    }
+
+    public int addKeyValuePair(String name, String value) {
+        keyValuesMap.put(name, value);
+        return keyValuesMap.get(name).size();
     }
 
     // Only increments the counter if the value hasn't already been used. Used for things like counting unique health
     // codes.
+    public Multimap<String, String> getSetCounterMap() {
+        return setCounterMap;
+    }
+
     public int incrementSetCounter(String name, String value) {
-        Set<String> set = setCounterMap.get(name);
-        if (set == null) {
-            set = new HashSet<>();
-            setCounterMap.put(name, set);
-        }
-        set.add(value);
-        return set.size();
+        setCounterMap.put(name, value);
+        return setCounterMap.get(name).size();
     }
 }

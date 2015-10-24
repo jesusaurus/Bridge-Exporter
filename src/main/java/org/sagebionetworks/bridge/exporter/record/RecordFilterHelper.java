@@ -1,29 +1,31 @@
 package org.sagebionetworks.bridge.exporter.record;
 
 import java.util.Set;
-import java.util.concurrent.ExecutionException;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
-import com.google.common.cache.LoadingCache;
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 
+import org.sagebionetworks.bridge.exporter.dynamo.DynamoHelper;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
-import org.sagebionetworks.bridge.exporter.sharing.BridgeExporterSharingMode;
-import org.sagebionetworks.bridge.exporter.schema.UploadSchemaHelper;
-import org.sagebionetworks.bridge.exporter.sharing.SharingScope;
+import org.sagebionetworks.bridge.exporter.dynamo.BridgeExporterSharingMode;
+import org.sagebionetworks.bridge.exporter.dynamo.SharingScope;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
 // TODO doc
+@Component
 public class RecordFilterHelper {
     private static final Logger LOG = LoggerFactory.getLogger(RecordFilterHelper.class);
 
-    private LoadingCache<String, SharingScope> userSharingScopeCache;
+    private DynamoHelper dynamoHelper;
 
-    public final void setUserSharingScopeCache(LoadingCache<String, SharingScope> userSharingScopeCache) {
-        this.userSharingScopeCache = userSharingScopeCache;
+    @Autowired
+    public final void setDynamoHelper(DynamoHelper dynamoHelper) {
+        this.dynamoHelper = dynamoHelper;
     }
 
     public boolean shouldFilterRecord(Metrics metrics, BridgeExporterRequest request, Item record) {
@@ -42,7 +44,7 @@ public class RecordFilterHelper {
         Set<UploadSchemaKey> tableFilterSet = request.getTableFilterSet();
         if (tableFilterSet != null && !tableFilterSet.isEmpty()) {
             filterByTable = shouldFilterRecordByTable(metrics, tableFilterSet,
-                    UploadSchemaHelper.getSchemaKeyForRecord(record));
+                    DynamoHelper.getSchemaKeyForRecord(record));
         }
 
         // If any of the filters are hit, we filter the record. (We don't use short-circuiting because we want to
@@ -63,15 +65,8 @@ public class RecordFilterHelper {
         }
 
         // Get sharing scope from user's participant options.
-        SharingScope userSharingScope;
         String healthCode = record.getString("healthCode");
-        try {
-            userSharingScope = userSharingScopeCache.get(healthCode);
-        } catch (ExecutionException ex) {
-            LOG.error("Could not get sharing scope for hash[healthCode]=" + healthCode.hashCode() + ": " +
-                    ex.getMessage(), ex);
-            userSharingScope = SharingScope.NO_SHARING;
-        }
+        SharingScope userSharingScope = dynamoHelper.getSharingScopeForUser(healthCode);
 
         // reconcile both sharing scopes to find the most restrictive sharing scope
         SharingScope sharingScope;

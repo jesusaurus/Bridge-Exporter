@@ -1,10 +1,11 @@
 package org.sagebionetworks.bridge.exporter.request;
 
+import java.util.Map;
 import java.util.Set;
 
 import org.joda.time.LocalDate;
 
-import org.sagebionetworks.bridge.exporter.sharing.BridgeExporterSharingMode;
+import org.sagebionetworks.bridge.exporter.dynamo.BridgeExporterSharingMode;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
 // TODO doc
@@ -15,20 +16,20 @@ public class BridgeExporterRequest {
     private final String recordIdS3Override;
     private final BridgeExporterSharingMode sharingMode;
     private final Set<String> studyFilterSet;
-    private final String synapseProjectOverride;
+    private final Map<String, String> synapseProjectOverrideMap;
     private final Set<UploadSchemaKey> tableFilterSet;
     private final String tag;
 
     // TODO doc
     private BridgeExporterRequest(LocalDate date, String exporterDdbPrefixOverride, String recordIdS3Override,
-            BridgeExporterSharingMode sharingMode, Set<String> studyFilterSet, String synapseProjectOverride,
-            Set<UploadSchemaKey> tableFilterSet, String tag) {
+            BridgeExporterSharingMode sharingMode, Set<String> studyFilterSet,
+            Map<String, String> synapseProjectOverrideMap, Set<UploadSchemaKey> tableFilterSet, String tag) {
         this.date = date;
         this.exporterDdbPrefixOverride = exporterDdbPrefixOverride;
         this.recordIdS3Override = recordIdS3Override;
         this.sharingMode = sharingMode;
         this.studyFilterSet = studyFilterSet;
-        this.synapseProjectOverride = synapseProjectOverride;
+        this.synapseProjectOverrideMap = synapseProjectOverrideMap;
         this.tableFilterSet = tableFilterSet;
         this.tag = tag;
     }
@@ -53,8 +54,8 @@ public class BridgeExporterRequest {
         return studyFilterSet;
     }
 
-    public String getSynapseProjectOverride() {
-        return synapseProjectOverride;
+    public Map<String, String> getSynapseProjectOverrideMap() {
+        return synapseProjectOverrideMap;
     }
 
     public Set<UploadSchemaKey> getTableFilterSet() {
@@ -72,7 +73,7 @@ public class BridgeExporterRequest {
         private String recordIdS3Override;
         private BridgeExporterSharingMode sharingMode;
         private Set<String> studyFilterSet;
-        private String synapseProjectOverride;
+        private Map<String, String> synapseProjectOverride;
         private Set<UploadSchemaKey> tableFilterSet;
         private String tag;
 
@@ -101,7 +102,7 @@ public class BridgeExporterRequest {
             return this;
         }
 
-        public Builder withSynapseProjectOverride(String synapseProjectOverride) {
+        public Builder withSynapseProjectOverride(Map<String, String> synapseProjectOverride) {
             this.synapseProjectOverride = synapseProjectOverride;
             return this;
         }

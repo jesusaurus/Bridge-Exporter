@@ -1,15 +1,19 @@
-package org.sagebionetworks.bridge.exporter;
+package org.sagebionetworks.bridge.exporter.handler;
 
 import java.io.IOException;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Strings;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
-import org.sagebionetworks.bridge.util.BridgeExporterUtil;
+import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 
 public class PhoneAppVersionInfo {
+    private static final Logger LOG = LoggerFactory.getLogger(PhoneAppVersionInfo.class);
+
     private final String appVersion;
     private final String phoneInfo;
 
@@ -27,8 +31,7 @@ public class PhoneAppVersionInfo {
                 phoneInfo = BridgeExporterUtil.getJsonStringRemoveTabsAndTrim(metadataJson, "phoneInfo", 48, recordId);
             } catch (IOException ex) {
                 // we can recover from this
-                System.out.println("[ERROR] Error parsing metadata for record ID " + recordId + ": "
-                        + ex.getMessage());
+                LOG.error("Error parsing metadata for record ID " + recordId + ": " + ex.getMessage(), ex);
             }
         }
 

@@ -1,46 +1,43 @@
-package org.sagebionetworks.bridge.exporter.worker;
+package org.sagebionetworks.bridge.exporter.handler;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import com.amazonaws.AmazonClientException;
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.TextNode;
+import org.sagebionetworks.client.exceptions.SynapseException;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
-import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
-import org.sagebionetworks.bridge.exporter.PhoneAppVersionInfo;
-import org.sagebionetworks.bridge.json.DefaultObjectMapper;
+import org.sagebionetworks.bridge.exporter.worker.ExportSubtask;
+import org.sagebionetworks.bridge.exporter.worker.ExportTask;
+import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
+import org.sagebionetworks.bridge.exporter.worker.TsvInfo;
 import org.sagebionetworks.bridge.schema.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
-import org.sagebionetworks.bridge.synapse.SynapseHelper;
-import org.sagebionetworks.bridge.util.BridgeExporterUtil;
+import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
+import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 
 /** Synapse export worker for health data tables. */
 public class HealthDataExportHandler extends SynapseExportHandler {
-    // Configured externally
-    private UploadSchemaKey schemaKey;
+    private static final Logger LOG = LoggerFactory.getLogger(HealthDataExportHandler.class);
 
-    // Internal state
+    private UploadSchemaKey schemaKey;
     private UploadSchema schema;
 
     /** Schema key corresponding to this health data record table. Configured externally. */
-    public UploadSchemaKey getSchemaKey() {
-        return schemaKey;
-    }
-
-    public void setSchemaKey(UploadSchemaKey schemaKey) {
+    public final void setSchemaKey(UploadSchemaKey schemaKey) {
         this.schemaKey = schemaKey;
     }
 
-    @Override
-    protected void initSchemas() throws SchemaNotFoundException {
-        schema = getManager().getSchemaHelper().getSchema(schemaKey);
+    public final void setSchema(UploadSchema schema) {
+        this.schema = schema;
     }
 
     @Override
@@ -51,6 +48,11 @@ public class HealthDataExportHandler extends SynapseExportHandler {
     @Override
     protected String getDdbTableKeyName() {
         return "schemaKey";
+    }
+
+    @Override
+    protected String getDdbTableKeyValue() {
+        return schemaKey.toString();
     }
 
     @Override
@@ -108,7 +110,7 @@ public class HealthDataExportHandler extends SynapseExportHandler {
 
             ColumnType synapseType = SynapseHelper.BRIDGE_TYPE_TO_SYNAPSE_TYPE.get(bridgeType);
             if (synapseType == null) {
-                System.out.println("[ERROR] No Synapse type found for Bridge type " + bridgeType);
+                LOG.error("No Synapse type found for Bridge type " + bridgeType);
                 synapseType = ColumnType.STRING;
             }
 
@@ -125,7 +127,7 @@ public class HealthDataExportHandler extends SynapseExportHandler {
             if (synapseType == ColumnType.STRING) {
                 Integer maxLength = SynapseHelper.BRIDGE_TYPE_TO_MAX_LENGTH.get(bridgeType);
                 if (maxLength == null) {
-                    System.out.println("[ERROR] No max length found for Bridge type " + bridgeType);
+                    LOG.error("No max length found for Bridge type " + bridgeType);
                     maxLength = SynapseHelper.DEFAULT_MAX_LENGTH;
                 }
                 oneColumn.setMaximumSize(Long.valueOf(maxLength));
@@ -135,11 +137,6 @@ public class HealthDataExportHandler extends SynapseExportHandler {
         }
 
         return columnList;
-    }
-
-    @Override
-    protected String getSynapseTableName() {
-        return schemaKey.toString();
     }
 
     @Override
@@ -162,25 +159,25 @@ public class HealthDataExportHandler extends SynapseExportHandler {
     }
 
     @Override
-    protected List<String> getTsvRowValueList(ExportSubtask task) throws BridgeExporterException {
-        Item record = task.getRecord();
-        if (record == null) {
-            throw new BridgeExporterException("Null record for HealthDataExportWorker");
-        }
+    protected TsvInfo getTsvInfoForTask(ExportTask task) {
+        return task.getHealthDataTsvInfoForSchema(schemaKey);
+    }
+
+    @Override
+    protected void setTsvInfoForTask(ExportTask task, TsvInfo tsvInfo) {
+        task.setHealthDataTsvInfoForSchema(schemaKey, tsvInfo);
+    }
+
+    @Override
+    protected List<String> getTsvRowValueList(ExportSubtask subtask) throws BridgeExporterException, IOException,
+            SynapseException {
+        ExportWorkerManager manager = getManager();
+        String synapseProjectId = manager.getSynapseProjectIdForStudyAndTask(getStudyId(), subtask.getParentTask());
+        Item record = subtask.getOriginalRecord();
         String recordId = record.getString("id");
 
-        // Extract data JSON. Try task.getRecordData() first. If not, fall back to record.getString("data").
-        JsonNode dataJson = task.getRecordData();
-        if (dataJson == null || dataJson.isNull()) {
-            try {
-                dataJson = DefaultObjectMapper.INSTANCE.readTree(record.getString("data"));
-            } catch (IOException ex) {
-                throw new BridgeExporterException("Error parsing JSON: " + ex.getMessage(), ex);
-            }
-        }
-        if (dataJson == null || dataJson.isNull()) {
-            throw new BridgeExporterException("Null data JSON node for HealthDataExportWorker");
-        }
+        // Extract data JSON.
+        JsonNode dataJson = subtask.getRecordData();
 
         // get phone and app info
         PhoneAppVersionInfo phoneAppVersionInfo = PhoneAppVersionInfo.fromRecord(record);
@@ -193,7 +190,7 @@ public class HealthDataExportHandler extends SynapseExportHandler {
         rowValueList.add(recordId);
         rowValueList.add(record.getString("healthCode"));
         rowValueList.add(BridgeExporterUtil.getDdbStringRemoveTabsAndTrim(record, "userExternalId", 128, recordId));
-        rowValueList.add(getManager().getTodaysDateString());
+        rowValueList.add(subtask.getParentTask().getExporterDate().toString());
 
         // createdOn as a long epoch millis
         rowValueList.add(String.valueOf(record.getLong("createdOn")));
@@ -212,21 +209,15 @@ public class HealthDataExportHandler extends SynapseExportHandler {
                 // special hack, see comments on shouldConvertFreeformTextToAttachment()
                 bridgeType = "attachment_blob";
                 if (valueNode != null && !valueNode.isNull() && valueNode.isTextual()) {
-                    try {
-                        String attachmentId = getManager().getExportHelper().uploadFreeformTextAsAttachment(recordId,
-                                valueNode.textValue());
-                        valueNode = new TextNode(attachmentId);
-                    } catch (AmazonClientException | IOException ex) {
-                        System.out.println("[ERROR] Error uploading freeform text as attachment for record ID "
-                                + recordId + ", field " + oneFieldName + ": " + ex.getMessage());
-                        valueNode = null;
-                    }
+                    String attachmentId = getManager().getExportHelper().uploadFreeformTextAsAttachment(recordId,
+                            valueNode.textValue());
+                    valueNode = new TextNode(attachmentId);
                 } else {
                     valueNode = null;
                 }
             }
 
-            String value = getManager().getSynapseHelper().serializeToSynapseType(getStudyId(), recordId, oneFieldName,
+            String value = manager.getSynapseHelper().serializeToSynapseType(synapseProjectId, recordId, oneFieldName,
                     bridgeType, valueNode);
             rowValueList.add(value);
         }

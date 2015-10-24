@@ -1,4 +1,4 @@
-package org.sagebionetworks.bridge.synapse;
+package org.sagebionetworks.bridge.exporter.synapse;
 
 import java.util.List;
 import java.util.NoSuchElementException;

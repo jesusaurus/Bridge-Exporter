@@ -1,9 +1,7 @@
-package org.sagebionetworks.bridge.exporter.sharing;
+package org.sagebionetworks.bridge.exporter.dynamo;
 
 import java.util.EnumSet;
 import java.util.Set;
-
-import org.sagebionetworks.bridge.exporter.sharing.SharingScope;
 
 // TODO doc
 public enum BridgeExporterSharingMode {

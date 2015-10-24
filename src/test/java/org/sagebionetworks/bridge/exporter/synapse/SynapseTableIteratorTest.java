@@ -1,4 +1,4 @@
-package org.sagebionetworks.bridge.synapse;
+package org.sagebionetworks.bridge.exporter.synapse;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;

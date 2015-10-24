@@ -1,16 +1,16 @@
-package org.sagebionetworks.bridge.exporter.study;
+package org.sagebionetworks.bridge.exporter.dynamo;
 
 // TODO doc
 public class StudyInfo {
-    private final int dataAccessTeamId;
+    private final long dataAccessTeamId;
     private final String synapseProjectId;
 
-    private StudyInfo(int dataAccessTeamId, String synapseProjectId) {
+    private StudyInfo(long dataAccessTeamId, String synapseProjectId) {
         this.dataAccessTeamId = dataAccessTeamId;
         this.synapseProjectId = synapseProjectId;
     }
 
-    public int getDataAccessTeamId() {
+    public long getDataAccessTeamId() {
         return dataAccessTeamId;
     }
 
@@ -19,7 +19,7 @@ public class StudyInfo {
     }
 
     public static class Builder {
-        private int dataAccessTeamId;
+        private long dataAccessTeamId;
         private String synapseProjectId;
 
         public Builder withDataAccessTeamId(int dataAccessTeamId) {

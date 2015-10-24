@@ -1,24 +1,14 @@
-package org.sagebionetworks.bridge.util;
+package org.sagebionetworks.bridge.exporter.util;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.fasterxml.jackson.databind.JsonNode;
-import org.joda.time.DateTime;
-import org.joda.time.DateTimeZone;
-import org.joda.time.format.ISODateTimeFormat;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
 public class BridgeExporterUtil {
-    // TODO: make timezone configurable
-    public static final DateTimeZone LOCAL_TIME_ZONE = DateTimeZone.forID("America/Los_Angeles");
-
-    // app versions look like "version 1.0, build 7", where "build 7" can be anything. Anything that
-    // starts with "version 1.0," is v1, so we need to filter that out.
-    public static final String V1_PREFIX = "version 1.0,";
-
-    public static String getCurrentLocalTimestamp() {
-        return DateTime.now(LOCAL_TIME_ZONE).toString(ISODateTimeFormat.dateTime());
-    }
+    private static final Logger LOG = LoggerFactory.getLogger(BridgeExporterUtil.class);
 
     public static boolean shouldConvertFreeformTextToAttachment(UploadSchemaKey schemaKey, String fieldName) {
         // When we initially designed these schemas, we didn't realize Synapse had a character limit on strings.
@@ -74,8 +64,7 @@ public class BridgeExporterUtil {
 
     public static String trimToLengthAndWarn(String in, int maxLength, String recordId) {
         if (in != null && in.length() > maxLength) {
-            System.out.println("[ERROR] Truncating string " + in + " to length " + maxLength + " for record "
-                    + recordId);
+            LOG.error("Truncating string " + in + " to length " + maxLength + " for record " + recordId);
             return in.substring(0, maxLength);
         } else {
             return in;

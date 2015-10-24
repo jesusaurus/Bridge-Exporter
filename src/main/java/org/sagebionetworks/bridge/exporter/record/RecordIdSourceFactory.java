@@ -6,6 +6,7 @@ import java.util.List;
 import com.amazonaws.services.dynamodbv2.document.Index;
 import com.amazonaws.services.dynamodbv2.document.Item;
 import org.apache.commons.lang.StringUtils;
+import org.springframework.stereotype.Component;
 
 import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.dynamodb.DynamoQueryHelper;
@@ -13,6 +14,7 @@ import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
 import org.sagebionetworks.bridge.s3.S3Helper;
 
 // TODO doc
+@Component
 public class RecordIdSourceFactory {
     static final String CONFIG_KEY_RECORD_ID_OVERRIDE_BUCKET = "record.id.override.bucket";
 

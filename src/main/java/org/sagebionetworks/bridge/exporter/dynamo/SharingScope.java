@@ -1,4 +1,4 @@
-package org.sagebionetworks.bridge.exporter.sharing;
+package org.sagebionetworks.bridge.exporter.dynamo;
 
 // TODO doc
 // TODO consolidate this with BridgePF ParticipantOption.SharingScope

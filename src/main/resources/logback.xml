@@ -22,5 +22,5 @@
         <appender-ref ref="LOGENTRIES" />
     </root>
 
-    <logger name="org.sagebionetworks.bridge" level="INFO" />
+    <logger name="org.sagebionetworks.bridge.exporter" level="INFO" />
 </configuration>

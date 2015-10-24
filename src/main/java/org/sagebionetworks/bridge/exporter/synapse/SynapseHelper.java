@@ -1,4 +1,4 @@
-package org.sagebionetworks.bridge.synapse;
+package org.sagebionetworks.bridge.exporter.synapse;
 
 import java.io.File;
 import java.io.IOException;
@@ -23,13 +23,21 @@ import org.sagebionetworks.repo.model.table.ColumnType;
 import org.sagebionetworks.repo.model.table.CsvTableDescriptor;
 import org.sagebionetworks.repo.model.table.TableEntity;
 import org.sagebionetworks.repo.model.table.UploadToTableResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 
+import org.sagebionetworks.bridge.config.Config;
+import org.sagebionetworks.bridge.exporter.config.SpringConfig;
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
-import org.sagebionetworks.bridge.exporter.BridgeExporterConfig;
 import org.sagebionetworks.bridge.s3.S3Helper;
-import org.sagebionetworks.bridge.util.BridgeExporterUtil;
+import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 
+@Component
 public class SynapseHelper {
+    private static final Logger LOG = LoggerFactory.getLogger(SynapseHelper.class);
+
     private static final long APPEND_TIMEOUT_MILLISECONDS = 30 * 1000;
     private static final int ASYNC_UPLOAD_TIMEOUT_SECONDS = 300;
     public static final int DEFAULT_MAX_LENGTH = 100;
@@ -55,32 +63,37 @@ public class SynapseHelper {
             .put("string", 100)
             .build();
 
-    private BridgeExporterConfig bridgeExporterConfig;
+    // config
+    private String attachmentBucket;
+
+    // Spring helpers
     private S3Helper s3Helper;
     private SynapseClient synapseClient;
 
-    public void setBridgeExporterConfig(BridgeExporterConfig bridgeExporterConfig) {
-        this.bridgeExporterConfig = bridgeExporterConfig;
+    @Autowired
+    public final void setConfig(Config config) {
+        this.attachmentBucket = config.get(SpringConfig.CONFIG_KEY_ATTACHMENT_S3_BUCKET);
     }
 
-    public void setS3Helper(S3Helper s3Helper) {
+    @Autowired
+    public final void setS3Helper(S3Helper s3Helper) {
         this.s3Helper = s3Helper;
     }
 
-    public void setSynapseClient(SynapseClient synapseClient) {
+    @Autowired
+    public final void setSynapseClient(SynapseClient synapseClient) {
         this.synapseClient = synapseClient;
     }
 
-    public String serializeToSynapseType(String studyId, String recordId, String fieldName, String bridgeType,
-            JsonNode node) {
+    public String serializeToSynapseType(String projectId, String recordId, String fieldName, String bridgeType,
+            JsonNode node) throws IOException, SynapseException {
         if (node == null || node.isNull()) {
             return null;
         }
 
         ColumnType synapseType = BRIDGE_TYPE_TO_SYNAPSE_TYPE.get(bridgeType);
         if (synapseType == null) {
-            System.out.println("[ERROR] No Synapse type found for Bridge type " + bridgeType + ", record ID "
-                    + recordId);
+            LOG.error("No Synapse type found for Bridge type " + bridgeType + ", record ID " + recordId);
             synapseType = ColumnType.STRING;
         }
 
@@ -114,14 +127,7 @@ public class SynapseHelper {
                 // file handles are text nodes, where the text is the attachment ID (which is the S3 Key)
                 if (node.isTextual()) {
                     String s3Key = node.textValue();
-                    try {
-                        return uploadFromS3ToSynapseFileHandle(studyId, fieldName, s3Key);
-                    } catch (IOException | SynapseException ex) {
-                        System.out.println("[ERROR] Error uploading attachment to Synapse for record ID " + recordId +
-                                ", s3Key " + s3Key + ": " + ex.getMessage());
-                        ex.printStackTrace(System.out);
-                        return null;
-                    }
+                    return uploadFromS3ToSynapseFileHandle(projectId, fieldName, s3Key);
                 }
                 return null;
             case INTEGER:
@@ -141,33 +147,32 @@ public class SynapseHelper {
 
                 Integer maxLength = BRIDGE_TYPE_TO_MAX_LENGTH.get(bridgeType);
                 if (maxLength == null) {
-                    System.out.println("[ERROR] No max length found for Bridge type " + bridgeType);
+                    LOG.error("No max length found for Bridge type " + bridgeType);
                     maxLength = DEFAULT_MAX_LENGTH;
                 }
                 String filtered = BridgeExporterUtil.removeTabs(nodeValue);
                 String trimmed =  BridgeExporterUtil.trimToLengthAndWarn(filtered, maxLength, recordId);
                 return trimmed;
             default:
-                System.out.println("[ERROR] Unexpected Synapse Type " + String.valueOf(synapseType) + " for record ID "
-                        + recordId);
+                LOG.error("Unexpected Synapse Type " + String.valueOf(synapseType) + " for record ID " + recordId);
                 return null;
         }
     }
 
-    private String uploadFromS3ToSynapseFileHandle(String studyId, String fieldName, String s3Key) throws IOException,
-            SynapseException {
+    private String uploadFromS3ToSynapseFileHandle(String projectId, String fieldName, String s3Key)
+            throws IOException, SynapseException {
         // create temp file using the field name and s3Key as the prefix and the default suffix (null)
+        // TODO preserve extension
         File tempFile = File.createTempFile(fieldName + "-" + s3Key, null);
 
         try {
             // download from S3
             // TODO: update S3Helper to stream directly to a file instead of holding it in memory first
-            byte[] fileBytes = s3Helper.readS3FileAsBytes(bridgeExporterConfig.getBridgeAttachmentsBucket(), s3Key);
+            byte[] fileBytes = s3Helper.readS3FileAsBytes(attachmentBucket, s3Key);
             Files.write(fileBytes, tempFile);
 
             // upload to Synapse
-            FileHandle synapseFileHandle = createFileHandleWithRetry(tempFile, "application/octet-stream",
-                    bridgeExporterConfig.getProjectIdsByStudy().get(studyId));
+            FileHandle synapseFileHandle = createFileHandleWithRetry(tempFile, "application/octet-stream", projectId);
             return synapseFileHandle.getId();
         } finally {
             // delete temp file
@@ -181,7 +186,7 @@ public class SynapseHelper {
         try {
             tableFileHandle = createFileHandleWithRetry(file, "text/tab-separated-values", projectId);
         } catch (IOException | SynapseException ex) {
-            System.out.println("[re-upload-tsv] file " + file.getAbsolutePath() + " " + tableId);
+            LOG.error("[re-upload-tsv] file " + file.getAbsolutePath() + " " + tableId);
             throw new BridgeExporterException("Error uploading TSV as a file handle: " + ex.getMessage(), ex);
         }
         String fileHandleId = tableFileHandle.getId();
@@ -199,7 +204,7 @@ public class SynapseHelper {
         try {
             jobToken = uploadTsvStartWithRetry(tableId, fileHandleId, tableDesc);
         } catch (SynapseException ex) {
-            System.out.println("[re-upload-tsv] filehandle " + fileHandleId + " " + tableId);
+            LOG.error("[re-upload-tsv] filehandle " + fileHandleId + " " + tableId);
             throw new BridgeExporterException("Error starting async import of file handle " + fileHandleId + ": "
                     + ex.getMessage(), ex);
         }
@@ -229,7 +234,7 @@ public class SynapseHelper {
             } catch (SynapseResultNotReadyException ex) {
                 // results not ready, sleep some more
             } catch (SynapseException ex) {
-                System.out.println("[re-upload-tsv] filehandle " + fileHandleId + " " + tableId);
+                LOG.error("[re-upload-tsv] filehandle " + fileHandleId + " " + tableId);
                 throw new BridgeExporterException("Error polling job status of importing file handle " + fileHandleId
                         + ": " + ex.getMessage(), ex);
             }
