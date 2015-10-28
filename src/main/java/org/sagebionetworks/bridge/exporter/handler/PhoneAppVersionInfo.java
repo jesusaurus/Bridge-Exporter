@@ -4,7 +4,7 @@ import java.io.IOException;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.base.Strings;
+import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,7 +23,7 @@ public class PhoneAppVersionInfo {
         String appVersion = null;
         String phoneInfo = null;
         String metadataString = record.getString("metadata");
-        if (!Strings.isNullOrEmpty(metadataString)) {
+        if (StringUtils.isNotBlank(metadataString)) {
             try {
                 JsonNode metadataJson = DefaultObjectMapper.INSTANCE.readTree(metadataString);
                 appVersion = BridgeExporterUtil.getJsonStringRemoveTabsAndTrim(metadataJson, "appVersion", 48,

@@ -102,6 +102,6 @@ public class DynamoHelper {
         // TODO add these fields to the study table
         Item studyItem = ddbStudyTable.getItem("identifier", studyId);
         return new StudyInfo.Builder().withDataAccessTeamId(studyItem.getInt("synapseDataAccessTeamId"))
-                .withSynapseProjectId("synapseProjectId").build();
+                .withSynapseProjectId(studyItem.getString("synapseProjectId")).build();
     }
 }

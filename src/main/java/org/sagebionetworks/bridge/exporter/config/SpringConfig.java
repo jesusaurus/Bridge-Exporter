@@ -9,6 +9,7 @@ import java.util.concurrent.Executors;
 
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClient;
 import com.amazonaws.services.dynamodbv2.document.DynamoDB;
+import com.amazonaws.services.dynamodbv2.document.Index;
 import com.amazonaws.services.dynamodbv2.document.Table;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.sqs.AmazonSQSClient;
@@ -21,6 +22,7 @@ import org.springframework.context.annotation.Configuration;
 
 import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.config.PropertiesConfig;
+import org.sagebionetworks.bridge.dynamodb.DynamoQueryHelper;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterSqsCallback;
 import org.sagebionetworks.bridge.file.FileHelper;
 import org.sagebionetworks.bridge.s3.S3Helper;
@@ -80,9 +82,19 @@ public class SpringConfig {
         return ddbClient().getTable(ddbPrefix() + "ParticipantOptions");
     }
 
+    @Bean
+    public DynamoQueryHelper ddbQueryHelper() {
+        return new DynamoQueryHelper();
+    }
+
     @Bean(name = "ddbRecordTable")
     public Table ddbRecordTable() {
         return ddbClient().getTable(ddbPrefix() + "HealthDataRecord3");
+    }
+
+    @Bean(name = "ddbRecordUploadDateIndex")
+    public Index ddbRecordUploadDateIndex() {
+        return ddbRecordTable().getIndex("uploadDate-index");
     }
 
     @Bean(name = "ddbSchemaTable")
@@ -129,11 +141,11 @@ public class SpringConfig {
 
     @Bean
     public SynapseClient synapseClient() {
-        Config envConfig = bridgeConfig();
+        Config config = bridgeConfig();
 
         SynapseClient synapseClient = new SynapseAdminClientImpl();
-        synapseClient.setUserName(envConfig.get("synapse.user"));
-        synapseClient.setApiKey(envConfig.get("synapse.api.key"));
+        synapseClient.setUserName(config.get("synapse.user"));
+        synapseClient.setApiKey(config.get("synapse.api.key"));
         return synapseClient;
     }
 

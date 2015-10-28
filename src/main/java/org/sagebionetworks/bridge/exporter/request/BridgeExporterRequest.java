@@ -3,13 +3,18 @@ package org.sagebionetworks.bridge.exporter.request;
 import java.util.Map;
 import java.util.Set;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.datatype.joda.deser.LocalDateDeserializer;
 import org.joda.time.LocalDate;
 
 import org.sagebionetworks.bridge.exporter.dynamo.BridgeExporterSharingMode;
+import org.sagebionetworks.bridge.json.LocalDateToStringSerializer;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
 // TODO doc
 // TODO Jackson annotations
+@JsonDeserialize(builder = BridgeExporterRequest.Builder.class)
 public class BridgeExporterRequest {
     private final LocalDate date;
     private final String exporterDdbPrefixOverride;
@@ -34,6 +39,7 @@ public class BridgeExporterRequest {
         this.tag = tag;
     }
 
+    @JsonSerialize(using = LocalDateToStringSerializer.class)
     public LocalDate getDate() {
         return date;
     }
@@ -77,6 +83,7 @@ public class BridgeExporterRequest {
         private Set<UploadSchemaKey> tableFilterSet;
         private String tag;
 
+        @JsonDeserialize(using = LocalDateDeserializer.class)
         public Builder withDate(LocalDate date) {
             this.date = date;
             return this;
@@ -119,6 +126,9 @@ public class BridgeExporterRequest {
 
         public BridgeExporterRequest build() {
             // TODO validate, defaults
+            if (sharingMode == null) {
+                sharingMode = BridgeExporterSharingMode.SHARED;
+            }
             return new BridgeExporterRequest(date, exporterDdbPrefixOverride, recordIdS3Override, sharingMode,
                     studyFilterSet, synapseProjectOverride, tableFilterSet, tag);
         }

@@ -119,7 +119,7 @@ public class BridgeExporterRecordProcessor {
 
                 try {
                     // get record
-                    Item record = ddbRecordTable.getItem("recordId", oneRecordId);
+                    Item record = ddbRecordTable.getItem("id", oneRecordId);
 
                     // filter
                     boolean shouldFilterRecord = recordFilterHelper.shouldFilterRecord(metrics, request, record);

@@ -4,8 +4,8 @@ import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.concurrent.TimeUnit;
 
-import com.google.common.base.Strings;
 import com.jcabi.aspects.RetryOnFailure;
+import org.apache.commons.lang.StringUtils;
 import org.sagebionetworks.client.SynapseClient;
 import org.sagebionetworks.client.exceptions.SynapseClientException;
 import org.sagebionetworks.client.exceptions.SynapseException;
@@ -48,7 +48,7 @@ public class SynapseTableIterator {
      */
     public SynapseTableIterator(SynapseClient synapseClient, String sql, String synapseTableId)
             throws SynapseException {
-        if (Strings.isNullOrEmpty(sql)) {
+        if (StringUtils.isBlank(sql)) {
             sql = "SELECT * FROM " + synapseTableId;
         }
 

@@ -44,23 +44,23 @@ public class SynapseHelper {
 
     public static final Map<String, ColumnType> BRIDGE_TYPE_TO_SYNAPSE_TYPE =
             ImmutableMap.<String, ColumnType>builder()
-                    .put("attachment_blob", ColumnType.FILEHANDLEID)
-                    .put("attachment_csv", ColumnType.FILEHANDLEID)
-                    .put("attachment_json_blob", ColumnType.FILEHANDLEID)
-                    .put("attachment_json_table", ColumnType.FILEHANDLEID)
-                    .put("boolean", ColumnType.BOOLEAN)
-                    .put("calendar_date", ColumnType.STRING)
-                    .put("float", ColumnType.DOUBLE)
-                    .put("inline_json_blob", ColumnType.STRING)
-                    .put("int", ColumnType.INTEGER)
-                    .put("string", ColumnType.STRING)
-                    .put("timestamp", ColumnType.DATE)
+                    .put("ATTACHMENT_BLOB", ColumnType.FILEHANDLEID)
+                    .put("ATTACHMENT_CSV", ColumnType.FILEHANDLEID)
+                    .put("ATTACHMENT_JSON_BLOB", ColumnType.FILEHANDLEID)
+                    .put("ATTACHMENT_JSON_TABLE", ColumnType.FILEHANDLEID)
+                    .put("BOOLEAN", ColumnType.BOOLEAN)
+                    .put("CALENDAR_DATE", ColumnType.STRING)
+                    .put("FLOAT", ColumnType.DOUBLE)
+                    .put("INLINE_JSON_BLOB", ColumnType.STRING)
+                    .put("INT", ColumnType.INTEGER)
+                    .put("STRING", ColumnType.STRING)
+                    .put("TIMESTAMP", ColumnType.DATE)
                     .build();
 
     public static final Map<String, Integer> BRIDGE_TYPE_TO_MAX_LENGTH = ImmutableMap.<String, Integer>builder()
-            .put("calendar_date", 10)
-            .put("inline_json_blob", 100)
-            .put("string", 100)
+            .put("CALENDAR_DATE", 10)
+            .put("INLINE_JSON_BLOB", 100)
+            .put("STRING", 100)
             .build();
 
     // config
@@ -186,7 +186,6 @@ public class SynapseHelper {
         try {
             tableFileHandle = createFileHandleWithRetry(file, "text/tab-separated-values", projectId);
         } catch (IOException | SynapseException ex) {
-            LOG.error("[re-upload-tsv] file " + file.getAbsolutePath() + " " + tableId);
             throw new BridgeExporterException("Error uploading TSV as a file handle: " + ex.getMessage(), ex);
         }
         String fileHandleId = tableFileHandle.getId();
@@ -204,7 +203,6 @@ public class SynapseHelper {
         try {
             jobToken = uploadTsvStartWithRetry(tableId, fileHandleId, tableDesc);
         } catch (SynapseException ex) {
-            LOG.error("[re-upload-tsv] filehandle " + fileHandleId + " " + tableId);
             throw new BridgeExporterException("Error starting async import of file handle " + fileHandleId + ": "
                     + ex.getMessage(), ex);
         }
@@ -234,7 +232,6 @@ public class SynapseHelper {
             } catch (SynapseResultNotReadyException ex) {
                 // results not ready, sleep some more
             } catch (SynapseException ex) {
-                LOG.error("[re-upload-tsv] filehandle " + fileHandleId + " " + tableId);
                 throw new BridgeExporterException("Error polling job status of importing file handle " + fileHandleId
                         + ": " + ex.getMessage(), ex);
             }

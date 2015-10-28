@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
-import com.google.common.base.Strings;
+import org.apache.commons.lang.StringUtils;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 
@@ -125,7 +125,7 @@ public class AppVersionExportHandler extends SynapseExportHandler {
         rowValueList.add(phoneInfo);
 
         // book keeping
-        if (!Strings.isNullOrEmpty(appVersion)) {
+        if (StringUtils.isNotBlank(appVersion)) {
             task.getMetrics().addKeyValuePair("uniqueAppVersions[" + getStudyId() + "]", appVersion);
         }
 

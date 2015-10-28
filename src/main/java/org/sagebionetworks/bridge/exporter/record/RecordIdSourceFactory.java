@@ -3,9 +3,12 @@ package org.sagebionetworks.bridge.exporter.record;
 import java.io.IOException;
 import java.util.List;
 
+import javax.annotation.Resource;
+
 import com.amazonaws.services.dynamodbv2.document.Index;
 import com.amazonaws.services.dynamodbv2.document.Item;
 import org.apache.commons.lang.StringUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import org.sagebionetworks.bridge.config.Config;
@@ -26,18 +29,22 @@ public class RecordIdSourceFactory {
     private String overrideBucket;
     private S3Helper s3Helper;
 
+    @Autowired
     public final void setConfig(Config config) {
         overrideBucket = config.get(CONFIG_KEY_RECORD_ID_OVERRIDE_BUCKET);
     }
 
+    @Resource(name = "ddbRecordUploadDateIndex")
     public final void setDdbRecordUploadDateIndex(Index ddbRecordUploadDateIndex) {
         this.ddbRecordUploadDateIndex = ddbRecordUploadDateIndex;
     }
 
+    @Autowired
     public final void setDdbQueryHelper(DynamoQueryHelper ddbQueryHelper) {
         this.ddbQueryHelper = ddbQueryHelper;
     }
 
+    @Autowired
     public final void setS3Helper(S3Helper s3Helper) {
         this.s3Helper = s3Helper;
     }

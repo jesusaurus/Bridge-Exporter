@@ -4,7 +4,7 @@ import java.io.IOException;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.base.Strings;
+import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,7 +54,7 @@ public class IosSurveyExportHandler extends ExportHandler {
             throw new BridgeExporterException("No item field in survey data");
         }
         String item = itemNode.textValue();
-        if (Strings.isNullOrEmpty(item)) {
+        if (StringUtils.isBlank(item)) {
             throw new BridgeExporterException("Null or empty item field in survey data");
         }
 
