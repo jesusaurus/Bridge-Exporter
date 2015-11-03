@@ -189,7 +189,7 @@ public class HealthDataExportHandler extends SynapseExportHandler {
         // common values
         rowValueList.add(recordId);
         rowValueList.add(record.getString("healthCode"));
-        rowValueList.add(BridgeExporterUtil.getDdbStringRemoveTabsAndTrim(record, "userExternalId", 128, recordId));
+        rowValueList.add(BridgeExporterUtil.sanitizeDdbValue(record, "userExternalId", 128, recordId));
         rowValueList.add(subtask.getParentTask().getExporterDate().toString());
 
         // createdOn as a long epoch millis

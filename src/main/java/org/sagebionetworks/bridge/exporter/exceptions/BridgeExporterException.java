@@ -1,5 +1,6 @@
 package org.sagebionetworks.bridge.exporter.exceptions;
 
+/** General purpose "something went wrong with Bridge-EX" exception. */
 @SuppressWarnings("serial")
 public class BridgeExporterException extends Exception {
     public BridgeExporterException() {

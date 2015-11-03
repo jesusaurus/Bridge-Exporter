@@ -26,9 +26,9 @@ public class PhoneAppVersionInfo {
         if (StringUtils.isNotBlank(metadataString)) {
             try {
                 JsonNode metadataJson = DefaultObjectMapper.INSTANCE.readTree(metadataString);
-                appVersion = BridgeExporterUtil.getJsonStringRemoveTabsAndTrim(metadataJson, "appVersion", 48,
+                appVersion = BridgeExporterUtil.sanitizeJsonValue(metadataJson, "appVersion", 48,
                         recordId);
-                phoneInfo = BridgeExporterUtil.getJsonStringRemoveTabsAndTrim(metadataJson, "phoneInfo", 48, recordId);
+                phoneInfo = BridgeExporterUtil.sanitizeJsonValue(metadataJson, "phoneInfo", 48, recordId);
             } catch (IOException ex) {
                 // we can recover from this
                 LOG.error("Error parsing metadata for record ID " + recordId + ": " + ex.getMessage(), ex);

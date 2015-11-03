@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
 import org.sagebionetworks.bridge.exporter.dynamo.DynamoHelper;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
-import org.sagebionetworks.bridge.exporter.dynamo.BridgeExporterSharingMode;
+import org.sagebionetworks.bridge.exporter.request.BridgeExporterSharingMode;
 import org.sagebionetworks.bridge.exporter.dynamo.SharingScope;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 

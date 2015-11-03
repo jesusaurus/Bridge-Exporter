@@ -45,9 +45,11 @@ import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
 public class ExportWorkerManager {
     private static final Logger LOG = LoggerFactory.getLogger(ExportWorkerManager.class);
 
-    static final String CONFIG_KEY_EXPORTER_DDB_PREFIX = "exporter.ddb.prefix";
-    static final String CONFIG_KEY_SYNAPSE_PRINCIPAL_ID = "synapse.principal.id";
-    static final String CONFIG_WORKER_MANAGER_PROGRESS_REPORT_PERIOD = "worker.manager.progress.report.period";
+    // Public, so they can be accessed in handler unit tests.
+    public static final String CONFIG_KEY_EXPORTER_DDB_PREFIX = "exporter.ddb.prefix";
+    public static final String CONFIG_KEY_SYNAPSE_PRINCIPAL_ID = "synapse.principal.id";
+    public static final String CONFIG_KEY_WORKER_MANAGER_PROGRESS_REPORT_PERIOD =
+            "worker.manager.progress.report.period";
 
     // CONFIG
 
@@ -58,8 +60,13 @@ public class ExportWorkerManager {
     @Autowired
     public final void setConfig(Config config) {
         this.exporterDdbPrefix = config.get(CONFIG_KEY_EXPORTER_DDB_PREFIX);
-        this.progressReportPeriod = config.getInt(CONFIG_WORKER_MANAGER_PROGRESS_REPORT_PERIOD);
         this.synapsePrincipalId = config.getInt(CONFIG_KEY_SYNAPSE_PRINCIPAL_ID);
+
+        this.progressReportPeriod = config.getInt(CONFIG_KEY_WORKER_MANAGER_PROGRESS_REPORT_PERIOD);
+        if (progressReportPeriod == 0) {
+            // Avoid mod by zero. Set to some reasonable hard-coded default.
+            progressReportPeriod = 250;
+        }
     }
 
     public final String getExporterDdbPrefixForTask(ExportTask task) {

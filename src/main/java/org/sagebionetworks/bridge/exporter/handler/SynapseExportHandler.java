@@ -32,43 +32,36 @@ import org.sagebionetworks.bridge.file.FileHelper;
 import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
 
 /**
- * This is a worker thread who's solely responsible for a single table in Synapse (study, schema, rev). This thread
- * creates the table, if it doesn't exist, reads through a stream of DDB records to create a TSV, then uploads the
- * TSV to the Synapse table.
+ * This is a handler who's solely responsible for a single table in Synapse. This handler is assigned a stream of DDB
+ * records to create a TSV, then uploads the TSV to the Synapse table. If the Synapse Table doesn't exist, this handler
+ * will create it.
  */
 public abstract class SynapseExportHandler extends ExportHandler {
     private static final Logger LOG = LoggerFactory.getLogger(SynapseExportHandler.class);
 
-    // Constants
-    private static final Set<ACCESS_TYPE> ACCESS_TYPE_ALL = ImmutableSet.copyOf(ACCESS_TYPE.values());
-    private static final Set<ACCESS_TYPE> ACCESS_TYPE_READ = ImmutableSet.of(ACCESS_TYPE.READ, ACCESS_TYPE.DOWNLOAD);
+    // Access types are package-scoped so the unit tests can test against these.
+    static final Set<ACCESS_TYPE> ACCESS_TYPE_ALL = ImmutableSet.copyOf(ACCESS_TYPE.values());
+    static final Set<ACCESS_TYPE> ACCESS_TYPE_READ = ImmutableSet.of(ACCESS_TYPE.READ, ACCESS_TYPE.DOWNLOAD);
+
     private static final Joiner JOINER_COLUMN_SEPARATOR = Joiner.on('\t').useForNull("");
 
+    /**
+     * Given the record (contained in the subtask), serialize the results and write to a TSV. If a TSV hasn't been
+     * created for this handler for the parent task, this will also initialize that TSV.
+     */
     @Override
     public void handle(ExportSubtask subtask) {
         String tableKey = getDdbTableKeyValue();
-        Metrics metrics = subtask.getParentTask().getMetrics();
-        Item record = subtask.getOriginalRecord();
-        String recordId = record.getString("id");
+        ExportTask task = subtask.getParentTask();
+        Metrics metrics = task.getMetrics();
+        String recordId = subtask.getOriginalRecord().getString("id");
 
-        // get TSV info (init if necessary)
-        TsvInfo tsvInfo = getTsvInfoForTask(subtask.getParentTask());
-        if (tsvInfo == null) {
-            ExportTask task = subtask.getParentTask();
-            try {
-                tsvInfo = initTsvForTask(task);
-            } catch (FileNotFoundException ex) {
-                LOG.error("Error initializing TSV for record " + recordId + " for table " + tableKey + ": " +
-                        ex.getMessage(), ex);
-                return;
-            }
-            setTsvInfoForTask(task, tsvInfo);
-        }
-
-        // write to TSV
         try {
-            List<String> rowValueList = getTsvRowValueList(subtask);
+            // get TSV info (init if necessary)
+            TsvInfo tsvInfo = initTsvForTask(task);
 
+            // write to TSV
+            List<String> rowValueList = getTsvRowValueList(subtask);
             PrintWriter tsvWriter = tsvInfo.getWriter();
             //noinspection SynchronizationOnLocalVariableOrMethodParameter
             synchronized (tsvWriter) {
@@ -83,20 +76,37 @@ public abstract class SynapseExportHandler extends ExportHandler {
         }
     }
 
-    private TsvInfo initTsvForTask(ExportTask task) throws FileNotFoundException {
-        // create TSV and writer
-        FileHelper fileHelper = getManager().getFileHelper();
-        File tsvFile = fileHelper.newFile(task.getTmpDir(), getDdbTableKeyValue() + ".tsv");
-        PrintWriter tsvWriter = new PrintWriter(fileHelper.getWriter(tsvFile));
+    // Gets the TSV for the task, initializing it if it hasn't been created yet
+    private TsvInfo initTsvForTask(ExportTask task) throws BridgeExporterException {
+        // check if the TSV is already saved in the task
+        TsvInfo savedTsvInfo = getTsvInfoForTask(task);
+        if (savedTsvInfo != null) {
+            return savedTsvInfo;
+        }
 
-        // write TSV headers
-        List<String> tsvHeaderList = getTsvHeaderList();
-        tsvWriter.println(JOINER_COLUMN_SEPARATOR.join(tsvHeaderList));
+        try {
+            // create TSV and writer
+            FileHelper fileHelper = getManager().getFileHelper();
+            File tsvFile = fileHelper.newFile(task.getTmpDir(), getDdbTableKeyValue() + ".tsv");
+            PrintWriter tsvWriter = new PrintWriter(fileHelper.getWriter(tsvFile));
 
-        // create TSV info
-        return new TsvInfo(tsvFile, tsvWriter);
+            // write TSV headers
+            List<String> tsvHeaderList = getTsvHeaderList();
+            tsvWriter.println(JOINER_COLUMN_SEPARATOR.join(tsvHeaderList));
+
+            // create TSV info
+            TsvInfo tsvInfo = new TsvInfo(tsvFile, tsvWriter);
+            setTsvInfoForTask(task, tsvInfo);
+            return tsvInfo;
+        } catch (FileNotFoundException ex) {
+            throw new BridgeExporterException("Error initializing TSV: " + ex.getMessage(), ex);
+        }
     }
 
+    /**
+     * This is called at the end of the record stream for a given export task. This will then upload the TSV to
+     * Synapse, creating the Synapse table first if necessary.
+     */
     public void uploadToSynapseForTask(ExportTask task) throws BridgeExporterException, SynapseException {
         ExportWorkerManager manager = getManager();
         TsvInfo tsvInfo = getTsvInfoForTask(task);
@@ -137,6 +147,7 @@ public abstract class SynapseExportHandler extends ExportHandler {
         manager.getFileHelper().deleteFile(tsvFile);
     }
 
+    // Initialize the Synapse table for this handler and the current task.
     private String initSynapseTable(ExportTask task) throws BridgeExporterException, SynapseException {
         ExportWorkerManager manager = getManager();
         SynapseHelper synapseHelper = manager.getSynapseHelper();
@@ -206,10 +217,9 @@ public abstract class SynapseExportHandler extends ExportHandler {
     /** Hash key name of the DDB table that holds Synapse table IDs. */
     protected abstract String getDdbTableKeyName();
 
-    // TODO re-doc
     /**
-     * Synapse table name. A table will be created in Synapse with this name if it doesn't already exist. This is also
-     * used as the hash key value into the DDB table that holds the Synapse table ID.
+     * Hash key value for the DDB table that holds the Synapse table IDs. Since this uniquely identifies the Synapse
+     * table, and since Synapse table names need to be unique, this is also used as the Synapse table name.
      */
     protected abstract String getDdbTableKeyValue();
 
@@ -221,14 +231,13 @@ public abstract class SynapseExportHandler extends ExportHandler {
     /** List of header names for TSV creation. This should match with Synapse table column names. */
     protected abstract List<String> getTsvHeaderList();
 
+    /** Get the TSV saved in the task for this handler. */
     protected abstract TsvInfo getTsvInfoForTask(ExportTask task);
 
+    /** Save the TSV into the task for this handler. */
     protected abstract void setTsvInfoForTask(ExportTask task, TsvInfo tsvInfo);
 
-    /**
-     * Creates a row values for a single row from the given export task. The export task shouldn't be an END_OF_STREAM
-     * task.
-     */
-    protected abstract List<String> getTsvRowValueList(ExportSubtask task) throws BridgeExporterException, IOException,
+    /** Creates a row values for a single row from the given export task. */
+    protected abstract List<String> getTsvRowValueList(ExportSubtask subtask) throws BridgeExporterException, IOException,
             SynapseException;
 }

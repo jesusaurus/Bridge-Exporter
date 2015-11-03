@@ -8,7 +8,6 @@ import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.datatype.joda.deser.LocalDateDeserializer;
 import org.joda.time.LocalDate;
 
-import org.sagebionetworks.bridge.exporter.dynamo.BridgeExporterSharingMode;
 import org.sagebionetworks.bridge.json.LocalDateToStringSerializer;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 

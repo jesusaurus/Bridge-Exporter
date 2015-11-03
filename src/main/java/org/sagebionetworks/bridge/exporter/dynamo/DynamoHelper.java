@@ -19,7 +19,11 @@ import org.sagebionetworks.bridge.json.DefaultObjectMapper;
 import org.sagebionetworks.bridge.schema.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
-// TODO doc
+/**
+ * Encapsulates common calls Bridge-EX makes to DDB. Some of these have a little bit of logic or require marshalling
+ * from a DDB item to a Bridge-EX object. Others are there just for convenience, so we have all or most of our DDB
+ * interactions through a single class.
+ */
 @Component
 public class DynamoHelper {
     private static final Logger LOG = LoggerFactory.getLogger(DynamoHelper.class);
@@ -28,21 +32,37 @@ public class DynamoHelper {
     private Table ddbSchemaTable;
     private Table ddbStudyTable;
 
+    /** Participant options table, used to get user sharing scope. */
     @Resource(name = "ddbParticipantOptionsTable")
     public final void setDdbParticipantOptionsTable(Table ddbParticipantOptionsTable) {
         this.ddbParticipantOptionsTable = ddbParticipantOptionsTable;
     }
 
+    /** Schema table, used to get schemas to create Synapse tables and serialize health data. */
     @Resource(name = "ddbSchemaTable")
     public final void setDdbSchemaTable(Table ddbSchemaTable) {
         this.ddbSchemaTable = ddbSchemaTable;
     }
 
+    /** Study table, used to get study config, like linked Synapse project. */
     @Resource(name = "ddbStudyTable")
     public final void setDdbStudyTable(Table ddbStudyTable) {
         this.ddbStudyTable = ddbStudyTable;
     }
 
+    /**
+     * Returns the schema for the given key.
+     *
+     * @param metrics
+     *         metrics object, used to keep a record of "schemas not found"
+     * @param schemaKey
+     *         key for the schema to get
+     * @return the schema
+     * @throws IOException
+     *         if we fail to deserialize the schema
+     * @throws SchemaNotFoundException
+     *         if the schema doesn't exist
+     */
     public UploadSchema getSchema(Metrics metrics, UploadSchemaKey schemaKey) throws IOException,
             SchemaNotFoundException {
         Item schemaItem = getSchemaCached(schemaKey);
@@ -53,12 +73,20 @@ public class DynamoHelper {
         return UploadSchema.fromDdbItem(schemaItem);
     }
 
+    // Helper method that encapsulates just the DDB call, cached with annotation.
     @Cacheable(lifetime = 5, unit = TimeUnit.MINUTES)
     private Item getSchemaCached(UploadSchemaKey schemaKey) {
         return ddbSchemaTable.getItem("key", schemaKey.getStudyId() + ":" + schemaKey.getSchemaId(),
                 "revision", schemaKey.getRevision());
     }
 
+    /**
+     * Helper method to get the schema key for a DDB health data record
+     *
+     * @param record
+     *         DDB Item representing a health data record
+     * @return the schema key associated with that record
+     */
     public static UploadSchemaKey getSchemaKeyForRecord(Item record) {
         String studyId = record.getString("studyId");
         String schemaId = record.getString("schemaId");
@@ -67,6 +95,13 @@ public class DynamoHelper {
                 .build();
     }
 
+    /**
+     * Gets the sharing scope for the given user.
+     *
+     * @param healthCode
+     *         health code of user to get sharing scope for
+     * @return the user's sharing scope
+     */
     @Cacheable(lifetime = 5, unit = TimeUnit.MINUTES)
     public SharingScope getSharingScopeForUser(String healthCode) {
         // default sharing scope is no sharing
@@ -97,11 +132,17 @@ public class DynamoHelper {
         return sharingScope;
     }
 
+    /**
+     * Get study info, namely Synapse project and data access team.
+     *
+     * @param studyId
+     *         study ID to fetch
+     * @return study info
+     */
     @Cacheable(lifetime = 5, unit = TimeUnit.MINUTES)
     public StudyInfo getStudyInfo(String studyId) {
-        // TODO add these fields to the study table
         Item studyItem = ddbStudyTable.getItem("identifier", studyId);
-        return new StudyInfo.Builder().withDataAccessTeamId(studyItem.getInt("synapseDataAccessTeamId"))
+        return new StudyInfo.Builder().withDataAccessTeamId(studyItem.getLong("synapseDataAccessTeamId"))
                 .withSynapseProjectId(studyItem.getString("synapseProjectId")).build();
     }
 }
