@@ -60,15 +60,6 @@ public class DynamoHelperTest {
     }
 
     @Test
-    public void getSchemaKeyForRecord() {
-        // mock DDB Health Record
-        Item recordItem = new Item().withString("studyId", "test-study").withString("schemaId", "test-schema")
-                .withInt("schemaRevision", 13);
-        UploadSchemaKey schemaKey = DynamoHelper.getSchemaKeyForRecord(recordItem);
-        assertEquals(schemaKey.toString(), "test-study-test-schema-v13");
-    }
-
-    @Test
     public void getSharingScope() {
         // mock DDB Participant Options table
         String optsDataJson = "{\"SHARING_SCOPE\":\"SPONSORS_AND_PARTNERS\"}";

@@ -13,13 +13,14 @@ import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.worker.ExportSubtask;
 import org.sagebionetworks.bridge.exporter.worker.ExportTask;
+import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
 import org.sagebionetworks.bridge.schema.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
 /**
  * This class is responsible for converting the raw survey answers into a form the Synapse Export Worker can consume.
  * Because this doesn't create Synapse tables, rather only converting the data and forwarding it to other worker
- * threads, this worker has no init and no cleanup, only the worker loop.
+ * threads, this worker has no init and no cleanup.
  */
 public class IosSurveyExportHandler extends ExportHandler {
     private static final Logger LOG = LoggerFactory.getLogger(IosSurveyExportHandler.class);
@@ -41,8 +42,10 @@ public class IosSurveyExportHandler extends ExportHandler {
         }
     }
 
+    // Helper method, mainly exists so that the error handling code in handle() is easier to read.
     private void processRecordAsSurvey(ExportSubtask subtask) throws BridgeExporterException, IOException,
             SchemaNotFoundException {
+        ExportWorkerManager manager = getManager();
         ExportTask parentTask = subtask.getParentTask();
         Item record = subtask.getOriginalRecord();
         String recordId = record.getString("id");
@@ -66,14 +69,14 @@ public class IosSurveyExportHandler extends ExportHandler {
                 .withSchemaId(schemaId).withRevision(schemaRev).build();
 
         // get schema and field type map, so we can process attachments
-        UploadSchema surveySchema = getManager().getDynamoHelper().getSchema(parentTask.getMetrics(), surveySchemaKey);
+        UploadSchema surveySchema = manager.getDynamoHelper().getSchema(parentTask.getMetrics(), surveySchemaKey);
 
         // convert to health data node
-        JsonNode convertedSurveyNode = getManager().getExportHelper().convertSurveyRecordToHealthDataJsonNode(recordId,
+        JsonNode convertedSurveyNode = manager.getExportHelper().convertSurveyRecordToHealthDataJsonNode(recordId,
                 oldDataJson, surveySchema);
 
         ExportSubtask convertedSubtask = new ExportSubtask.Builder().withOriginalRecord(record)
                 .withParentTask(parentTask).withRecordData(convertedSurveyNode).withSchemaKey(surveySchemaKey).build();
-        getManager().addHealthDataSubtask(parentTask, getStudyId(), surveySchemaKey, convertedSubtask);
+        manager.addHealthDataSubtask(parentTask, getStudyId(), surveySchemaKey, convertedSubtask);
     }
 }

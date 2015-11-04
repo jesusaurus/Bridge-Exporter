@@ -158,7 +158,8 @@ public class SynapseHelper {
         }
     }
 
-    private String uploadFromS3ToSynapseFileHandle(String projectId, String fieldName, String s3Key)
+    // Public to allow for partial mocking.
+    public String uploadFromS3ToSynapseFileHandle(String projectId, String fieldName, String s3Key)
             throws IOException, SynapseException {
         // create temp file using the field name and s3Key as the prefix and the default suffix (null)
         // TODO preserve extension

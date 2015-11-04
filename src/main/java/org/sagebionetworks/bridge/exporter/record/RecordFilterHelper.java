@@ -14,6 +14,7 @@ import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterSharingMode;
 import org.sagebionetworks.bridge.exporter.dynamo.SharingScope;
+import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
 // TODO doc
@@ -44,7 +45,7 @@ public class RecordFilterHelper {
         Set<UploadSchemaKey> tableFilterSet = request.getTableFilterSet();
         if (tableFilterSet != null && !tableFilterSet.isEmpty()) {
             filterByTable = shouldFilterRecordByTable(metrics, tableFilterSet,
-                    DynamoHelper.getSchemaKeyForRecord(record));
+                    BridgeExporterUtil.getSchemaKeyForRecord(record));
         }
 
         // If any of the filters are hit, we filter the record. (We don't use short-circuiting because we want to

@@ -56,23 +56,39 @@ public class ExportHelper {
     private Table ddbAttachmentTable;
     private S3Helper s3Helper;
 
+    /** Config, used to get the S3 attachments bucket. */
     @Autowired
     public final void setConfig(Config config) {
         this.attachmentBucket = config.get(SpringConfig.CONFIG_KEY_ATTACHMENT_S3_BUCKET);
     }
 
+    /** DDB Attachments table, for uploading and downloading attachments. */
     @Autowired
     public final void setDdbAttachmentTable(Table ddbAttachmentTable) {
         this.ddbAttachmentTable = ddbAttachmentTable;
     }
 
-    // TODO re-doc
-    /** S3 helper. Configured externally. */
+    /** S3 helper, for uploading and downloading attachments. */
     @Autowired
     public final void setS3Helper(S3Helper s3Helper) {
         this.s3Helper = s3Helper;
     }
 
+    /**
+     * Helper method to convert legacy surveys to a Synapse record.
+     *
+     * @param recordId
+     *         record ID, for logging purposes
+     * @param oldDataJson
+     *         the old legacy survey
+     * @param surveySchema
+     *         survey schema to convert with
+     * @return JSON node representing the converted Synapse record
+     * @throws BridgeExporterException
+     *         if there's an error parsing the survey answers that can't be recovered
+     * @throws IOException
+     *         error parsing JSON answers
+     */
     public JsonNode convertSurveyRecordToHealthDataJsonNode(String recordId, JsonNode oldDataJson,
             UploadSchema surveySchema) throws BridgeExporterException, IOException {
         // download answers from S3 attachments
@@ -81,6 +97,9 @@ public class ExportHelper {
             throw new BridgeExporterException("No answer link in survey data");
         }
         String answerLink = answerLinkNode.textValue();
+        if (StringUtils.isBlank(answerLink)) {
+            throw new BridgeExporterException("Answer link in survey data must be specified");
+        }
         String answerText = s3Helper.readS3FileAsString(attachmentBucket, answerLink);
 
         JsonNode answerArrayNode;
@@ -102,7 +121,7 @@ public class ExportHelper {
         int numAnswers = answerArrayNode.size();
         for (int i = 0; i < numAnswers; i++) {
             JsonNode oneAnswerNode = answerArrayNode.get(i);
-            if (oneAnswerNode == null || oneAnswerNode.isNull()) {
+            if (oneAnswerNode.isNull()) {
                 LOG.error("Survey record ID " + recordId + " answer " + i + " has no value");
                 continue;
             }

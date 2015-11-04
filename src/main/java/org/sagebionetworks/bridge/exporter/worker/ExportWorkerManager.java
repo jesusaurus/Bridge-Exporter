@@ -34,6 +34,7 @@ import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.exporter.dynamo.StudyInfo;
+import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.file.FileHelper;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
 import org.sagebionetworks.bridge.schema.UploadSchema;
@@ -178,7 +179,7 @@ public class ExportWorkerManager {
 
     public void addSubtaskForRecord(ExportTask task, Item record) throws BridgeExporterException, IOException,
             SchemaNotFoundException {
-        UploadSchemaKey schemaKey = DynamoHelper.getSchemaKeyForRecord(record);
+        UploadSchemaKey schemaKey = BridgeExporterUtil.getSchemaKeyForRecord(record);
         String studyId = schemaKey.getStudyId();
 
         // Make subtask. Subtasks are immutable, so we can safely use the same one for each of the handlers.
@@ -235,7 +236,6 @@ public class ExportWorkerManager {
 
             // set schema
             UploadSchema schema = dynamoHelper.getSchema(metrics, schemaKey);
-            handler.setSchemaKey(schemaKey);
             handler.setSchema(schema);
 
             healthDataHandlersBySchema.put(schemaKey, handler);

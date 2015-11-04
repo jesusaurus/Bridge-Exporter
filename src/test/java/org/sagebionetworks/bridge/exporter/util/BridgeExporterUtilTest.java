@@ -14,33 +14,12 @@ import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
 public class BridgeExporterUtilTest {
     @Test
-    public void shouldConvertFreeformTextToAttachment() {
-        // This is a hack, but we still need to test it.
-        UploadSchemaKey bcsDailyJournalSchema = new UploadSchemaKey.Builder().withStudyId("breastcancer")
-                .withSchemaId("BreastCancer-DailyJournal").withRevision(1).build();
-        assertTrue(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(bcsDailyJournalSchema,
-                "content_data.APHMoodLogNoteText"));
-        assertTrue(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(bcsDailyJournalSchema,
-                "DailyJournalStep103_data.content"));
-        assertFalse(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(bcsDailyJournalSchema,
-                "something-else"));
-
-        UploadSchemaKey bcsExerciseSurveyJournal = new UploadSchemaKey.Builder().withStudyId("breastcancer")
-                .withSchemaId("BreastCancer-ExerciseSurvey").withRevision(1).build();
-        assertTrue(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(bcsExerciseSurveyJournal,
-                "exercisesurvey101_data.result"));
-        assertTrue(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(bcsExerciseSurveyJournal,
-                "exercisesurvey102_data.result"));
-        assertTrue(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(bcsExerciseSurveyJournal,
-                "exercisesurvey103_data.result"));
-        assertTrue(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(bcsExerciseSurveyJournal,
-                "exercisesurvey104_data.result"));
-        assertTrue(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(bcsExerciseSurveyJournal,
-                "exercisesurvey105_data.result"));
-        assertTrue(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(bcsExerciseSurveyJournal,
-                "exercisesurvey106_data.result"));
-        assertFalse(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(bcsExerciseSurveyJournal,
-                "something-else"));
+    public void getSchemaKeyForRecord() {
+        // mock DDB Health Record
+        Item recordItem = new Item().withString("studyId", "test-study").withString("schemaId", "test-schema")
+                .withInt("schemaRevision", 13);
+        UploadSchemaKey schemaKey = BridgeExporterUtil.getSchemaKeyForRecord(recordItem);
+        assertEquals(schemaKey.toString(), "test-study-test-schema-v13");
     }
 
     @Test
@@ -127,5 +106,35 @@ public class BridgeExporterUtilTest {
     public void sanitizeStringTooLong() {
         String out = BridgeExporterUtil.sanitizeString("1234567890", 4, "dummy-record");
         assertEquals(out, "1234");
+    }
+
+    @Test
+    public void shouldConvertFreeformTextToAttachment() {
+        // This is a hack, but we still need to test it.
+        UploadSchemaKey bcsDailyJournalSchema = new UploadSchemaKey.Builder().withStudyId("breastcancer")
+                .withSchemaId("BreastCancer-DailyJournal").withRevision(1).build();
+        assertTrue(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(bcsDailyJournalSchema,
+                "content_data.APHMoodLogNoteText"));
+        assertTrue(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(bcsDailyJournalSchema,
+                "DailyJournalStep103_data.content"));
+        assertFalse(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(bcsDailyJournalSchema,
+                "something-else"));
+
+        UploadSchemaKey bcsExerciseSurveyJournal = new UploadSchemaKey.Builder().withStudyId("breastcancer")
+                .withSchemaId("BreastCancer-ExerciseSurvey").withRevision(1).build();
+        assertTrue(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(bcsExerciseSurveyJournal,
+                "exercisesurvey101_data.result"));
+        assertTrue(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(bcsExerciseSurveyJournal,
+                "exercisesurvey102_data.result"));
+        assertTrue(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(bcsExerciseSurveyJournal,
+                "exercisesurvey103_data.result"));
+        assertTrue(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(bcsExerciseSurveyJournal,
+                "exercisesurvey104_data.result"));
+        assertTrue(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(bcsExerciseSurveyJournal,
+                "exercisesurvey105_data.result"));
+        assertTrue(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(bcsExerciseSurveyJournal,
+                "exercisesurvey106_data.result"));
+        assertFalse(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(bcsExerciseSurveyJournal,
+                "something-else"));
     }
 }

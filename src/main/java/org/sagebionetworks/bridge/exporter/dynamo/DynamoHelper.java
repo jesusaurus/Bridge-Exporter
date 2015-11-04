@@ -81,21 +81,6 @@ public class DynamoHelper {
     }
 
     /**
-     * Helper method to get the schema key for a DDB health data record
-     *
-     * @param record
-     *         DDB Item representing a health data record
-     * @return the schema key associated with that record
-     */
-    public static UploadSchemaKey getSchemaKeyForRecord(Item record) {
-        String studyId = record.getString("studyId");
-        String schemaId = record.getString("schemaId");
-        int schemaRev = record.getInt("schemaRevision");
-        return new UploadSchemaKey.Builder().withStudyId(studyId).withSchemaId(schemaId).withRevision(schemaRev)
-                .build();
-    }
-
-    /**
      * Gets the sharing scope for the given user.
      *
      * @param healthCode

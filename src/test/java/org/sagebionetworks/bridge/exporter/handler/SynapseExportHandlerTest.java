@@ -59,8 +59,14 @@ public class SynapseExportHandlerTest {
     private static final LocalDate DUMMY_REQUEST_DATE = LocalDate.parse("2015-10-31");
     private static final BridgeExporterRequest DUMMY_REQUEST = new BridgeExporterRequest.Builder()
             .withDate(DUMMY_REQUEST_DATE).build();
-    private static final UploadSchemaKey DUMMY_SCHEMA_KEY = new UploadSchemaKey.Builder().withStudyId("test-study")
+    private static final String TEST_STUDY_ID = "testStudy";
+    private static final UploadSchemaKey DUMMY_SCHEMA_KEY = new UploadSchemaKey.Builder().withStudyId(TEST_STUDY_ID)
             .withSchemaId("test-schema").withRevision(17).build();
+
+    private static final long TEST_SYNAPSE_DATA_ACCESS_TEAM_ID = 1337;
+    private static final int TEST_SYNAPSE_PRINCIPAL_ID = 123456;
+    private static final String TEST_SYNAPSE_PROJECT_ID = "test-synapse-project-id";
+    private static final String TEST_SYNAPSE_TABLE_ID = "test-synapse-table-id";
 
     private static class TestSynapseHandler extends SynapseExportHandler {
         private TsvInfo tsvInfo;
@@ -144,7 +150,8 @@ public class SynapseExportHandlerTest {
         // mock config
         Config mockConfig = mock(Config.class);
         when(mockConfig.get(ExportWorkerManager.CONFIG_KEY_EXPORTER_DDB_PREFIX)).thenReturn("unittest-exporter-");
-        when(mockConfig.getInt(ExportWorkerManager.CONFIG_KEY_SYNAPSE_PRINCIPAL_ID)).thenReturn(123456);
+        when(mockConfig.getInt(ExportWorkerManager.CONFIG_KEY_SYNAPSE_PRINCIPAL_ID))
+                .thenReturn(TEST_SYNAPSE_PRINCIPAL_ID);
         when(mockConfig.getInt(ExportWorkerManager.CONFIG_KEY_WORKER_MANAGER_PROGRESS_REPORT_PERIOD)).thenReturn(250);
 
         // mock file helper
@@ -163,14 +170,14 @@ public class SynapseExportHandlerTest {
         // spy getSynapseProjectId and getDataAccessTeam
         // These calls through to a bunch of stuff (which we test in ExportWorkerManagerTest), so to simplify our test,
         // we just use a spy here.
-        doReturn("test-synapse-project-id").when(manager).getSynapseProjectIdForStudyAndTask(eq("test-study-id"),
+        doReturn(TEST_SYNAPSE_PROJECT_ID).when(manager).getSynapseProjectIdForStudyAndTask(eq(TEST_STUDY_ID),
                 same(task));
-        doReturn(1337L).when(manager).getDataAccessTeamIdForStudy(eq("test-study-id"));
+        doReturn(1337L).when(manager).getDataAccessTeamIdForStudy(TEST_STUDY_ID);
 
         // set up handler
         handler = new TestSynapseHandler();
         handler.setManager(manager);
-        handler.setStudyId("test-study-id");
+        handler.setStudyId(TEST_STUDY_ID);
     }
 
     @Test
@@ -181,11 +188,11 @@ public class SynapseExportHandlerTest {
         //   write 2nd line after error
 
         // set up mock DDB client with table
-        manager.setDdbClient(makeMockDdbWithExistingTableId("test-synapse-table-id"));
+        manager.setDdbClient(makeMockDdbWithExistingTableId(TEST_SYNAPSE_TABLE_ID));
 
         // mock Synapse helper - upload the TSV and capture the upload
         SynapseHelper mockSynapseHelper = mock(SynapseHelper.class);
-        when(mockSynapseHelper.uploadTsvFileToTable(eq("test-synapse-project-id"), eq("test-synapse-table-id"),
+        when(mockSynapseHelper.uploadTsvFileToTable(eq(TEST_SYNAPSE_PROJECT_ID), eq(TEST_SYNAPSE_TABLE_ID),
                 notNull(File.class))).thenAnswer(invocation -> {
             // on cleanup, the file is destroyed, so we need to intercept that file now
             File tsvFile = invocation.getArgumentAt(2, File.class);
@@ -294,7 +301,7 @@ public class SynapseExportHandlerTest {
         manager.setSynapseHelper(mockSynapseHelper);
 
         // mock upload the TSV and capture the upload
-        when(mockSynapseHelper.uploadTsvFileToTable(eq("test-synapse-project-id"), eq("test-synapse-table-id"),
+        when(mockSynapseHelper.uploadTsvFileToTable(eq(TEST_SYNAPSE_PROJECT_ID), eq(TEST_SYNAPSE_TABLE_ID),
                 notNull(File.class))).thenAnswer(invocation -> {
             // on cleanup, the file is destroyed, so we need to intercept that file now
             File tsvFile = invocation.getArgumentAt(2, File.class);
@@ -315,7 +322,7 @@ public class SynapseExportHandlerTest {
 
         // mock create table
         TableEntity createdTable = new TableEntity();
-        createdTable.setId("test-synapse-table-id");
+        createdTable.setId(TEST_SYNAPSE_TABLE_ID);
 
         ArgumentCaptor<TableEntity> tableCaptor = ArgumentCaptor.forClass(TableEntity.class);
         when(mockSynapseHelper.createTableWithRetry(tableCaptor.capture())).thenReturn(createdTable);
@@ -339,7 +346,7 @@ public class SynapseExportHandlerTest {
         // validate Synapse create table args
         TableEntity table = tableCaptor.getValue();
         assertEquals(table.getName(), "foobarbaz");
-        assertEquals(table.getParentId(), "test-synapse-project-id");
+        assertEquals(table.getParentId(), TEST_SYNAPSE_PROJECT_ID);
         assertEquals(table.getColumnIds(), ImmutableList.of("foo-col-id"));
 
         // validate Synapse set ACLs args
@@ -347,7 +354,7 @@ public class SynapseExportHandlerTest {
         verify(mockSynapseHelper).createAclWithRetry(aclCaptor.capture());
 
         AccessControlList acl = aclCaptor.getValue();
-        assertEquals(acl.getId(), "test-synapse-table-id");
+        assertEquals(acl.getId(), TEST_SYNAPSE_TABLE_ID);
 
         Set<ResourceAccess> resourceAccessSet = acl.getResourceAccess();
         assertEquals(resourceAccessSet.size(), 2);
@@ -355,10 +362,10 @@ public class SynapseExportHandlerTest {
         boolean hasExporterAccess = false;
         boolean hasTeamAccess = false;
         for (ResourceAccess oneAccess : resourceAccessSet) {
-            if (oneAccess.getPrincipalId() == 123456) {
+            if (oneAccess.getPrincipalId() == TEST_SYNAPSE_PRINCIPAL_ID) {
                 assertEquals(oneAccess.getAccessType(), SynapseExportHandler.ACCESS_TYPE_ALL);
                 hasExporterAccess = true;
-            } else if (oneAccess.getPrincipalId() == 1337) {
+            } else if (oneAccess.getPrincipalId() == TEST_SYNAPSE_DATA_ACCESS_TEAM_ID) {
                 assertEquals(oneAccess.getAccessType(), SynapseExportHandler.ACCESS_TYPE_READ);
                 hasTeamAccess = true;
             } else {
@@ -374,7 +381,7 @@ public class SynapseExportHandlerTest {
 
         Item ddbPutItemArg = ddbPutItemArgCaptor.getValue();
         assertEquals(ddbPutItemArg.getString("testId"), "foobarbaz");
-        assertEquals(ddbPutItemArg.getString("tableId"), "test-synapse-table-id");
+        assertEquals(ddbPutItemArg.getString("tableId"), TEST_SYNAPSE_TABLE_ID);
     }
 
     // We do this in a helper method instead of in an @AfterMethod, because @AfterMethod doesn't tell use the test
