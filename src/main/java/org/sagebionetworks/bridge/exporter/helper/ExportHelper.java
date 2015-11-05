@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.UUID;
 
-import com.amazonaws.AmazonClientException;
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -145,19 +144,19 @@ public class ExportHelper {
                 questionTypeNameNode = oneAnswerNode.get("questionType");
             }
             if (questionTypeNameNode == null || questionTypeNameNode.isNull()) {
-                LOG.error("Survey record ID " + recordId + " answer " + i + " has no question type");
+                LOG.error("Survey record ID " + recordId + " item " + answerItem + " has no question type");
                 continue;
             }
             String questionTypeName = questionTypeNameNode.textValue();
             if (StringUtils.isBlank(questionTypeName)) {
-                LOG.error("Survey record ID " + recordId + " answer " + i + " has blank question type");
+                LOG.error("Survey record ID " + recordId + " item " + answerItem + " has blank question type");
                 continue;
             }
 
             // answer
             String answerKey = SURVEY_TYPE_TO_ANSWER_KEY_MAP.get(questionTypeName);
             if (answerKey == null) {
-                LOG.error("Survey record ID " + recordId + " answer " + i + " has unknown question type " +
+                LOG.error("Survey record ID " + recordId + " item " + answerItem + " has unknown question type " +
                         questionTypeName);
                 continue;
             }
@@ -166,6 +165,12 @@ public class ExportHelper {
             if (answerAnswerNode != null && !answerAnswerNode.isNull()) {
                 // handle attachment types (file handle types)
                 String bridgeType = surveyFieldTypeMap.get(answerItem);
+                if (bridgeType == null) {
+                    // Not in the schema. Log an error and skip.
+                    LOG.error("Survey record ID " + recordId + " item " + answerItem + " not found in schema");
+                    continue;
+                }
+
                 ColumnType synapseType = SynapseHelper.BRIDGE_TYPE_TO_SYNAPSE_TYPE.get(bridgeType);
                 if (synapseType == ColumnType.FILEHANDLEID) {
                     String attachmentId = uploadFreeformTextAsAttachment(recordId, answerAnswerNode.toString());
@@ -185,8 +190,19 @@ public class ExportHelper {
         return convertedSurveyNode;
     }
 
-    public String uploadFreeformTextAsAttachment(String recordId, String text)
-            throws AmazonClientException, IOException {
+    /**
+     * Uploads the given freeform text as an attachment associated with the given record. This updates both the
+     * attachments DDB table and the attachments S3 bucket.
+     *
+     * @param recordId
+     *         record to associate the attachment with
+     * @param text
+     *         text of the attachment
+     * @return attachment ID
+     * @throws IOException
+     *         if uploading to S3 fails
+     */
+    public String uploadFreeformTextAsAttachment(String recordId, String text) throws IOException {
         // write to health data attachments table to reserve guid
         String attachmentId = UUID.randomUUID().toString();
         Item attachment = new Item();

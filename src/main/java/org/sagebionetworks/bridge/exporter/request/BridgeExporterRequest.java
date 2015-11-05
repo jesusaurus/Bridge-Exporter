@@ -12,29 +12,28 @@ import org.sagebionetworks.bridge.json.LocalDateToStringSerializer;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
 // TODO doc
-// TODO Jackson annotations
 @JsonDeserialize(builder = BridgeExporterRequest.Builder.class)
 public class BridgeExporterRequest {
     private final LocalDate date;
     private final String exporterDdbPrefixOverride;
     private final String recordIdS3Override;
     private final BridgeExporterSharingMode sharingMode;
-    private final Set<String> studyFilterSet;
+    private final Set<String> studyWhitelist;
     private final Map<String, String> synapseProjectOverrideMap;
-    private final Set<UploadSchemaKey> tableFilterSet;
+    private final Set<UploadSchemaKey> tableWhitelist;
     private final String tag;
 
     // TODO doc
     private BridgeExporterRequest(LocalDate date, String exporterDdbPrefixOverride, String recordIdS3Override,
-            BridgeExporterSharingMode sharingMode, Set<String> studyFilterSet,
-            Map<String, String> synapseProjectOverrideMap, Set<UploadSchemaKey> tableFilterSet, String tag) {
+            BridgeExporterSharingMode sharingMode, Set<String> studyWhitelist,
+            Map<String, String> synapseProjectOverrideMap, Set<UploadSchemaKey> tableWhitelist, String tag) {
         this.date = date;
         this.exporterDdbPrefixOverride = exporterDdbPrefixOverride;
         this.recordIdS3Override = recordIdS3Override;
         this.sharingMode = sharingMode;
-        this.studyFilterSet = studyFilterSet;
+        this.studyWhitelist = studyWhitelist;
         this.synapseProjectOverrideMap = synapseProjectOverrideMap;
-        this.tableFilterSet = tableFilterSet;
+        this.tableWhitelist = tableWhitelist;
         this.tag = tag;
     }
 
@@ -55,16 +54,16 @@ public class BridgeExporterRequest {
         return sharingMode;
     }
 
-    public Set<String> getStudyFilterSet() {
-        return studyFilterSet;
+    public Set<String> getStudyWhitelist() {
+        return studyWhitelist;
     }
 
     public Map<String, String> getSynapseProjectOverrideMap() {
         return synapseProjectOverrideMap;
     }
 
-    public Set<UploadSchemaKey> getTableFilterSet() {
-        return tableFilterSet;
+    public Set<UploadSchemaKey> getTableWhitelist() {
+        return tableWhitelist;
     }
 
     public String getTag() {
@@ -77,9 +76,9 @@ public class BridgeExporterRequest {
         private String exporterDdbPrefixOverride;
         private String recordIdS3Override;
         private BridgeExporterSharingMode sharingMode;
-        private Set<String> studyFilterSet;
+        private Set<String> studyWhitelist;
         private Map<String, String> synapseProjectOverride;
-        private Set<UploadSchemaKey> tableFilterSet;
+        private Set<UploadSchemaKey> tableWhitelist;
         private String tag;
 
         @JsonDeserialize(using = LocalDateDeserializer.class)
@@ -103,8 +102,8 @@ public class BridgeExporterRequest {
             return this;
         }
 
-        public Builder withStudyFilterSet(Set<String> studyFilterSet) {
-            this.studyFilterSet = studyFilterSet;
+        public Builder withStudyWhitelist(Set<String> studyWhitelist) {
+            this.studyWhitelist = studyWhitelist;
             return this;
         }
 
@@ -113,8 +112,8 @@ public class BridgeExporterRequest {
             return this;
         }
 
-        public Builder withTableFilterSet(Set<UploadSchemaKey> tableFilterSet) {
-            this.tableFilterSet = tableFilterSet;
+        public Builder withTableWhitelist(Set<UploadSchemaKey> tableWhitelist) {
+            this.tableWhitelist = tableWhitelist;
             return this;
         }
 
@@ -125,11 +124,12 @@ public class BridgeExporterRequest {
 
         public BridgeExporterRequest build() {
             // TODO validate, defaults
+            // TODO validate study and table whitelists and project override map can be null, but cannot be empty
             if (sharingMode == null) {
                 sharingMode = BridgeExporterSharingMode.SHARED;
             }
             return new BridgeExporterRequest(date, exporterDdbPrefixOverride, recordIdS3Override, sharingMode,
-                    studyFilterSet, synapseProjectOverride, tableFilterSet, tag);
+                    studyWhitelist, synapseProjectOverride, tableWhitelist, tag);
         }
     }
 }
