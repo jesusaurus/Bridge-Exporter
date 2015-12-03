@@ -20,6 +20,7 @@ import org.sagebionetworks.bridge.exporter.worker.ExportSubtask;
 import org.sagebionetworks.bridge.exporter.worker.ExportTask;
 import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
 import org.sagebionetworks.bridge.exporter.worker.TsvInfo;
+import org.sagebionetworks.bridge.schema.UploadFieldTypes;
 import org.sagebionetworks.bridge.schema.UploadSchema;
 import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
@@ -171,9 +172,10 @@ public class HealthDataExportHandler extends SynapseExportHandler {
     @Override
     protected List<String> getTsvRowValueList(ExportSubtask subtask) throws BridgeExporterException, IOException,
             SynapseException {
+        ExportTask task = subtask.getParentTask();
         JsonNode dataJson = subtask.getRecordData();
         ExportWorkerManager manager = getManager();
-        String synapseProjectId = manager.getSynapseProjectIdForStudyAndTask(getStudyId(), subtask.getParentTask());
+        String synapseProjectId = manager.getSynapseProjectIdForStudyAndTask(getStudyId(), task);
         Item record = subtask.getOriginalRecord();
         String recordId = record.getString("id");
 
@@ -188,7 +190,7 @@ public class HealthDataExportHandler extends SynapseExportHandler {
         rowValueList.add(recordId);
         rowValueList.add(record.getString("healthCode"));
         rowValueList.add(BridgeExporterUtil.sanitizeDdbValue(record, "userExternalId", 128, recordId));
-        rowValueList.add(subtask.getParentTask().getExporterDate().toString());
+        rowValueList.add(task.getExporterDate().toString());
 
         // createdOn as a long epoch millis
         rowValueList.add(String.valueOf(record.getLong("createdOn")));
@@ -205,7 +207,7 @@ public class HealthDataExportHandler extends SynapseExportHandler {
 
             if (BridgeExporterUtil.shouldConvertFreeformTextToAttachment(schema.getKey(), oneFieldName)) {
                 // special hack, see comments on shouldConvertFreeformTextToAttachment()
-                bridgeType = "ATTACHMENT_BLOB";
+                bridgeType = UploadFieldTypes.ATTACHMENT_BLOB;
                 if (valueNode != null && !valueNode.isNull() && valueNode.isTextual()) {
                     String attachmentId = manager.getExportHelper().uploadFreeformTextAsAttachment(recordId,
                             valueNode.textValue());
@@ -215,8 +217,8 @@ public class HealthDataExportHandler extends SynapseExportHandler {
                 }
             }
 
-            String value = manager.getSynapseHelper().serializeToSynapseType(synapseProjectId, recordId, oneFieldName,
-                    bridgeType, valueNode);
+            String value = manager.getSynapseHelper().serializeToSynapseType(task.getTmpDir(), synapseProjectId,
+                    recordId, oneFieldName, bridgeType, valueNode);
             rowValueList.add(value);
         }
 

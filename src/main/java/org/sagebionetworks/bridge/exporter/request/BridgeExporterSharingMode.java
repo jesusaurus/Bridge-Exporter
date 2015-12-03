@@ -27,7 +27,7 @@ public enum BridgeExporterSharingMode {
     }
 
     /** Returns true if the sharing scope should *excluded* from export. */
-    public boolean shouldFilterScope(SharingScope sharingScope) {
+    public boolean shouldExcludeScope(SharingScope sharingScope) {
         return !acceptedScopeSet.contains(sharingScope);
     }
 }

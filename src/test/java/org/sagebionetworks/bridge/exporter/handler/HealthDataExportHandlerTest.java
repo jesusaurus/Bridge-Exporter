@@ -38,6 +38,7 @@ import org.sagebionetworks.bridge.exporter.worker.ExportTask;
 import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
 import org.sagebionetworks.bridge.file.InMemoryFileHelper;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
+import org.sagebionetworks.bridge.schema.UploadFieldTypes;
 import org.sagebionetworks.bridge.schema.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
@@ -178,9 +179,9 @@ public class HealthDataExportHandlerTest {
 
         // mock serializeToSynapseType() - We actually call through to the real method, but we mock out the underlying
         // uploadFromS3ToSynapseFileHandle() to avoid hitting real back-ends.
-        when(mockSynapseHelper.serializeToSynapseType(any(), any(), any(), any(), any())).thenCallRealMethod();
-        when(mockSynapseHelper.uploadFromS3ToSynapseFileHandle(TEST_SYNAPSE_PROJECT_ID, FREEFORM_FIELD_NAME,
-                DUMMY_ATTACHMENT_ID)).thenReturn(DUMMY_FILEHANDLE_ID);
+        when(mockSynapseHelper.serializeToSynapseType(any(), any(), any(), any(), any(), any())).thenCallRealMethod();
+        when(mockSynapseHelper.uploadFromS3ToSynapseFileHandle(tmpDir, TEST_SYNAPSE_PROJECT_ID, FREEFORM_FIELD_NAME,
+                UploadFieldTypes.ATTACHMENT_BLOB, DUMMY_ATTACHMENT_ID)).thenReturn(DUMMY_FILEHANDLE_ID);
 
         // setup manager - This is only used to get helper objects.
         ExportWorkerManager manager = spy(new ExportWorkerManager());

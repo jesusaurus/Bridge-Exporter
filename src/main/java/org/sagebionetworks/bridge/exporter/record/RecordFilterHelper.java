@@ -74,14 +74,18 @@ public class RecordFilterHelper {
         // Get the record's sharing scope. Defaults to no_sharing if it's not present or unable to be parsed.
         SharingScope recordSharingScope;
         String recordSharingScopeStr = record.getString("userSharingScope");
-        try {
-            recordSharingScope = SharingScope.valueOf(recordSharingScopeStr);
-        } catch (IllegalArgumentException ex) {
-            LOG.error("Could not parse sharing scope " + recordSharingScopeStr);
+        if (StringUtils.isBlank(recordSharingScopeStr)) {
             recordSharingScope = SharingScope.NO_SHARING;
+        } else {
+            try {
+                recordSharingScope = SharingScope.valueOf(recordSharingScopeStr);
+            } catch (IllegalArgumentException ex) {
+                LOG.error("Could not parse sharing scope " + recordSharingScopeStr);
+                recordSharingScope = SharingScope.NO_SHARING;
+            }
         }
 
-        // Get sharing scope from user's participant options.
+        // Get sharing scope from user's participant options. Dynamo Helper takes care of defaulting to NO_SHARING.
         String healthCode = record.getString("healthCode");
         SharingScope userSharingScope = dynamoHelper.getSharingScopeForUser(healthCode);
 
@@ -101,7 +105,7 @@ public class RecordFilterHelper {
         }
 
         // actual filter logic here
-        if (sharingMode.shouldFilterScope(sharingScope)) {
+        if (sharingMode.shouldExcludeScope(sharingScope)) {
             metrics.incrementCounter("excluded[" + sharingScope.name() + "]");
             return true;
         } else {
