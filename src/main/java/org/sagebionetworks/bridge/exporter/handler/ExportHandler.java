@@ -18,7 +18,7 @@ public abstract class ExportHandler {
     private String studyId;
 
     /** @see #setManager */
-    protected final ExportWorkerManager getManager() {
+    public final ExportWorkerManager getManager() {
         return manager;
     }
 
@@ -32,7 +32,7 @@ public abstract class ExportHandler {
     }
 
     /** @see #setStudyId */
-    protected final String getStudyId() {
+    public final String getStudyId() {
         return studyId;
     }
 

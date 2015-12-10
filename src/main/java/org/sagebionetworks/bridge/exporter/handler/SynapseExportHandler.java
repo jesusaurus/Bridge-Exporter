@@ -62,13 +62,7 @@ public abstract class SynapseExportHandler extends ExportHandler {
 
             // write to TSV
             List<String> rowValueList = getTsvRowValueList(subtask);
-            PrintWriter tsvWriter = tsvInfo.getWriter();
-            //noinspection SynchronizationOnLocalVariableOrMethodParameter
-            synchronized (tsvWriter) {
-                tsvWriter.println(JOINER_COLUMN_SEPARATOR.join(rowValueList));
-            }
-
-            tsvInfo.incrementLineCount();
+            tsvInfo.writeLine(JOINER_COLUMN_SEPARATOR.join(rowValueList));
             metrics.incrementCounter(tableKey + ".lineCount");
         } catch (BridgeExporterException | IOException | RuntimeException | SynapseException ex) {
             metrics.incrementCounter(tableKey + ".errorCount");
@@ -107,7 +101,7 @@ public abstract class SynapseExportHandler extends ExportHandler {
      * This is called at the end of the record stream for a given export task. This will then upload the TSV to
      * Synapse, creating the Synapse table first if necessary.
      */
-    public void uploadToSynapseForTask(ExportTask task) throws BridgeExporterException, SynapseException {
+    public void uploadToSynapseForTask(ExportTask task) throws BridgeExporterException, IOException, SynapseException {
         ExportWorkerManager manager = getManager();
         TsvInfo tsvInfo = getTsvInfoForTask(task);
         if (tsvInfo == null) {
@@ -116,14 +110,7 @@ public abstract class SynapseExportHandler extends ExportHandler {
         }
 
         File tsvFile = tsvInfo.getFile();
-        PrintWriter tsvWriter = tsvInfo.getWriter();
-
-        // flush and close writer, check for errors
-        tsvWriter.flush();
-        if (tsvWriter.checkError()) {
-            throw new BridgeExporterException("TSV writer has unknown error for table=" + getDdbTableKeyValue());
-        }
-        tsvWriter.close();
+        tsvInfo.flushAndCloseWriter();
 
         // filter on line count
         int lineCount = tsvInfo.getLineCount();
@@ -238,6 +225,5 @@ public abstract class SynapseExportHandler extends ExportHandler {
     protected abstract void setTsvInfoForTask(ExportTask task, TsvInfo tsvInfo);
 
     /** Creates a row values for a single row from the given export task. */
-    protected abstract List<String> getTsvRowValueList(ExportSubtask subtask) throws BridgeExporterException, IOException,
-            SynapseException;
+    protected abstract List<String> getTsvRowValueList(ExportSubtask subtask) throws IOException, SynapseException;
 }

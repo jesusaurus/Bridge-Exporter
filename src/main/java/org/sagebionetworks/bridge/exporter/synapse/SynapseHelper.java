@@ -9,7 +9,6 @@ import java.util.concurrent.TimeUnit;
 import com.amazonaws.AmazonClientException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.io.Files;
 import com.jcabi.aspects.RetryOnFailure;
 import org.joda.time.DateTime;
 import org.joda.time.LocalDate;
@@ -43,7 +42,10 @@ public class SynapseHelper {
     private static final Logger LOG = LoggerFactory.getLogger(SynapseHelper.class);
 
     private static final long APPEND_TIMEOUT_MILLISECONDS = 30 * 1000;
-    private static final int ASYNC_UPLOAD_TIMEOUT_SECONDS = 300;
+
+    // Config keys. Package-scoped to allow unit tests to mock.
+    static final String CONFIG_KEY_SYNAPSE_ASYNC_INTERVAL_MILLIS = "synapse.async.interval.millis";
+    static final String CONFIG_KEY_SYNAPSE_ASYNC_TIMEOUT_LOOPS = "synapse.async.timeout.loops";
 
     /** Mapping from Bridge types to their respective max lengths. Only covers things that are strings in Synapse. */
     public static final Map<String, Integer> BRIDGE_TYPE_TO_MAX_LENGTH = ImmutableMap.<String, Integer>builder()
@@ -80,6 +82,8 @@ public class SynapseHelper {
                     .build();
 
     // config
+    private int asyncIntervalMillis;
+    private int asyncTimeoutLoops;
     private String attachmentBucket;
 
     // Spring helpers
@@ -90,6 +94,8 @@ public class SynapseHelper {
     /** Config, used to get the attachment S3 bucket to get Bridge attachments. */
     @Autowired
     public final void setConfig(Config config) {
+        this.asyncIntervalMillis = config.getInt(CONFIG_KEY_SYNAPSE_ASYNC_INTERVAL_MILLIS);
+        this.asyncTimeoutLoops = config.getInt(CONFIG_KEY_SYNAPSE_ASYNC_TIMEOUT_LOOPS);
         this.attachmentBucket = config.get(SpringConfig.CONFIG_KEY_ATTACHMENT_S3_BUCKET);
     }
 
@@ -256,6 +262,7 @@ public class SynapseHelper {
         }
     }
 
+    // Helper method to generate a unique filename for attachments / file handles.
     // Package-scoped to facilitate testing.
     static String generateFilename(String fieldName, String bridgeType, String attachmentId) {
         // Determine file name and extension.
@@ -275,9 +282,9 @@ public class SynapseHelper {
                 fileExt = fieldName.substring(dotIndex);
                 fileBaseName = removeFileExtensionIfPresent(fieldName, fileExt);
             } else {
-                // Field name has no file extension. Just use .tmp. Base name stays the same.
+                // Field name has no file extension, so our new name will have no extension. Base name stays the same.
                 fileBaseName = fieldName;
-                fileExt = ".tmp";
+                fileExt = "";
             }
         }
 
@@ -287,6 +294,7 @@ public class SynapseHelper {
         return fileBaseName + '-' + attachmentId + fileExt;
     }
 
+    // Helper method which removes the extension from a filename, unless it doesn't have the extension.
     private static String removeFileExtensionIfPresent(String filename, String fileExt) {
         if (!filename.endsWith(fileExt)) {
             // Easy case: no extension, return as is.
@@ -296,73 +304,81 @@ public class SynapseHelper {
         }
     }
 
-    public long uploadTsvFileToTable(String projectId, String tableId, File file) throws BridgeExporterException {
-        // upload file to synapse as a file handle
-        FileHandle tableFileHandle;
-        try {
-            tableFileHandle = createFileHandleWithRetry(file, "text/tab-separated-values", projectId);
-        } catch (IOException | SynapseException ex) {
-            throw new BridgeExporterException("Error uploading TSV as a file handle: " + ex.getMessage(), ex);
-        }
+    /**
+     * Takes a TSV file from disk and uploads and applies its rows to a Synapse table.
+     *
+     * @param projectId
+     *         Synapse project ID that the table lives in
+     * @param tableId
+     *         Synapse table ID to upload the TSV to
+     * @param file
+     *         TSV file to apply to the table
+     * @return number of rows processed
+     * @throws BridgeExporterException
+     *         if there's a general error with Bridge EX
+     * @throws IOException
+     *         if there's an error uploading the file handle
+     * @throws SynapseException
+     *         if there's an error calling Synapse
+     */
+    public long uploadTsvFileToTable(String projectId, String tableId, File file) throws BridgeExporterException,
+            IOException, SynapseException {
+        // Upload TSV as a file handle.
+        FileHandle tableFileHandle = createFileHandleWithRetry(file, "text/tab-separated-values", projectId);
         String fileHandleId = tableFileHandle.getId();
 
-        return uploadFileHandleToTable(tableId, fileHandleId);
-    }
-
-    public long uploadFileHandleToTable(String tableId, String fileHandleId) throws BridgeExporterException {
         // start tsv import
         CsvTableDescriptor tableDesc = new CsvTableDescriptor();
         tableDesc.setIsFirstLineHeader(true);
         tableDesc.setSeparator("\t");
-
-        String jobToken;
-        try {
-            jobToken = uploadTsvStartWithRetry(tableId, fileHandleId, tableDesc);
-        } catch (SynapseException ex) {
-            throw new BridgeExporterException("Error starting async import of file handle " + fileHandleId + ": "
-                    + ex.getMessage(), ex);
-        }
+        String jobToken = uploadTsvStartWithRetry(tableId, fileHandleId, tableDesc);
 
         // poll asyncGet until success or timeout
         boolean success = false;
         Long linesProcessed = null;
-        for (int sec = 0; sec < ASYNC_UPLOAD_TIMEOUT_SECONDS; sec++) {
-            // sleep for 1 sec
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException ex) {
-                // noop
+        for (int loops = 0; loops < asyncTimeoutLoops; loops++) {
+            if (asyncIntervalMillis > 0) {
+                try {
+                    Thread.sleep(asyncIntervalMillis);
+                } catch (InterruptedException ex) {
+                    // noop
+                }
             }
 
             // poll
-            try {
-                UploadToTableResult uploadResult = getUploadTsvStatus(jobToken, tableId);
-                if (uploadResult == null) {
-                    // Result not ready. Sleep some more.
-                    continue;
-                }
-
+            UploadToTableResult uploadResult = getUploadTsvStatus(jobToken, tableId);
+            if (uploadResult != null) {
                 linesProcessed = uploadResult.getRowsProcessed();
                 success = true;
                 break;
-            } catch (SynapseResultNotReadyException ex) {
-                // results not ready, sleep some more
-            } catch (SynapseException ex) {
-                throw new BridgeExporterException("Error polling job status of importing file handle " + fileHandleId
-                        + ": " + ex.getMessage(), ex);
             }
+
+            // Result not ready. Loop around again.
         }
 
         if (!success) {
             throw new BridgeExporterException("Timed out uploading file handle " + fileHandleId);
         }
         if (linesProcessed == null) {
-            throw new BridgeExporterException("Null getRowsProcessed()");
+            // Not sure if Synapse will ever do this, but code defensively, just in case.
+            throw new BridgeExporterException("Null rows processed");
         }
 
         return linesProcessed;
     }
 
+    /**
+     * Appends the given row set to the given Synapse table. This is a retry wrapper.
+     *
+     * @param rowSet
+     *         row set to append
+     * @param tableId
+     *         Synapse table to appy it to
+     * @throws InterruptedException
+     *         if the async call is interrupted
+     * @throws SynapseException
+     *         if the Synapse call fails
+     */
     @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS,
             types = { InterruptedException.class, SynapseException.class }, randomize = false)
     public void appendRowsToTableWithRetry(AppendableRowSet rowSet, String tableId) throws InterruptedException,
@@ -370,49 +386,132 @@ public class SynapseHelper {
         synapseClient.appendRowsToTable(rowSet, APPEND_TIMEOUT_MILLISECONDS, tableId);
     }
 
+    /**
+     * Creates an ACL in Synapse. This is a retry wrapper.
+     *
+     * @param acl
+     *         ACL to create
+     * @return created ACL
+     * @throws SynapseException
+     *         if the call fails
+     */
     @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
             randomize = false)
     public AccessControlList createAclWithRetry(AccessControlList acl) throws SynapseException {
         return synapseClient.createACL(acl);
     }
 
+    /**
+     * Creates column models in Synapse. This is a retry wrapper.
+     *
+     * @param columnList
+     *         list of column models to create
+     * @return created column models
+     * @throws SynapseException
+     *         if the call fails
+     */
     @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
             randomize = false)
     public List<ColumnModel> createColumnModelsWithRetry(List<ColumnModel> columnList) throws SynapseException {
         return synapseClient.createColumnModels(columnList);
     }
 
+    /**
+     * Uploads a file to Synapse as a file handle. This is a retry wrapper.
+     *
+     * @param file
+     *         file to upload
+     * @param contentType
+     *         file MIME type
+     * @param projectId
+     *         Synapse project to upload the file handle to
+     * @return file handle object from Synapse
+     * @throws IOException
+     *         if reading the file from disk fails
+     * @throws SynapseException
+     *         if the Synapse call fails
+     */
     @RetryOnFailure(attempts = 5, delay = 1, unit = TimeUnit.SECONDS,
             types = { AmazonClientException.class, SynapseException.class }, randomize = false)
-    public FileHandle createFileHandleWithRetry(File file, String contentType, String parentId) throws IOException,
+    public FileHandle createFileHandleWithRetry(File file, String contentType, String projectId) throws IOException,
             SynapseException {
-        return synapseClient.createFileHandle(file, contentType, parentId);
+        return synapseClient.createFileHandle(file, contentType, projectId);
     }
 
+    /**
+     * Create table in Synapse. This is a retry wrapper.
+     *
+     * @param table
+     *         table to create
+     * @return created table
+     * @throws SynapseException
+     *         if the Synapse call fails
+     */
     @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
             randomize = false)
     public TableEntity createTableWithRetry(TableEntity table) throws SynapseException {
         return synapseClient.createEntity(table);
     }
 
+    /**
+     * Download file handle from Synapse. This is a retry wrapper.
+     *
+     * @param fileHandleId
+     *         file handle to download
+     * @param toFile
+     *         File on local disk to write to
+     * @throws SynapseException
+     *         if the call fails
+     */
     @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
             randomize = false)
     public void downloadFileHandleWithRetry(String fileHandleId, File toFile) throws SynapseException {
         synapseClient.downloadFromFileHandleTemporaryUrl(fileHandleId, toFile);
     }
 
+    /**
+     * Get the column models for a Synapse table. This is a retry wrapper.
+     *
+     * @param tableId
+     *         table to get column info for
+     * @return list of columns
+     * @throws SynapseException
+     *         if the call fails
+     */
     @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
             randomize = false)
     public List<ColumnModel> getColumnModelsForTableWithRetry(String tableId) throws SynapseException {
         return synapseClient.getColumnModelsForTableEntity(tableId);
     }
 
+    /**
+     * Gets a Synapse table. This is a retry wrapper.
+     *
+     * @param tableId
+     *         table to get
+     * @return table
+     * @throws SynapseException
+     *         if the Synapse call fails
+     */
     @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
             randomize = false)
     public TableEntity getTableWithRetry(String tableId) throws SynapseException {
         return synapseClient.getEntity(tableId, TableEntity.class);
     }
 
+    /**
+     * Starts applying an uploaded TSV file handle to a Synapse table. This is a retry wrapper.
+     *
+     * @param tableId
+     *         the table to apply the TSV to
+     * @param fileHandleId
+     *         the TSV file handle
+     * @param tableDescriptor
+     *         TSV table descriptor
+     * @return an async job token
+     * @throws SynapseException
+     *         if the Synapse call fails
+     */
     @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
             randomize = false)
     public String uploadTsvStartWithRetry(String tableId, String fileHandleId, CsvTableDescriptor tableDescriptor)
@@ -420,6 +519,19 @@ public class SynapseHelper {
         return synapseClient.uploadCsvToTableAsyncStart(tableId, fileHandleId, null, null, tableDescriptor);
     }
 
+    /**
+     * Polls Synapse to get the job status for the upload TSV to table job. If the job is not ready, this will return
+     * null instead of throwing a SynapseResultNotReadyException. This is to prevent spurious retries when a
+     * SynapseResultNotReadyException is thrown. This is a retry wrapper.
+     *
+     * @param jobToken
+     *         job token from uploadTsvStartWithRetry()
+     * @param tableId
+     *         table the job was working on
+     * @return upload table result object
+     * @throws SynapseException
+     *         if the job fails
+     */
     @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
             randomize = false)
     public UploadToTableResult getUploadTsvStatus(String jobToken, String tableId) throws SynapseException {

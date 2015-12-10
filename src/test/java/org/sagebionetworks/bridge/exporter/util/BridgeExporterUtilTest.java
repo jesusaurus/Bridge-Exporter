@@ -136,5 +136,9 @@ public class BridgeExporterUtilTest {
                 "exercisesurvey106_data.result"));
         assertFalse(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(bcsExerciseSurveyJournal,
                 "something-else"));
+
+        UploadSchemaKey other = new UploadSchemaKey.Builder().withStudyId("other-study").withSchemaId("other-schema")
+                .withRevision(1).build();
+        assertFalse(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(other, "other"));
     }
 }

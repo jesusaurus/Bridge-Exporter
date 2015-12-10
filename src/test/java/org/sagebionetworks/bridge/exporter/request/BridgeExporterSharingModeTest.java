@@ -28,4 +28,12 @@ public class BridgeExporterSharingModeTest {
         assertEquals(sharingMode.shouldExcludeScope(sharingScope), expected, "sharingMode=" + sharingMode +
                 ", sharingScope=" + sharingScope);
     }
+
+    // branch coverage test to satisfy jacoco
+    @Test
+    public void valueOf() {
+        assertEquals(BridgeExporterSharingMode.valueOf("ALL"), BridgeExporterSharingMode.ALL);
+        assertEquals(BridgeExporterSharingMode.valueOf("SHARED"), BridgeExporterSharingMode.SHARED);
+        assertEquals(BridgeExporterSharingMode.valueOf("PUBLIC_ONLY"), BridgeExporterSharingMode.PUBLIC_ONLY);
+    }
 }

@@ -17,7 +17,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import org.sagebionetworks.bridge.config.Config;
-import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.metrics.MetricsHelper;
@@ -160,7 +159,7 @@ public class BridgeExporterRecordProcessor {
                     metricsHelper.captureMetricsForRecord(metrics, record);
 
                     workerManager.addSubtaskForRecord(task, record);
-                } catch (BridgeExporterException | IOException | RuntimeException | SchemaNotFoundException ex) {
+                } catch (IOException | RuntimeException | SchemaNotFoundException ex) {
                     LOG.error("Exception processing record " + oneRecordId + ": " + ex.getMessage(), ex);
                 }
             }

@@ -69,19 +69,31 @@ public class SynapseHelperUploadAttachmentTest {
     @Test
     public void filenameBlobWithNoExtension() {
         assertEquals(SynapseHelper.generateFilename("genericBlob", UploadFieldTypes.ATTACHMENT_BLOB, "attId"),
-                "genericBlob-attId.tmp");
-    }
-
-    @Test
-    public void filenameBlobWithTmpExtension() {
-        assertEquals(SynapseHelper.generateFilename("genericBlob.tmp", UploadFieldTypes.ATTACHMENT_BLOB, "attId"),
-                "genericBlob-attId.tmp");
+                "genericBlob-attId");
     }
 
     @Test
     public void filenameBlobWithMultipleDots() {
         assertEquals(SynapseHelper.generateFilename("generic.blob.ext", UploadFieldTypes.ATTACHMENT_BLOB, "attId"),
                 "generic.blob-attId.ext");
+    }
+
+    @Test
+    public void filenameBlobStartsWithDot() {
+        assertEquals(SynapseHelper.generateFilename(".dot", UploadFieldTypes.ATTACHMENT_BLOB, "attId"),
+                ".dot-attId");
+    }
+
+    @Test
+    public void filenameBlobStartsWithDotWithExtension() {
+        assertEquals(SynapseHelper.generateFilename(".dot.ext", UploadFieldTypes.ATTACHMENT_BLOB, "attId"),
+                ".dot-attId.ext");
+    }
+
+    @Test
+    public void filenameBlobEndsWithDot() {
+        assertEquals(SynapseHelper.generateFilename("dot.dot.", UploadFieldTypes.ATTACHMENT_BLOB, "attId"),
+                "dot.dot.-attId");
     }
 
     private static final String DUMMY_FILE_CONTENT = "This is some file content.";

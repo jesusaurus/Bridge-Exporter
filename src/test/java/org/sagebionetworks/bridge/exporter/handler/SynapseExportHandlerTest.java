@@ -15,6 +15,7 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -37,7 +38,6 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.config.Config;
-import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
 import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
@@ -122,13 +122,13 @@ public class SynapseExportHandlerTest {
         //
         // We write that value to our string list (of size 1, because we have only 1 column).
         //
-        // However, if we see the "error" key, throw a BridgeExporterException with that error message. This is to test
+        // However, if we see the "error" key, throw an IOException with that error message. This is to test
         // error handling.
         @Override
-        protected List<String> getTsvRowValueList(ExportSubtask subtask) throws BridgeExporterException {
+        protected List<String> getTsvRowValueList(ExportSubtask subtask) throws IOException {
             JsonNode dataNode = subtask.getRecordData();
             if (dataNode.has("error")) {
-                throw new BridgeExporterException(dataNode.get("error").textValue());
+                throw new IOException(dataNode.get("error").textValue());
             }
 
             String value = dataNode.get("foo").textValue();

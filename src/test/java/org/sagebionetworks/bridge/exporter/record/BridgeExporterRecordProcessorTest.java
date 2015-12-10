@@ -11,6 +11,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
+import java.io.IOException;
 import java.util.List;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
@@ -21,7 +22,6 @@ import org.mockito.ArgumentCaptor;
 import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.config.Config;
-import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.metrics.MetricsHelper;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
@@ -43,11 +43,11 @@ public class BridgeExporterRecordProcessorTest {
         BridgeExporterRequest request = new BridgeExporterRequest.Builder().withDate(LocalDate.parse("2015-11-04"))
                 .withTag("unit-test-tag").build();
 
-        // mock Config
+        // mock Config - For branch coverage, make progress report period 2
         Config mockConfig = mock(Config.class);
         when(mockConfig.getInt(BridgeExporterRecordProcessor.CONFIG_KEY_RECORD_LOOP_DELAY_MILLIS)).thenReturn(0);
         when(mockConfig.getInt(BridgeExporterRecordProcessor.CONFIG_KEY_RECORD_LOOP_PROGRESS_REPORT_PERIOD))
-                .thenReturn(250);
+                .thenReturn(2);
         when(mockConfig.get(BridgeExporterRecordProcessor.CONFIG_KEY_TIME_ZONE_NAME))
                 .thenReturn("America/Los_Angeles");
 
@@ -86,7 +86,7 @@ public class BridgeExporterRecordProcessorTest {
 
         // mock export worker manager - Only mock error record. The others will just no-op by default in Mockito.
         ExportWorkerManager mockManager = mock(ExportWorkerManager.class);
-        doThrow(BridgeExporterException.class).when(mockManager).addSubtaskForRecord(any(ExportTask.class),
+        doThrow(IOException.class).when(mockManager).addSubtaskForRecord(any(ExportTask.class),
                 same(dummyErrorRecord));
 
         // set up record processor

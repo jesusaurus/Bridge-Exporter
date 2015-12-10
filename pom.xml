@@ -161,7 +161,7 @@
                         <exclude>org/sagebionetworks/bridge/exporter/config/*</exclude>
 
                         <!-- no point in testing exceptions, since they are entirely boilerplate code -->
-                        <exclude>org/sagebionetworks/bridge/exceptions/*</exclude>
+                        <exclude>org/sagebionetworks/bridge/exporter/exceptions/*</exclude>
                     </excludes>
                     <rules>
                         <rule>
@@ -175,7 +175,7 @@
                                 <limit>
                                     <counter>BRANCH</counter>
                                     <value>COVEREDRATIO</value>
-                                    <minimum>0.70</minimum>
+                                    <minimum>0.80</minimum>
                                 </limit>
                             </limits>
                         </rule>

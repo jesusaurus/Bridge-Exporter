@@ -41,7 +41,10 @@ import org.sagebionetworks.bridge.schema.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
 
-// TODO doc
+/**
+ * This class manages export handlers and workers. This includes holding the config and helper objects that the
+ * handlers need, routing requests to the right handler, and handling "end of stream" events.
+ */
 @Component
 public class ExportWorkerManager {
     private static final Logger LOG = LoggerFactory.getLogger(ExportWorkerManager.class);
@@ -52,12 +55,16 @@ public class ExportWorkerManager {
     public static final String CONFIG_KEY_WORKER_MANAGER_PROGRESS_REPORT_PERIOD =
             "worker.manager.progress.report.period";
 
+    // package-scoped, to be available in tests
+    static final String SCHEMA_IOS_SURVEY = "ios-survey";
+
     // CONFIG
 
     private String exporterDdbPrefix;
     private int progressReportPeriod;
     private long synapsePrincipalId;
 
+    /** Bridge config. */
     @Autowired
     public final void setConfig(Config config) {
         this.exporterDdbPrefix = config.get(CONFIG_KEY_EXPORTER_DDB_PREFIX);
@@ -70,6 +77,14 @@ public class ExportWorkerManager {
         }
     }
 
+    /**
+     * The prefix for DynamoDB tables for mapping Synapse tables. Examples: "prod-exporter-". This checks for overrides
+     * in the task's request before falling back to the globally configured prefix.
+     *
+     * @param task
+     *         export task, which may or may not have the DDB prefix override
+     * @return resolved DDB prefix override
+     */
     public final String getExporterDdbPrefixForTask(ExportTask task) {
         String override = task.getRequest().getExporterDdbPrefixOverride();
         if (StringUtils.isNotBlank(override)) {
@@ -79,6 +94,7 @@ public class ExportWorkerManager {
         return exporterDdbPrefix;
     }
 
+    /** The Synapse principal ID (user ID) for the Bridge Exporter user. */
     public final long getSynapsePrincipalId() {
         return synapsePrincipalId;
     }
@@ -91,46 +107,56 @@ public class ExportWorkerManager {
     private FileHelper fileHelper;
     private SynapseHelper synapseHelper;
 
+    /** DDB client, used to get the Synapse table mappings. */
     public final DynamoDB getDdbClient() {
         return ddbClient;
     }
 
+    /** @see #getDdbClient */
     @Autowired
     public final void setDdbClient(DynamoDB ddbClient) {
         this.ddbClient = ddbClient;
     }
 
+    /** DynamoHelper, used to get schemas. */
     public DynamoHelper getDynamoHelper() {
         return dynamoHelper;
     }
 
+    /** @see #getDynamoHelper */
     @Autowired
     public void setDynamoHelper(DynamoHelper dynamoHelper) {
         this.dynamoHelper = dynamoHelper;
     }
 
+    /** Export helper, used to handle attachments. */
     public final ExportHelper getExportHelper() {
         return exportHelper;
     }
 
+    /** @see #getExportHelper */
     @Autowired
     public final void setExportHelper(ExportHelper exportHelper) {
         this.exportHelper = exportHelper;
     }
 
+    /** File helper, used to create and write to TSVs in the file system. */
     public final FileHelper getFileHelper() {
         return fileHelper;
     }
 
+    /** @see #getFileHelper */
     @Autowired
     public final void setFileHelper(FileHelper fileHelper) {
         this.fileHelper = fileHelper;
     }
 
+    /** Synapse Helper, used for creating Synapse tables and uploading data to Synapse tables. */
     public final SynapseHelper getSynapseHelper() {
         return synapseHelper;
     }
 
+    /** @see #getSynapseHelper */
     @Autowired
     public final void setSynapseHelper(SynapseHelper synapseHelper) {
         this.synapseHelper = synapseHelper;
@@ -138,22 +164,31 @@ public class ExportWorkerManager {
 
     // STUDY INFO AND OVERRIDES
 
-    // TODO re-doc
     /**
-     * Returns team ID of the team allowed to read the data. This is derived from the study and from the study to
-     * project mapping in the Bridge Exporter config.
+     * Convenience method for getting the access team ID for a given study. The access team ID is the team ID that is
+     * allowed to read the exported data in Synapse. This calls through to DynamoDB and is present to maintain
+     * backwards-compatibility and ease of migration.
+     *
+     * @param studyId
+     *         study ID to get the access team ID for
+     * @return access team ID
      */
-    public long getDataAccessTeamIdForStudy(String studyId) throws BridgeExporterException {
+    public long getDataAccessTeamIdForStudy(String studyId) {
         StudyInfo studyInfo = dynamoHelper.getStudyInfo(studyId);
         return studyInfo.getDataAccessTeamId();
     }
 
-    // TODO re-doc
     /**
-     * Returns the Synapse project ID. This is derived from the study and from the study to project mapping in the
-     * Bridge Exporter config.
+     * The Synapse project ID to export to. This first checks the task's request for the project override, then falls
+     * back to Dynamo DB.
+     *
+     * @param studyId
+     *         study ID to get the Synapse project ID for
+     * @param task
+     *         export task, which may or may not have a project ID override
+     * @return project ID to export to
      */
-    public String getSynapseProjectIdForStudyAndTask(String studyId, ExportTask task) throws BridgeExporterException {
+    public String getSynapseProjectIdForStudyAndTask(String studyId, ExportTask task) {
         // check the override map
         Map<String, String> overrideMap = task.getRequest().getSynapseProjectOverrideMap();
         if (overrideMap != null && overrideMap.containsKey(studyId)) {
@@ -172,13 +207,27 @@ public class ExportWorkerManager {
     private final Map<UploadSchemaKey, HealthDataExportHandler> healthDataHandlersBySchema = new HashMap<>();
     private final Map<String, IosSurveyExportHandler> surveyHandlersByStudy = new HashMap<>();
 
+    /** Executor that runs our export workers. */
     @Resource(name = "workerExecutorService")
     public final void setExecutor(ExecutorService executor) {
         this.executor = executor;
     }
 
-    public void addSubtaskForRecord(ExportTask task, Item record) throws BridgeExporterException, IOException,
-            SchemaNotFoundException {
+    /**
+     * Given the export task and one of the health data records in that task, this creates the export sub-tasks and
+     * routes them to the appropriate export handlers. This returns immediately and queues up asynchronous workers to
+     * handle those sub-tasks.
+     *
+     * @param task
+     *         export task to be processed
+     * @param record
+     *         health data record within that export task to be processed
+     * @throws IOException
+     *         if reading the record data fails
+     * @throws SchemaNotFoundException
+     *         if the schema corresponding the record can't be found
+     */
+    public void addSubtaskForRecord(ExportTask task, Item record) throws IOException, SchemaNotFoundException {
         UploadSchemaKey schemaKey = BridgeExporterUtil.getSchemaKeyForRecord(record);
         String studyId = schemaKey.getStudyId();
 
@@ -188,7 +237,7 @@ public class ExportWorkerManager {
                 .withRecordData(recordDataNode).withSchemaKey(schemaKey).build();
 
         // Multiplex on schema.
-        if ("ios-survey".equals(schemaKey.getSchemaId())) {
+        if (SCHEMA_IOS_SURVEY.equals(schemaKey.getSchemaId())) {
             // Special case: In the olden days, iOS surveys were processed by the Exporter instead of Bridge Server
             // Upload Validation. We don't do this anymore, but sometimes we want to re-export old uploads, so we still
             // need to handle this case.
@@ -199,7 +248,23 @@ public class ExportWorkerManager {
         }
     }
 
-    // This is a separate method, because the IosSurveyExportHandler needs to call this directly.
+    /**
+     * Add a health data sub-task. This is actually two sub-tasks, one for the app version table, one for the health
+     * data table. This is a separate method, because the IosSurveyExportHandler needs to call this directly.
+     *
+     * @param parentTask
+     *         parent export task that contains this health data sub-task
+     * @param studyId
+     *         study ID for this sub-task
+     * @param schemaKey
+     *         schema key for this sub-task
+     * @param subtask
+     *         object representing the sub-task
+     * @throws IOException
+     *         if getting the schema for the schema key fails
+     * @throws SchemaNotFoundException
+     *         if getting the schema for the schema key fails
+     */
     public void addHealthDataSubtask(ExportTask parentTask, String studyId, UploadSchemaKey schemaKey,
             ExportSubtask subtask) throws IOException, SchemaNotFoundException {
         AppVersionExportHandler appVersionHandler = getAppVersionHandlerForStudy(studyId);
@@ -209,40 +274,90 @@ public class ExportWorkerManager {
         queueWorker(healthDataHandler, parentTask, subtask);
     }
 
-    private void queueWorker(ExportHandler handler, ExportTask parentTask, ExportSubtask task) {
-        ExportWorker worker = new ExportWorker(handler, task);
+    /**
+     * Adds the given task to the task queue.
+     *
+     * @param handler
+     *         handler to queue up
+     * @param parentTask
+     *         parent export task, contains the task queue
+     * @param subtask
+     *         sub-task to queue up
+     */
+    private void queueWorker(ExportHandler handler, ExportTask parentTask, ExportSubtask subtask) {
+        ExportWorker worker = new ExportWorker(handler, subtask);
         Future<?> future = executor.submit(worker);
         parentTask.addOutstandingTask(future);
     }
 
+    /**
+     * Gets the app version handler for the given study, with caching logic.
+     *
+     * @param studyId
+     *         study ID for the app version handler
+     * @return app version handler
+     */
     private AppVersionExportHandler getAppVersionHandlerForStudy(String studyId) {
         AppVersionExportHandler handler = appVersionHandlersByStudy.get(studyId);
         if (handler == null) {
-            handler = new AppVersionExportHandler();
-            handler.setManager(this);
-            handler.setStudyId(studyId);
+            handler = createAppVersionHandler(studyId);
             appVersionHandlersByStudy.put(studyId, handler);
         }
         return handler;
     }
 
+    // Factory method for creating a new app version handler. This exists and is package-scoped to enable unit tests.
+    AppVersionExportHandler createAppVersionHandler(String studyId) {
+        AppVersionExportHandler handler = new AppVersionExportHandler();
+        handler.setManager(this);
+        handler.setStudyId(studyId);
+        return handler;
+    }
+
+    /**
+     * Gets the health data handler for the given schema key, with caching logic
+     *
+     * @param metrics
+     *         metrics, used to track schema not found metrics
+     * @param schemaKey
+     *         schema for the health data handler
+     * @return health data handler
+     * @throws IOException
+     *         if getting the schema fails
+     * @throws SchemaNotFoundException
+     *         if getting the schema fails
+     */
     private HealthDataExportHandler getHealthDataHandlerForSchema(Metrics metrics, UploadSchemaKey schemaKey)
             throws IOException, SchemaNotFoundException {
         HealthDataExportHandler handler = healthDataHandlersBySchema.get(schemaKey);
         if (handler == null) {
-            handler = new HealthDataExportHandler();
-            handler.setManager(this);
-            handler.setStudyId(schemaKey.getStudyId());
-
-            // set schema
-            UploadSchema schema = dynamoHelper.getSchema(metrics, schemaKey);
-            handler.setSchema(schema);
-
+            handler = createHealthDataHandler(metrics, schemaKey);
             healthDataHandlersBySchema.put(schemaKey, handler);
         }
         return handler;
     }
 
+    // Factory method for creating a new health data handler. This exists and is package-scoped to enable unit tests.
+    HealthDataExportHandler createHealthDataHandler(Metrics metrics, UploadSchemaKey schemaKey)
+            throws IOException, SchemaNotFoundException {
+        HealthDataExportHandler handler = new HealthDataExportHandler();
+        handler.setManager(this);
+        handler.setStudyId(schemaKey.getStudyId());
+
+        // set schema
+        UploadSchema schema = dynamoHelper.getSchema(metrics, schemaKey);
+        handler.setSchema(schema);
+
+        return handler;
+    }
+
+    /**
+     * Gets the legacy survey handler for the given study, with caching logic.
+     *
+     * @param studyId
+     *         study ID to get the handler for
+     * @return legacy survey handler
+     */
     private IosSurveyExportHandler getSurveyHandlerForStudy(String studyId) {
         IosSurveyExportHandler handler = surveyHandlersByStudy.get(studyId);
         if (handler == null) {
@@ -254,6 +369,13 @@ public class ExportWorkerManager {
         return handler;
     }
 
+    /**
+     * Signals the end of the record stream for the given export task. This waits for all of the outstanding tasks to
+     * complete and signals the handlers to upload their TSVs to Synapse.
+     *
+     * @param task
+     *         export task to be finished
+     */
     public void endOfStream(ExportTask task) {
         BridgeExporterRequest request = task.getRequest();
         LOG.info("End of stream signaled for request with date=" + request.getDate() + ", tag=" + request.getTag());
@@ -286,7 +408,7 @@ public class ExportWorkerManager {
             HealthDataExportHandler handler = healthDataHandlerEntry.getValue();
             try {
                 handler.uploadToSynapseForTask(task);
-            } catch (BridgeExporterException | RuntimeException | SynapseException ex) {
+            } catch (BridgeExporterException | IOException | RuntimeException | SynapseException ex) {
                 LOG.error("Error uploading health data to Synapse for schema=" + schemaKey + ": " + ex.getMessage(),
                         ex);
             }
@@ -297,7 +419,7 @@ public class ExportWorkerManager {
             AppVersionExportHandler handler = appVersionHandlerEntry.getValue();
             try {
                 handler.uploadToSynapseForTask(task);
-            } catch (BridgeExporterException | RuntimeException | SynapseException ex) {
+            } catch (BridgeExporterException | IOException | RuntimeException | SynapseException ex) {
                 LOG.error("Error uploading app version table to Synapse for study=" + studyId + ": " + ex.getMessage(),
                         ex);
             }

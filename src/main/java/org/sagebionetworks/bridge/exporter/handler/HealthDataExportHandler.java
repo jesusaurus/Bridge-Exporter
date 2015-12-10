@@ -15,7 +15,6 @@ import org.sagebionetworks.repo.model.table.ColumnType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.exporter.worker.ExportSubtask;
 import org.sagebionetworks.bridge.exporter.worker.ExportTask;
 import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
@@ -35,6 +34,11 @@ public class HealthDataExportHandler extends SynapseExportHandler {
      * Schema that this handler represents. This is used for determining the table keys in DDB as well as determining
      * the Synapse table columns and corresponding TSV columns.
      */
+    public UploadSchema getSchema() {
+        return schema;
+    }
+
+    /** @see #getSchema */
     public final void setSchema(UploadSchema schema) {
         this.schema = schema;
     }
@@ -170,8 +174,7 @@ public class HealthDataExportHandler extends SynapseExportHandler {
     }
 
     @Override
-    protected List<String> getTsvRowValueList(ExportSubtask subtask) throws BridgeExporterException, IOException,
-            SynapseException {
+    protected List<String> getTsvRowValueList(ExportSubtask subtask) throws IOException, SynapseException {
         ExportTask task = subtask.getParentTask();
         JsonNode dataJson = subtask.getRecordData();
         ExportWorkerManager manager = getManager();
