@@ -15,6 +15,7 @@ import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.exporter.dynamo.DynamoHelper;
 import org.sagebionetworks.bridge.exporter.dynamo.SharingScope;
+import org.sagebionetworks.bridge.exporter.dynamo.StudyInfo;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterSharingMode;
@@ -22,16 +23,19 @@ import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
 public class RecordFilterHelperTest {
     private static final String DUMMY_HEALTH_CODE = "dummy-health-code";
+    private static final String TEST_STUDY = "test-study";
+    private static final StudyInfo TEST_STUDY_INFO = new StudyInfo.Builder().withDataAccessTeamId(1337L)
+            .withSynapseProjectId("test-project").build();
 
     @Test
     public void recordMissingSharingScope() {
         // set up inputs
         Metrics metrics = new Metrics();
         BridgeExporterRequest request = makeRequestBuilder().build();
-        Item record = makeRecord(null);
+        Item record = makeRecord(null, TEST_STUDY);
 
         // execute and validate
-        RecordFilterHelper helper = makeRecordFilterHelper(SharingScope.SPONSORS_AND_PARTNERS);
+        RecordFilterHelper helper = makeRecordFilterHelper(SharingScope.SPONSORS_AND_PARTNERS, true);
         assertTrue(helper.shouldExcludeRecord(metrics, request, record));
 
         Multiset<String> counterMap = metrics.getCounterMap();
@@ -44,10 +48,10 @@ public class RecordFilterHelperTest {
         // set up inputs
         Metrics metrics = new Metrics();
         BridgeExporterRequest request = makeRequestBuilder().build();
-        Item record = makeRecord(null).withString("userSharingScope", "not a valid sharing scope");
+        Item record = makeRecord(null, TEST_STUDY).withString("userSharingScope", "not a valid sharing scope");
 
         // execute and validate
-        RecordFilterHelper helper = makeRecordFilterHelper(SharingScope.SPONSORS_AND_PARTNERS);
+        RecordFilterHelper helper = makeRecordFilterHelper(SharingScope.SPONSORS_AND_PARTNERS, true);
         assertTrue(helper.shouldExcludeRecord(metrics, request, record));
 
         Multiset<String> counterMap = metrics.getCounterMap();
@@ -125,10 +129,10 @@ public class RecordFilterHelperTest {
         // set up inputs
         Metrics metrics = new Metrics();
         BridgeExporterRequest request = makeRequestBuilder().withSharingMode(requestSharingMode).build();
-        Item record = makeRecord(recordSharingScope);
+        Item record = makeRecord(recordSharingScope, TEST_STUDY);
 
         // execute and validate
-        RecordFilterHelper helper = makeRecordFilterHelper(userSharingScope);
+        RecordFilterHelper helper = makeRecordFilterHelper(userSharingScope, true);
         assertEquals(helper.shouldExcludeRecord(metrics, request, record), expected);
 
         Multiset<String> counterMap = metrics.getCounterMap();
@@ -140,11 +144,11 @@ public class RecordFilterHelperTest {
     public void recordMissingStudyId() {
         // set up inputs
         Metrics metrics = new Metrics();
-        BridgeExporterRequest request = makeRequestBuilder().withStudyWhitelist(ImmutableSet.of("test-study")).build();
-        Item record = makeRecord(SharingScope.ALL_QUALIFIED_RESEARCHERS);
+        BridgeExporterRequest request = makeRequestBuilder().withStudyWhitelist(ImmutableSet.of(TEST_STUDY)).build();
+        Item record = makeRecord(SharingScope.ALL_QUALIFIED_RESEARCHERS, null);
 
         // execute and validate
-        RecordFilterHelper helper = makeRecordFilterHelper(SharingScope.ALL_QUALIFIED_RESEARCHERS);
+        RecordFilterHelper helper = makeRecordFilterHelper(SharingScope.ALL_QUALIFIED_RESEARCHERS, true);
         helper.shouldExcludeRecord(metrics, request, record);
     }
 
@@ -152,11 +156,11 @@ public class RecordFilterHelperTest {
     public void studyFilterAccepts() {
         // set up inputs
         Metrics metrics = new Metrics();
-        BridgeExporterRequest request = makeRequestBuilder().withStudyWhitelist(ImmutableSet.of("test-study")).build();
-        Item record = makeRecord(SharingScope.ALL_QUALIFIED_RESEARCHERS).withString("studyId", "test-study");
+        BridgeExporterRequest request = makeRequestBuilder().withStudyWhitelist(ImmutableSet.of(TEST_STUDY)).build();
+        Item record = makeRecord(SharingScope.ALL_QUALIFIED_RESEARCHERS, TEST_STUDY);
 
         // execute and validate
-        RecordFilterHelper helper = makeRecordFilterHelper(SharingScope.ALL_QUALIFIED_RESEARCHERS);
+        RecordFilterHelper helper = makeRecordFilterHelper(SharingScope.ALL_QUALIFIED_RESEARCHERS, true);
         assertFalse(helper.shouldExcludeRecord(metrics, request, record));
 
         Multiset<String> counterMap = metrics.getCounterMap();
@@ -168,11 +172,11 @@ public class RecordFilterHelperTest {
     public void studyFilterExcludes() {
         // set up inputs
         Metrics metrics = new Metrics();
-        BridgeExporterRequest request = makeRequestBuilder().withStudyWhitelist(ImmutableSet.of("test-study")).build();
-        Item record = makeRecord(SharingScope.ALL_QUALIFIED_RESEARCHERS).withString("studyId", "excluded-study");
+        BridgeExporterRequest request = makeRequestBuilder().withStudyWhitelist(ImmutableSet.of(TEST_STUDY)).build();
+        Item record = makeRecord(SharingScope.ALL_QUALIFIED_RESEARCHERS, "excluded-study");
 
         // execute and validate
-        RecordFilterHelper helper = makeRecordFilterHelper(SharingScope.ALL_QUALIFIED_RESEARCHERS);
+        RecordFilterHelper helper = makeRecordFilterHelper(SharingScope.ALL_QUALIFIED_RESEARCHERS, true);
         assertTrue(helper.shouldExcludeRecord(metrics, request, record));
 
         Multiset<String> counterMap = metrics.getCounterMap();
@@ -184,15 +188,15 @@ public class RecordFilterHelperTest {
     public void tableFilterAccepts() {
         // set up inputs
         Metrics metrics = new Metrics();
-        UploadSchemaKey acceptedSchemaKey = new UploadSchemaKey.Builder().withStudyId("test-study")
+        UploadSchemaKey acceptedSchemaKey = new UploadSchemaKey.Builder().withStudyId(TEST_STUDY)
                 .withSchemaId("test-schema").withRevision(3).build();
         BridgeExporterRequest request = makeRequestBuilder().withTableWhitelist(ImmutableSet.of(acceptedSchemaKey))
                 .build();
-        Item record = makeRecord(SharingScope.ALL_QUALIFIED_RESEARCHERS).withString("studyId", "test-study")
+        Item record = makeRecord(SharingScope.ALL_QUALIFIED_RESEARCHERS, TEST_STUDY)
                 .withString("schemaId", "test-schema").withInt("schemaRevision", 3);
 
         // execute and validate
-        RecordFilterHelper helper = makeRecordFilterHelper(SharingScope.ALL_QUALIFIED_RESEARCHERS);
+        RecordFilterHelper helper = makeRecordFilterHelper(SharingScope.ALL_QUALIFIED_RESEARCHERS, true);
         assertFalse(helper.shouldExcludeRecord(metrics, request, record));
 
         Multiset<String> counterMap = metrics.getCounterMap();
@@ -204,17 +208,17 @@ public class RecordFilterHelperTest {
     public void tableFilterExcludes() {
         // set up inputs
         Metrics metrics = new Metrics();
-        UploadSchemaKey acceptedSchemaKey = new UploadSchemaKey.Builder().withStudyId("test-study")
+        UploadSchemaKey acceptedSchemaKey = new UploadSchemaKey.Builder().withStudyId(TEST_STUDY)
                 .withSchemaId("test-schema").withRevision(3).build();
         BridgeExporterRequest request = makeRequestBuilder().withTableWhitelist(ImmutableSet.of(acceptedSchemaKey))
                 .build();
 
         // same schema, different revision
-        Item record = makeRecord(SharingScope.ALL_QUALIFIED_RESEARCHERS).withString("studyId", "test-study")
+        Item record = makeRecord(SharingScope.ALL_QUALIFIED_RESEARCHERS, TEST_STUDY)
                 .withString("schemaId", "test-schema").withInt("schemaRevision", 5);
 
         // execute and validate
-        RecordFilterHelper helper = makeRecordFilterHelper(SharingScope.ALL_QUALIFIED_RESEARCHERS);
+        RecordFilterHelper helper = makeRecordFilterHelper(SharingScope.ALL_QUALIFIED_RESEARCHERS, true);
         assertTrue(helper.shouldExcludeRecord(metrics, request, record));
 
         Multiset<String> counterMap = metrics.getCounterMap();
@@ -222,18 +226,63 @@ public class RecordFilterHelperTest {
         assertEquals(counterMap.count("excluded[test-study-test-schema-v5]"), 1);
     }
 
-    private static Item makeRecord(SharingScope recordSharingScope) {
+    // Strictly speaking, this code path has already been covered by all the other tests. However, we're testing it
+    // here separately to test metrics.
+    @Test
+    public void configuredStudy() {
+        // set up inputs
+        Metrics metrics = new Metrics();
+        BridgeExporterRequest request = makeRequestBuilder().build();
+        Item record = makeRecord(SharingScope.ALL_QUALIFIED_RESEARCHERS, TEST_STUDY);
+
+        // execute and validate
+        RecordFilterHelper helper = makeRecordFilterHelper(SharingScope.ALL_QUALIFIED_RESEARCHERS, true);
+        assertFalse(helper.shouldExcludeRecord(metrics, request, record));
+
+        Multiset<String> counterMap = metrics.getCounterMap();
+        assertEquals(counterMap.count("configured[test-study]"), 1);
+        assertEquals(counterMap.count("unconfigured[test-study]"), 0);
+    }
+
+    @Test
+    public void unconfiguredStudy() {
+        // set up inputs
+        Metrics metrics = new Metrics();
+        BridgeExporterRequest request = makeRequestBuilder().build();
+        Item record = makeRecord(SharingScope.ALL_QUALIFIED_RESEARCHERS, TEST_STUDY);
+
+        // execute and validate
+        RecordFilterHelper helper = makeRecordFilterHelper(SharingScope.ALL_QUALIFIED_RESEARCHERS, false);
+        assertTrue(helper.shouldExcludeRecord(metrics, request, record));
+
+        Multiset<String> counterMap = metrics.getCounterMap();
+        assertEquals(counterMap.count("configured[test-study]"), 0);
+        assertEquals(counterMap.count("unconfigured[test-study]"), 1);
+    }
+
+    private static Item makeRecord(SharingScope recordSharingScope, String studyId) {
         Item record = new Item().with("healthCode", DUMMY_HEALTH_CODE);
+
         if (recordSharingScope != null) {
             record.withString("userSharingScope", recordSharingScope.name());
         }
+
+        if (studyId != null) {
+            record.withString("studyId", studyId);
+        }
+
         return record;
     }
 
-    private static RecordFilterHelper makeRecordFilterHelper(SharingScope userSharingScope) {
+    private static RecordFilterHelper makeRecordFilterHelper(SharingScope userSharingScope,
+            boolean isStudyConfigured) {
         // mock DynamoHelper
         DynamoHelper mockDynamoHelper = mock(DynamoHelper.class);
         when(mockDynamoHelper.getSharingScopeForUser(DUMMY_HEALTH_CODE)).thenReturn(userSharingScope);
+
+        if (isStudyConfigured) {
+            when(mockDynamoHelper.getStudyInfo(TEST_STUDY)).thenReturn(TEST_STUDY_INFO);
+        }
 
         // set up record filter helper
         RecordFilterHelper helper = new RecordFilterHelper();

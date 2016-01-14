@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import org.sagebionetworks.bridge.exporter.dynamo.DynamoHelper;
+import org.sagebionetworks.bridge.exporter.dynamo.StudyInfo;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterSharingMode;
@@ -45,6 +46,12 @@ public class RecordFilterHelper {
      * @return true if the record should be excluded
      */
     public boolean shouldExcludeRecord(Metrics metrics, BridgeExporterRequest request, Item record) {
+        // If record doesn't have a study ID, something is seriously wrong.
+        String studyId = record.getString("studyId");
+        if (StringUtils.isBlank(studyId)) {
+            throw new IllegalArgumentException("record has no study ID");
+        }
+
         // request always has a sharing mode
         boolean excludeBySharingScope = shouldExcludeRecordBySharingScope(metrics, request.getSharingMode(), record);
 
@@ -52,7 +59,7 @@ public class RecordFilterHelper {
         boolean excludeByStudy = false;
         Set<String> studyWhitelist = request.getStudyWhitelist();
         if (studyWhitelist != null) {
-            excludeByStudy = shouldExcludeRecordByStudy(metrics, studyWhitelist, record.getString("studyId"));
+            excludeByStudy = shouldExcludeRecordByStudy(metrics, studyWhitelist, studyId);
         }
 
         // filter by table - This is used for table-specific redrives.
@@ -63,9 +70,12 @@ public class RecordFilterHelper {
                     BridgeExporterUtil.getSchemaKeyForRecord(record));
         }
 
+        // filter if the study is not configured for Bridge-EX (absence of configuration)
+        boolean excludeUnconfiguredStudy = shouldExcludeUnconfiguredStudies(metrics, studyId);
+
         // If any of the filters are hit, we filter the record. (We don't use short-circuiting because we want to
         // collect the metrics.)
-        return excludeBySharingScope || excludeByStudy || excludeByTable;
+        return excludeBySharingScope || excludeByStudy || excludeByTable || excludeUnconfiguredStudy;
     }
 
     // Helper method that handles the sharing filter.
@@ -116,10 +126,6 @@ public class RecordFilterHelper {
 
     // Helper method that handles the study filter.
     private boolean shouldExcludeRecordByStudy(Metrics metrics, Set<String> studyFilterSet, String studyId) {
-        if (StringUtils.isBlank(studyId)) {
-            throw new IllegalArgumentException("record has no study ID");
-        }
-
         // studyFilterSet is the set of studies that we accept
         if (studyFilterSet.contains(studyId)) {
             metrics.incrementCounter("accepted[" + studyId + "]");
@@ -139,6 +145,19 @@ public class RecordFilterHelper {
             return false;
         } else {
             metrics.incrementCounter("excluded[" + schemaKey + "]");
+            return true;
+        }
+    }
+
+    // Helper method that handles filtering out unconfigured studies
+    private boolean shouldExcludeUnconfiguredStudies(Metrics metrics, String studyId) {
+        // Configured studies will return non-null studyInfo. Unconfigured studies will return null ones.
+        StudyInfo studyInfo = dynamoHelper.getStudyInfo(studyId);
+        if (studyInfo != null) {
+            metrics.incrementCounter("configured[" + studyId + "]");
+            return false;
+        } else {
+            metrics.incrementCounter("unconfigured[" + studyId + "]");
             return true;
         }
     }

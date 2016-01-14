@@ -7,10 +7,27 @@ import org.testng.annotations.Test;
 
 public class StudyInfoTest {
     @Test
-    public void nullFields() {
-        StudyInfo studyInfo = new StudyInfo.Builder().build();
-        assertNull(studyInfo.getDataAccessTeamId());
-        assertNull(studyInfo.getSynapseProjectId());
+    public void nullDataAccessTeam() {
+        StudyInfo studyInfo = new StudyInfo.Builder().withSynapseProjectId("test-synapse-project").build();
+        assertNull(studyInfo);
+    }
+
+    @Test
+    public void nullProject() {
+        StudyInfo studyInfo = new StudyInfo.Builder().withDataAccessTeamId(23L).build();
+        assertNull(studyInfo);
+    }
+
+    @Test
+    public void emptyProject() {
+        StudyInfo studyInfo = new StudyInfo.Builder().withDataAccessTeamId(23L).withSynapseProjectId("").build();
+        assertNull(studyInfo);
+    }
+
+    @Test
+    public void blankProject() {
+        StudyInfo studyInfo = new StudyInfo.Builder().withDataAccessTeamId(23L).withSynapseProjectId("   ").build();
+        assertNull(studyInfo);
     }
 
     @Test

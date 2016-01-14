@@ -1,5 +1,7 @@
 package org.sagebionetworks.bridge.exporter.dynamo;
 
+import org.apache.commons.lang.StringUtils;
+
 /**
  * This class encapsulates study config for Bridge-EX. Note that once the Synapse tables are created and the project is
  * populated, THIS SHOULD NOT BE CHANGED. Otherwise, bad things happen.
@@ -42,11 +44,16 @@ public class StudyInfo {
         }
 
         /**
-         * Builds the study info object. Fields may be null (if Synapse config hasn't been created yet), so no
-         * validation needed.
+         * Builds the study info object. The study may not have been configured for Bridge-EX yet (that is, no
+         * dataAccessTeamId and no synapseProjectId). If that's the case, return null instead of returning an
+         * incomplete StudyInfo.
          */
         public StudyInfo build() {
-            return new StudyInfo(dataAccessTeamId, synapseProjectId);
+            if (dataAccessTeamId == null || StringUtils.isBlank(synapseProjectId)) {
+                return null;
+            } else {
+                return new StudyInfo(dataAccessTeamId, synapseProjectId);
+            }
         }
     }
 }
