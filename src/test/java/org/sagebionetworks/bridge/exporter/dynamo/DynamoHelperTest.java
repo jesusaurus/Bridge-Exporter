@@ -3,6 +3,7 @@ package org.sagebionetworks.bridge.exporter.dynamo;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
 
 import com.amazonaws.AmazonClientException;
 import com.amazonaws.services.dynamodbv2.document.Item;
@@ -160,5 +161,40 @@ public class DynamoHelperTest {
         StudyInfo studyInfo = helper.getStudyInfo("test-study");
         assertEquals(studyInfo.getDataAccessTeamId().longValue(), 1337);
         assertEquals(studyInfo.getSynapseProjectId(), "test-synapse-table");
+    }
+
+    @Test
+    public void getStudyInfoNullDataAccessTeam() {
+        // mock DDB Study table - only include relevant attributes
+        Item studyItem = new Item().withString("synapseProjectId", "test-synapse-table");
+
+        Table mockStudyTable = mock(Table.class);
+        when(mockStudyTable.getItem("identifier", "test-study")).thenReturn(studyItem);
+
+        // set up Dynamo Helper
+        DynamoHelper helper = new DynamoHelper();
+        helper.setDdbStudyTable(mockStudyTable);
+
+        // execute and validate - studyInfo is null because the StudyInfo builder returns null if either attributes are
+        // null
+        StudyInfo studyInfo = helper.getStudyInfo("test-study");
+        assertNull(studyInfo);
+    }
+
+    @Test
+    public void getStudyInfoNullProjectId() {
+        // mock DDB Study table - only include relevant attributes
+        Item studyItem = new Item().withLong("synapseDataAccessTeamId", 1337);
+
+        Table mockStudyTable = mock(Table.class);
+        when(mockStudyTable.getItem("identifier", "test-study")).thenReturn(studyItem);
+
+        // set up Dynamo Helper
+        DynamoHelper helper = new DynamoHelper();
+        helper.setDdbStudyTable(mockStudyTable);
+
+        // execute and validate - Similarly, studyInfo is also null here
+        StudyInfo studyInfo = helper.getStudyInfo("test-study");
+        assertNull(studyInfo);
     }
 }

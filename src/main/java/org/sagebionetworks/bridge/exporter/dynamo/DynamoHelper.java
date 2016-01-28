@@ -28,6 +28,9 @@ import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 public class DynamoHelper {
     private static final Logger LOG = LoggerFactory.getLogger(DynamoHelper.class);
 
+    private static final String STUDY_INFO_KEY_DATA_ACCESS_TEAM = "synapseDataAccessTeamId";
+    private static final String STUDY_INFO_KEY_PROJECT_ID = "synapseProjectId";
+
     private Table ddbParticipantOptionsTable;
     private Table ddbSchemaTable;
     private Table ddbStudyTable;
@@ -127,7 +130,17 @@ public class DynamoHelper {
     @Cacheable(lifetime = 5, unit = TimeUnit.MINUTES)
     public StudyInfo getStudyInfo(String studyId) {
         Item studyItem = ddbStudyTable.getItem("identifier", studyId);
-        return new StudyInfo.Builder().withDataAccessTeamId(studyItem.getLong("synapseDataAccessTeamId"))
-                .withSynapseProjectId(studyItem.getString("synapseProjectId")).build();
+
+        // DDB's Item.getLong() will throw if the value is null. For robustness, check get() the value and check that
+        // it's not null. (This should cover both cases where the attribute doesn't exist and cases where the attribute
+        // exists and is null.
+        StudyInfo.Builder studyInfoBuilder = new StudyInfo.Builder();
+        if (studyItem.get(STUDY_INFO_KEY_DATA_ACCESS_TEAM) != null) {
+            studyInfoBuilder.withDataAccessTeamId(studyItem.getLong(STUDY_INFO_KEY_DATA_ACCESS_TEAM));
+        }
+        if (studyItem.get(STUDY_INFO_KEY_PROJECT_ID) != null) {
+            studyInfoBuilder.withSynapseProjectId(studyItem.getString(STUDY_INFO_KEY_PROJECT_ID));
+        }
+        return studyInfoBuilder.build();
     }
 }

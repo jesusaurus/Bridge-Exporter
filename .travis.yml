@@ -1,0 +1,20 @@
+language: java
+jdk:
+- oraclejdk8
+sudo: false
+before_deploy: mvn clean verify
+deploy:
+  skip_cleanup: true
+  provider: elasticbeanstalk
+  access_key_id:
+    secure: AK1r/YXBLIIjQsNxRTC8O4NxConlVkyodRzpG13EIN1K8zgEPWySBvDVvI1f0zIz81bWjpaAkJ88UBC+8JZwKkGFSDM5MxElBRRSK0UHYzEu80K+ZYWxoa4Y9ULPKubtEngLThRKPL+O3WD7kKfJ48JsCtn+BwyOzAaP2a8C4p0=
+  secret_access_key:
+    secure: IVPBSeFrGy/Oe4Jgxmp5BxTCEe1IuCQTPcZcmLr5E2FzVRqq7W7sKEOT8KKvt6OlpF+MUBY6jqJVT9AYweZqw7XrqzYzzLNIwWKwEMUptLlk46gOp0H6TWHPlSBf0jSB3OpaUkIbhaXTykyflyP4pYXzWAse/FL0T4kOCMaa4Fc=
+  region: us-east-1
+  app: Bridge-EX
+  env:
+    develop: Bridge-EX-Dev
+    uat: Bridge-EX-Uat
+    prod: Bridge-EX-Prod
+  bucket_name: elasticbeanstalk-us-east-1-649232250620
+  zip-file: target/Bridge-Exporter-2.0.war
