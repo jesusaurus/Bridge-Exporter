@@ -175,7 +175,8 @@ public class DynamoHelperTest {
         DynamoHelper helper = new DynamoHelper();
         helper.setDdbStudyTable(mockStudyTable);
 
-        // execute and validate
+        // execute and validate - studyInfo is null because the StudyInfo builder returns null if either attributes are
+        // null
         StudyInfo studyInfo = helper.getStudyInfo("test-study");
         assertNull(studyInfo);
     }
@@ -192,7 +193,7 @@ public class DynamoHelperTest {
         DynamoHelper helper = new DynamoHelper();
         helper.setDdbStudyTable(mockStudyTable);
 
-        // execute and validate
+        // execute and validate - Similarly, studyInfo is also null here
         StudyInfo studyInfo = helper.getStudyInfo("test-study");
         assertNull(studyInfo);
     }
