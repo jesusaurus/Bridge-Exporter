@@ -1,18 +1,18 @@
 package org.sagebionetworks.bridge.exporter.handler;
 
+import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Matchers.notNull;
 import static org.mockito.Matchers.same;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyZeroInteractions;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
-import static org.testng.Assert.fail;
 
 import java.io.File;
 import java.io.IOException;
@@ -24,20 +24,16 @@ import com.amazonaws.services.dynamodbv2.document.DynamoDB;
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Multiset;
+import com.google.common.collect.SetMultimap;
 import org.joda.time.LocalDate;
-import org.mockito.ArgumentCaptor;
-import org.sagebionetworks.repo.model.AccessControlList;
-import org.sagebionetworks.repo.model.ResourceAccess;
 import org.sagebionetworks.repo.model.table.ColumnModel;
-import org.sagebionetworks.repo.model.table.ColumnType;
-import org.sagebionetworks.repo.model.table.TableEntity;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.config.Config;
+import org.sagebionetworks.bridge.exporter.helper.ExportHelper;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
 import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
@@ -48,120 +44,103 @@ import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
 import org.sagebionetworks.bridge.exporter.worker.TsvInfo;
 import org.sagebionetworks.bridge.file.InMemoryFileHelper;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
+import org.sagebionetworks.bridge.schema.UploadFieldTypes;
+import org.sagebionetworks.bridge.schema.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
-@SuppressWarnings({ "rawtypes", "unchecked" })
 public class SynapseExportHandlerTest {
-    // Records here are only used for logging, so we can share a singleton across tests.
-    private static final Item DUMMY_RECORD = new Item().withString("id", "dummy-record-id");
+    // Constants needed to create metadata (phone info, app version)
+    private static final String DUMMY_APP_VERSION = "Bridge-EX 2.0";
+    private static final String DUMMY_PHONE_INFO = "My Debugger";
+    private static final String DUMMY_METADATA_JSON_TEXT = "{\n" +
+            "   \"appVersion\":\"" + DUMMY_APP_VERSION +"\",\n" +
+            "   \"phoneInfo\":\"" + DUMMY_PHONE_INFO + "\"\n" +
+            "}";
 
-    // These are only needed to ensure valid tasks and subtasks.
-    private static final LocalDate DUMMY_REQUEST_DATE = LocalDate.parse("2015-10-31");
-    private static final BridgeExporterRequest DUMMY_REQUEST = new BridgeExporterRequest.Builder()
+    // Constants needed to create a record
+    private static final long DUMMY_CREATED_ON = 7777777;
+    private static final Set<String> DUMMY_DATA_GROUPS = ImmutableSet.of("foo", "bar", "baz");
+    private static final String DUMMY_DATA_GROUPS_FLATTENED = "bar,baz,foo";
+    private static final String DUMMY_HEALTH_CODE = "dummy-health-code";
+    private static final String DUMMY_RECORD_ID = "dummy-record-id";
+    private static final Item DUMMY_RECORD = new Item().withLong("createdOn", DUMMY_CREATED_ON)
+            .withString("healthCode", DUMMY_HEALTH_CODE).withString("id", DUMMY_RECORD_ID)
+            .withString("metadata", DUMMY_METADATA_JSON_TEXT).withStringSet("userDataGroups", DUMMY_DATA_GROUPS)
+            .withString("userExternalId", "unsanitized\t\texternal\t\tid");
+
+    // Constants to make a request.
+    public static final LocalDate DUMMY_REQUEST_DATE = LocalDate.parse("2015-10-31");
+    public static final BridgeExporterRequest DUMMY_REQUEST = new BridgeExporterRequest.Builder()
             .withDate(DUMMY_REQUEST_DATE).build();
-    private static final String TEST_STUDY_ID = "testStudy";
-    private static final UploadSchemaKey DUMMY_SCHEMA_KEY = new UploadSchemaKey.Builder().withStudyId(TEST_STUDY_ID)
-            .withSchemaId("test-schema").withRevision(17).build();
 
-    private static final long TEST_SYNAPSE_DATA_ACCESS_TEAM_ID = 1337;
-    private static final int TEST_SYNAPSE_PRINCIPAL_ID = 123456;
-    private static final String TEST_SYNAPSE_PROJECT_ID = "test-synapse-project-id";
-    private static final String TEST_SYNAPSE_TABLE_ID = "test-synapse-table-id";
+    // Constants to make a schema. In most tests, schema doesn't matter. However, in one particular test, namely the
+    // test for our old hack to convert freeform text to attachments, we key off specific studies and schemas. This
+    // isn't ideal for a test, but we need to test it.
+    public static final String TEST_STUDY_ID = "breastcancer";
+    public static final UploadSchemaKey DUMMY_SCHEMA_KEY = new UploadSchemaKey.Builder().withStudyId(TEST_STUDY_ID)
+            .withSchemaId("BreastCancer-DailyJournal").withRevision(1).build();
 
-    private static class TestSynapseHandler extends SynapseExportHandler {
-        private TsvInfo tsvInfo;
-
-        @Override
-        protected String getDdbTableName() {
-            return "TestDdbTable";
-        }
-
-        @Override
-        protected String getDdbTableKeyName() {
-            return "testId";
-        }
-
-        @Override
-        protected String getDdbTableKeyValue() {
-            return "foobarbaz";
-        }
-
-        // The concrete subclass tests will test with multiple columns, so just do something simple for this test.
-        @Override
-        protected List<ColumnModel> getSynapseTableColumnList() {
-            List<ColumnModel> columnList = new ArrayList<>();
-
-            ColumnModel fooColumn = new ColumnModel();
-            fooColumn.setName("foo");
-            fooColumn.setColumnType(ColumnType.INTEGER);
-            columnList.add(fooColumn);
-            return columnList;
-        }
-
-        // Similarly, only return 1 column here.
-        @Override
-        protected List<String> getTsvHeaderList() {
-            return ImmutableList.of("foo");
-        }
-
-        // For test purposes only, we store it directly in the test handler.
-        @Override
-        protected TsvInfo getTsvInfoForTask(ExportTask task) {
-            return tsvInfo;
-        }
-
-        @Override
-        protected void setTsvInfoForTask(ExportTask task, TsvInfo tsvInfo) {
-            this.tsvInfo = tsvInfo;
-        }
-
-        // For test purposes, our test data will just be
-        // {
-        //   "foo":"value"
-        // }
-        //
-        // We write that value to our string list (of size 1, because we have only 1 column).
-        //
-        // However, if we see the "error" key, throw an IOException with that error message. This is to test
-        // error handling.
-        @Override
-        protected List<String> getTsvRowValueList(ExportSubtask subtask) throws IOException {
-            JsonNode dataNode = subtask.getRecordData();
-            if (dataNode.has("error")) {
-                throw new IOException(dataNode.get("error").textValue());
-            }
-
-            String value = dataNode.get("foo").textValue();
-            return ImmutableList.of(value);
-        }
-    }
+    // Misc test constants. Some are shared with other tests.
+    private static final String DUMMY_ATTACHMENT_ID = "dummy-attachment-id";
+    public static final String DUMMY_DDB_PREFIX = "unittest-exporter-";
+    private static final String DUMMY_EXTERNAL_ID = "unsanitized external id";
+    private static final String DUMMY_FILEHANDLE_ID = "dummy-filehandle-id";
+    private static final String DUMMY_FREEFORM_TEXT_CONTENT = "dummy freeform text content";
+    private static final String FREEFORM_FIELD_NAME = "DailyJournalStep103_data.content";
+    public static final long TEST_SYNAPSE_DATA_ACCESS_TEAM_ID = 1337;
+    public static final int TEST_SYNAPSE_PRINCIPAL_ID = 123456;
+    public static final String TEST_SYNAPSE_PROJECT_ID = "test-synapse-project-id";
+    public static final String TEST_SYNAPSE_TABLE_ID = "test-synapse-table-id";
 
     private InMemoryFileHelper mockFileHelper;
-    private TestSynapseHandler handler;
-    private ExportWorkerManager manager;
+    private SynapseHelper mockSynapseHelper;
     private byte[] tsvBytes;
     private ExportTask task;
 
     @BeforeMethod
-    public void setup() throws Exception {
+    public void before() {
         // clear tsvBytes, because TestNG doesn't always do that
         tsvBytes = null;
+    }
+
+    private void setup(SynapseExportHandler handler) throws Exception {
+        // This needs to be done first, because lots of stuff reference this, even while we're setting up mocks.
+        handler.setStudyId(TEST_STUDY_ID);
 
         // mock config
         Config mockConfig = mock(Config.class);
-        when(mockConfig.get(ExportWorkerManager.CONFIG_KEY_EXPORTER_DDB_PREFIX)).thenReturn("unittest-exporter-");
+        when(mockConfig.get(ExportWorkerManager.CONFIG_KEY_EXPORTER_DDB_PREFIX)).thenReturn(DUMMY_DDB_PREFIX);
         when(mockConfig.getInt(ExportWorkerManager.CONFIG_KEY_SYNAPSE_PRINCIPAL_ID))
                 .thenReturn(TEST_SYNAPSE_PRINCIPAL_ID);
         when(mockConfig.getInt(ExportWorkerManager.CONFIG_KEY_WORKER_MANAGER_PROGRESS_REPORT_PERIOD)).thenReturn(250);
+
+        // mock table
+        Table mockSynapseTableMap = mock(Table.class);
+        when(mockSynapseTableMap.getItem(handler.getDdbTableKeyName(), handler.getDdbTableKeyValue())).thenReturn(
+                new Item().withString(SynapseExportHandler.DDB_KEY_TABLE_ID, TEST_SYNAPSE_TABLE_ID));
+
+        // mock DDB client
+        DynamoDB mockDdbClient = mock(DynamoDB.class);
+        when(mockDdbClient.getTable(DUMMY_DDB_PREFIX + handler.getDdbTableName())).thenReturn(mockSynapseTableMap);
 
         // mock file helper
         mockFileHelper = new InMemoryFileHelper();
         File tmpDir = mockFileHelper.createTempDir();
 
+        // mock Synapse helper
+        List<ColumnModel> columnModelList = new ArrayList<>();
+        columnModelList.addAll(SynapseExportHandler.COMMON_COLUMN_LIST);
+        columnModelList.addAll(handler.getSynapseTableColumnList());
+        mockSynapseHelper = mock(SynapseHelper.class);
+        when(mockSynapseHelper.getColumnModelsForTableWithRetry(TEST_SYNAPSE_TABLE_ID)).thenReturn(columnModelList);
+
         // setup manager - This is only used to get helper objects.
-        manager = spy(new ExportWorkerManager());
+        ExportWorkerManager manager = spy(new ExportWorkerManager());
         manager.setConfig(mockConfig);
+        manager.setDdbClient(mockDdbClient);
         manager.setFileHelper(mockFileHelper);
+        manager.setSynapseHelper(mockSynapseHelper);
+        handler.setManager(manager);
 
         // set up task
         task = new ExportTask.Builder().withExporterDate(DUMMY_REQUEST_DATE).withMetrics(new Metrics())
@@ -173,11 +152,6 @@ public class SynapseExportHandlerTest {
         doReturn(TEST_SYNAPSE_PROJECT_ID).when(manager).getSynapseProjectIdForStudyAndTask(eq(TEST_STUDY_ID),
                 same(task));
         doReturn(1337L).when(manager).getDataAccessTeamIdForStudy(TEST_STUDY_ID);
-
-        // set up handler
-        handler = new TestSynapseHandler();
-        handler.setManager(manager);
-        handler.setStudyId(TEST_STUDY_ID);
     }
 
     @Test
@@ -187,26 +161,14 @@ public class SynapseExportHandlerTest {
         //   write error
         //   write 2nd line after error
 
-        // set up mock DDB client with table
-        manager.setDdbClient(makeMockDdbWithExistingTableId(TEST_SYNAPSE_TABLE_ID));
-
-        // mock Synapse helper - upload the TSV and capture the upload
-        SynapseHelper mockSynapseHelper = mock(SynapseHelper.class);
-        when(mockSynapseHelper.uploadTsvFileToTable(eq(TEST_SYNAPSE_PROJECT_ID), eq(TEST_SYNAPSE_TABLE_ID),
-                notNull(File.class))).thenAnswer(invocation -> {
-            // on cleanup, the file is destroyed, so we need to intercept that file now
-            File tsvFile = invocation.getArgumentAt(2, File.class);
-            tsvBytes = mockFileHelper.getBytes(tsvFile);
-
-            // we processed 2 rows
-            return 2;
-        });
-        manager.setSynapseHelper(mockSynapseHelper);
+        SynapseExportHandler handler = new TestSynapseHandler();
+        setup(handler);
+        mockSynapseHelperUploadTsv(2);
 
         // make subtasks
-        ExportSubtask subtask1 = makeSubtask(task, "normal first record", false);
-        ExportSubtask subtask2 = makeSubtask(task, "error second record", true);
-        ExportSubtask subtask3 = makeSubtask(task, "normal third record", false);
+        ExportSubtask subtask1 = makeSubtask(task, "foo", "normal first record");
+        ExportSubtask subtask2 = makeSubtask(task, "error", "error second record");
+        ExportSubtask subtask3 = makeSubtask(task, "foo", "normal third record");
 
         // execute
         handler.handle(subtask1);
@@ -217,14 +179,14 @@ public class SynapseExportHandlerTest {
         // validate tsv file
         List<String> tsvLineList = TestUtil.bytesToLines(tsvBytes);
         assertEquals(tsvLineList.size(), 3);
-        assertEquals(tsvLineList.get(0), "foo");
-        assertEquals(tsvLineList.get(1), "normal first record");
-        assertEquals(tsvLineList.get(2), "normal third record");
+        validateTsvHeaders(tsvLineList.get(0), "foo");
+        validateTsvRow(tsvLineList.get(1), "normal first record");
+        validateTsvRow(tsvLineList.get(2), "normal third record");
 
         // validate metrics
         Multiset<String> counterMap = task.getMetrics().getCounterMap();
-        assertEquals(counterMap.count("foobarbaz.lineCount"), 2);
-        assertEquals(counterMap.count("foobarbaz.errorCount"), 1);
+        assertEquals(counterMap.count(handler.getDdbTableKeyValue() + ".lineCount"), 2);
+        assertEquals(counterMap.count(handler.getDdbTableKeyValue() + ".errorCount"), 1);
 
         // validate tsvInfo
         TsvInfo tsvInfo = handler.getTsvInfoForTask(task);
@@ -235,20 +197,19 @@ public class SynapseExportHandlerTest {
 
     @Test
     public void noRows() throws Exception {
-        // create a mock DDB client and a mock Synapse client, and then verify that we aren't calling through
-        manager.setDdbClient(mock(DynamoDB.class));
-        manager.setSynapseHelper(mock(SynapseHelper.class));
+        SynapseExportHandler handler = new TestSynapseHandler();
+        setup(handler);
 
         // execute - We never call the handler with any rows.
         handler.uploadToSynapseForTask(task);
 
-        // verify we never called through to DDB or Synapse
-        verifyZeroInteractions(manager.getDdbClient(), manager.getSynapseHelper());
+        // verify we don't upload the TSV to Synapse
+        verify(mockSynapseHelper, never()).uploadTsvFileToTable(any(), any(), any());
 
         // validate metrics
         Multiset<String> counterMap = task.getMetrics().getCounterMap();
-        assertEquals(counterMap.count("foobarbaz.lineCount"), 0);
-        assertEquals(counterMap.count("foobarbaz.errorCount"), 0);
+        assertEquals(counterMap.count(handler.getDdbTableKeyValue() + ".lineCount"), 0);
+        assertEquals(counterMap.count(handler.getDdbTableKeyValue() + ".errorCount"), 0);
 
         // validate tsvInfo
         assertNull(handler.getTsvInfoForTask(task));
@@ -258,26 +219,25 @@ public class SynapseExportHandlerTest {
 
     @Test
     public void errorsOnly() throws Exception {
-        // create a mock DDB client and a mock Synapse client, and then verify that we aren't calling through
-        manager.setDdbClient(mock(DynamoDB.class));
-        manager.setSynapseHelper(mock(SynapseHelper.class));
+        SynapseExportHandler handler = new TestSynapseHandler();
+        setup(handler);
 
         // make subtasks
-        ExportSubtask subtask1 = makeSubtask(task, "first error", true);
-        ExportSubtask subtask2 = makeSubtask(task, "second error", true);
+        ExportSubtask subtask1 = makeSubtask(task, "error", "first error");
+        ExportSubtask subtask2 = makeSubtask(task, "error", "second error");
 
         // execute
         handler.handle(subtask1);
         handler.handle(subtask2);
         handler.uploadToSynapseForTask(task);
 
-        // verify we never called through to DDB or Synapse
-        verifyZeroInteractions(manager.getDdbClient(), manager.getSynapseHelper());
+        // verify we don't upload the TSV to Synapse
+        verify(mockSynapseHelper, never()).uploadTsvFileToTable(any(), any(), any());
 
         // validate metrics
         Multiset<String> counterMap = task.getMetrics().getCounterMap();
-        assertEquals(counterMap.count("foobarbaz.lineCount"), 0);
-        assertEquals(counterMap.count("foobarbaz.errorCount"), 2);
+        assertEquals(counterMap.count(handler.getDdbTableKeyValue() + ".lineCount"), 0);
+        assertEquals(counterMap.count(handler.getDdbTableKeyValue() + ".errorCount"), 2);
 
         // validate tsvInfo
         TsvInfo tsvInfo = handler.getTsvInfoForTask(task);
@@ -287,101 +247,109 @@ public class SynapseExportHandlerTest {
     }
 
     @Test
-    public void initSynapseTable() throws Exception {
-        // mock DDB client - We do this manually so we can get at the DDB put args
-        Table mockSynapseTableMap = mock(Table.class);
-        when(mockSynapseTableMap.getItem("testId", "foobarbaz")).thenReturn(null);
+    public void appVersionExportHandlerTest() throws Exception {
+        SynapseExportHandler handler = new AppVersionExportHandler();
+        setup(handler);
+        mockSynapseHelperUploadTsv(1);
 
-        DynamoDB mockDdbClient = mock(DynamoDB.class);
-        when(mockDdbClient.getTable("unittest-exporter-TestDdbTable")).thenReturn(mockSynapseTableMap);
-        manager.setDdbClient(mockDdbClient);
+        // make subtasks
+        ExportSubtask subtask = makeSubtask(task, "{}");
 
-        // mock Synapse helper
-        SynapseHelper mockSynapseHelper = mock(SynapseHelper.class);
-        manager.setSynapseHelper(mockSynapseHelper);
+        // execute
+        handler.handle(subtask);
+        handler.uploadToSynapseForTask(task);
 
-        // mock upload the TSV and capture the upload
+        // validate tsv file
+        List<String> tsvLineList = TestUtil.bytesToLines(tsvBytes);
+        assertEquals(tsvLineList.size(), 2);
+        validateTsvHeaders(tsvLineList.get(0), "originalTable");
+        validateTsvRow(tsvLineList.get(1), DUMMY_SCHEMA_KEY.toString());
+
+        // validate metrics
+        Metrics metrics = task.getMetrics();
+
+        Multiset<String> counterMap = metrics.getCounterMap();
+        assertEquals(counterMap.count(handler.getDdbTableKeyValue() + ".lineCount"), 1);
+        assertEquals(counterMap.count(handler.getDdbTableKeyValue() + ".errorCount"), 0);
+
+        SetMultimap<String, String> keyValuesMap = metrics.getKeyValuesMap();
+        Set<String> uniqueAppVersionSet = keyValuesMap.get("uniqueAppVersions[" + TEST_STUDY_ID + "]");
+        assertTrue(uniqueAppVersionSet.contains(DUMMY_APP_VERSION));
+
+        // validate tsvInfo
+        TsvInfo tsvInfo = handler.getTsvInfoForTask(task);
+        assertEquals(tsvInfo.getLineCount(), 1);
+
+        postValidation();
+    }
+
+    @Test
+    public void healthDataExportHandlerTest() throws Exception {
+        // Our test columns: foo (string), bar (int), and one of the freeform text -> attachment columns
+        // Since we want to test that our hack works, we'll need to use the breastcancer-BreastCancer-DailyJournal-v1
+        // schema, field DailyJournalStep103_data.content
+        UploadSchema testSchema = new UploadSchema.Builder().withKey(DUMMY_SCHEMA_KEY).addField("foo", "STRING")
+                .addField("bar", "INT").addField(FREEFORM_FIELD_NAME, "STRING").build();
+
+        // Set up handler and test. setSchema() needs to be called before setup, since a lot of the stuff in the
+        // handler depends on it, even while we're mocking stuff.
+        HealthDataExportHandler handler = new HealthDataExportHandler();
+        handler.setSchema(testSchema);
+        setup(handler);
+        mockSynapseHelperUploadTsv(1);
+
+        // mock export helper
+        ExportHelper mockExportHelper = mock(ExportHelper.class);
+        when(mockExportHelper.uploadFreeformTextAsAttachment(DUMMY_RECORD_ID, DUMMY_FREEFORM_TEXT_CONTENT))
+                .thenReturn(DUMMY_ATTACHMENT_ID);
+        handler.getManager().setExportHelper(mockExportHelper);
+
+        // mock serializeToSynapseType() - We actually call through to the real method, but we mock out the underlying
+        // uploadFromS3ToSynapseFileHandle() to avoid hitting real back-ends.
+        when(mockSynapseHelper.serializeToSynapseType(any(), any(), any(), any(), any(), any())).thenCallRealMethod();
+        when(mockSynapseHelper.uploadFromS3ToSynapseFileHandle(task.getTmpDir(), TEST_SYNAPSE_PROJECT_ID,
+                FREEFORM_FIELD_NAME, UploadFieldTypes.ATTACHMENT_BLOB, DUMMY_ATTACHMENT_ID)).thenReturn(
+                DUMMY_FILEHANDLE_ID);
+
+        // make subtasks
+        String recordJsonText = "{\n" +
+                "   \"foo\":\"This is a string.\",\n" +
+                "   \"bar\":42,\n" +
+                "   \"" + FREEFORM_FIELD_NAME + "\":\"" + DUMMY_FREEFORM_TEXT_CONTENT + "\"\n" +
+                "}";
+        ExportSubtask subtask = makeSubtask(task, recordJsonText);
+
+        // execute
+        handler.handle(subtask);
+        handler.uploadToSynapseForTask(task);
+
+        // validate tsv file
+        List<String> tsvLineList = TestUtil.bytesToLines(tsvBytes);
+        assertEquals(tsvLineList.size(), 2);
+        validateTsvHeaders(tsvLineList.get(0), "foo", "bar", FREEFORM_FIELD_NAME);
+        validateTsvRow(tsvLineList.get(1), "This is a string.", "42", DUMMY_FILEHANDLE_ID);
+
+        // validate metrics
+        Multiset<String> counterMap = task.getMetrics().getCounterMap();
+        assertEquals(counterMap.count(handler.getDdbTableKeyValue() + ".lineCount"), 1);
+        assertEquals(counterMap.count(handler.getDdbTableKeyValue() + ".errorCount"), 0);
+
+        // validate tsvInfo
+        TsvInfo tsvInfo = handler.getTsvInfoForTask(task);
+        assertEquals(tsvInfo.getLineCount(), 1);
+
+        postValidation();
+    }
+
+    private void mockSynapseHelperUploadTsv(int linesProcessed) throws Exception {
         when(mockSynapseHelper.uploadTsvFileToTable(eq(TEST_SYNAPSE_PROJECT_ID), eq(TEST_SYNAPSE_TABLE_ID),
                 notNull(File.class))).thenAnswer(invocation -> {
             // on cleanup, the file is destroyed, so we need to intercept that file now
             File tsvFile = invocation.getArgumentAt(2, File.class);
             tsvBytes = mockFileHelper.getBytes(tsvFile);
 
-            // we processed 1 rows
-            return 1;
+            return linesProcessed;
         });
-
-        // mock Synapse table creation - For created objects, all we care about is the ID.
-        // mock create columns
-        ColumnModel createdColumn = new ColumnModel();
-        createdColumn.setId("foo-col-id");
-
-        ArgumentCaptor<List> columnListCaptor = ArgumentCaptor.forClass(List.class);
-        when(mockSynapseHelper.createColumnModelsWithRetry(columnListCaptor.capture())).thenReturn(
-                ImmutableList.of(createdColumn));
-
-        // mock create table
-        TableEntity createdTable = new TableEntity();
-        createdTable.setId(TEST_SYNAPSE_TABLE_ID);
-
-        ArgumentCaptor<TableEntity> tableCaptor = ArgumentCaptor.forClass(TableEntity.class);
-        when(mockSynapseHelper.createTableWithRetry(tableCaptor.capture())).thenReturn(createdTable);
-
-        // execute
-        handler.handle(makeSubtask(task, "single record", false));
-        handler.uploadToSynapseForTask(task);
-
-        // validate tsv file
-        List<String> tsvLineList = TestUtil.bytesToLines(tsvBytes);
-        assertEquals(tsvLineList.size(), 2);
-        assertEquals(tsvLineList.get(0), "foo");
-        assertEquals(tsvLineList.get(1), "single record");
-
-        // Don't bother validating metrics or line counts or even file cleanup. This is all tested in the normal case.
-        // Just worry about the basics (the TSV exists and contains our row) and the Synapse table creation.
-
-        // validate Synapse create column args
-        assertEquals(columnListCaptor.getValue(), handler.getSynapseTableColumnList());
-
-        // validate Synapse create table args
-        TableEntity table = tableCaptor.getValue();
-        assertEquals(table.getName(), "foobarbaz");
-        assertEquals(table.getParentId(), TEST_SYNAPSE_PROJECT_ID);
-        assertEquals(table.getColumnIds(), ImmutableList.of("foo-col-id"));
-
-        // validate Synapse set ACLs args
-        ArgumentCaptor<AccessControlList> aclCaptor = ArgumentCaptor.forClass(AccessControlList.class);
-        verify(mockSynapseHelper).createAclWithRetry(aclCaptor.capture());
-
-        AccessControlList acl = aclCaptor.getValue();
-        assertEquals(acl.getId(), TEST_SYNAPSE_TABLE_ID);
-
-        Set<ResourceAccess> resourceAccessSet = acl.getResourceAccess();
-        assertEquals(resourceAccessSet.size(), 2);
-
-        boolean hasExporterAccess = false;
-        boolean hasTeamAccess = false;
-        for (ResourceAccess oneAccess : resourceAccessSet) {
-            if (oneAccess.getPrincipalId() == TEST_SYNAPSE_PRINCIPAL_ID) {
-                assertEquals(oneAccess.getAccessType(), SynapseExportHandler.ACCESS_TYPE_ALL);
-                hasExporterAccess = true;
-            } else if (oneAccess.getPrincipalId() == TEST_SYNAPSE_DATA_ACCESS_TEAM_ID) {
-                assertEquals(oneAccess.getAccessType(), SynapseExportHandler.ACCESS_TYPE_READ);
-                hasTeamAccess = true;
-            } else {
-                fail("Unexpected resource access with principal ID " + oneAccess.getPrincipalId());
-            }
-        }
-        assertTrue(hasExporterAccess);
-        assertTrue(hasTeamAccess);
-
-        // validate DDB put args
-        ArgumentCaptor<Item> ddbPutItemArgCaptor = ArgumentCaptor.forClass(Item.class);
-        verify(mockSynapseTableMap).putItem(ddbPutItemArgCaptor.capture());
-
-        Item ddbPutItemArg = ddbPutItemArgCaptor.getValue();
-        assertEquals(ddbPutItemArg.getString("testId"), "foobarbaz");
-        assertEquals(ddbPutItemArg.getString("tableId"), TEST_SYNAPSE_TABLE_ID);
     }
 
     // We do this in a helper method instead of in an @AfterMethod, because @AfterMethod doesn't tell use the test
@@ -392,20 +360,34 @@ public class SynapseExportHandlerTest {
         assertTrue(mockFileHelper.isEmpty());
     }
 
-    private static DynamoDB makeMockDdbWithExistingTableId(String tableId) {
-        // mock table
-        Table mockSynapseTableMap = mock(Table.class);
-        when(mockSynapseTableMap.getItem("testId", "foobarbaz")).thenReturn(new Item().withString("tableId", tableId));
-
-        // mock DDB client
-        DynamoDB mockDdbClient = mock(DynamoDB.class);
-        when(mockDdbClient.getTable("unittest-exporter-TestDdbTable")).thenReturn(mockSynapseTableMap);
-        return mockDdbClient;
+    public static ExportSubtask makeSubtask(ExportTask parentTask, String key, String value) throws IOException {
+        return makeSubtask(parentTask, "{\"" + key + "\":\"" + value + "\"}");
     }
 
-    private static ExportSubtask makeSubtask(ExportTask parentTask, String data, boolean isError) {
-        ObjectNode recordData = DefaultObjectMapper.INSTANCE.createObjectNode().put(isError ? "error" : "foo", data);
+    public static ExportSubtask makeSubtask(ExportTask parentTask, String recordJsonText) throws IOException {
+        JsonNode recordJsonNode = DefaultObjectMapper.INSTANCE.readTree(recordJsonText);
         return new ExportSubtask.Builder().withOriginalRecord(DUMMY_RECORD).withParentTask(parentTask)
-                .withRecordData(recordData).withSchemaKey(DUMMY_SCHEMA_KEY).build();
+                .withRecordData(recordJsonNode).withSchemaKey(DUMMY_SCHEMA_KEY).build();
+    }
+
+    public static void validateTsvHeaders(String line, String... extraColumnNameVarargs) {
+        StringBuilder expectedLineBuilder = new StringBuilder("recordId\thealthCode\texternalId\tdataGroups\t" +
+                "uploadDate\tcreatedOn\tappVersion\tphoneInfo");
+        for (String oneExtraColumnName : extraColumnNameVarargs) {
+            expectedLineBuilder.append('\t');
+            expectedLineBuilder.append(oneExtraColumnName);
+        }
+        assertEquals(line, expectedLineBuilder.toString());
+    }
+
+    public static void validateTsvRow(String line, String... extraValueVarargs) {
+        StringBuilder expectedLineBuilder = new StringBuilder(DUMMY_RECORD_ID + '\t' + DUMMY_HEALTH_CODE + '\t' +
+                DUMMY_EXTERNAL_ID + '\t' + DUMMY_DATA_GROUPS_FLATTENED + '\t' + DUMMY_REQUEST_DATE + '\t' +
+                DUMMY_CREATED_ON + '\t' + DUMMY_APP_VERSION + '\t' + DUMMY_PHONE_INFO);
+        for (String oneExtraValue : extraValueVarargs) {
+            expectedLineBuilder.append('\t');
+            expectedLineBuilder.append(oneExtraValue);
+        }
+        assertEquals(line, expectedLineBuilder.toString());
     }
 }
