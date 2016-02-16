@@ -10,6 +10,7 @@ import java.io.PrintWriter;
 import java.util.Queue;
 import java.util.concurrent.Future;
 
+import com.google.common.collect.ImmutableList;
 import org.joda.time.LocalDate;
 import org.testng.annotations.Test;
 
@@ -125,6 +126,7 @@ public class ExportTaskTest {
     }
 
     private static TsvInfo createTsvInfo() {
-        return new TsvInfo(mock(File.class), mock(PrintWriter.class));
+        // We don't actually use the TSV for anything, so it's safe to stick an empty list and 2 mocks in here.
+        return new TsvInfo(ImmutableList.of(), mock(File.class), mock(PrintWriter.class));
     }
 }
