@@ -72,7 +72,7 @@
         <dependency>
             <groupId>org.sagebionetworks</groupId>
             <artifactId>bridge-base</artifactId>
-            <version>0.1.SNAPSHOT</version>
+            <version>1.2</version>
         </dependency>
         <dependency>
             <groupId>org.sagebionetworks</groupId>
@@ -92,6 +92,12 @@
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
             <version>1.10.19</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.sagebionetworks</groupId>
+            <artifactId>BridgeTestUtils</artifactId>
+            <version>1.0</version>
             <scope>test</scope>
         </dependency>
         <dependency>
