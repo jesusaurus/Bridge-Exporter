@@ -20,9 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
-import com.amazonaws.services.dynamodbv2.document.DynamoDB;
 import com.amazonaws.services.dynamodbv2.document.Item;
-import com.amazonaws.services.dynamodbv2.document.Table;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Multiset;
@@ -114,15 +112,6 @@ public class SynapseExportHandlerTest {
                 .thenReturn(TEST_SYNAPSE_PRINCIPAL_ID);
         when(mockConfig.getInt(ExportWorkerManager.CONFIG_KEY_WORKER_MANAGER_PROGRESS_REPORT_PERIOD)).thenReturn(250);
 
-        // mock table
-        Table mockSynapseTableMap = mock(Table.class);
-        when(mockSynapseTableMap.getItem(handler.getDdbTableKeyName(), handler.getDdbTableKeyValue())).thenReturn(
-                new Item().withString(SynapseExportHandler.DDB_KEY_TABLE_ID, TEST_SYNAPSE_TABLE_ID));
-
-        // mock DDB client
-        DynamoDB mockDdbClient = mock(DynamoDB.class);
-        when(mockDdbClient.getTable(DUMMY_DDB_PREFIX + handler.getDdbTableName())).thenReturn(mockSynapseTableMap);
-
         // mock file helper
         mockFileHelper = new InMemoryFileHelper();
         File tmpDir = mockFileHelper.createTempDir();
@@ -134,10 +123,9 @@ public class SynapseExportHandlerTest {
         mockSynapseHelper = mock(SynapseHelper.class);
         when(mockSynapseHelper.getColumnModelsForTableWithRetry(TEST_SYNAPSE_TABLE_ID)).thenReturn(columnModelList);
 
-        // setup manager - This is only used to get helper objects.
+        // setup manager - This is mostly used to get helper objects.
         ExportWorkerManager manager = spy(new ExportWorkerManager());
         manager.setConfig(mockConfig);
-        manager.setDdbClient(mockDdbClient);
         manager.setFileHelper(mockFileHelper);
         manager.setSynapseHelper(mockSynapseHelper);
         handler.setManager(manager);
@@ -152,6 +140,10 @@ public class SynapseExportHandlerTest {
         doReturn(TEST_SYNAPSE_PROJECT_ID).when(manager).getSynapseProjectIdForStudyAndTask(eq(TEST_STUDY_ID),
                 same(task));
         doReturn(1337L).when(manager).getDataAccessTeamIdForStudy(TEST_STUDY_ID);
+
+        // Similarly, spy get/setSynapseTableIdFromDDB.
+        doReturn(TEST_SYNAPSE_TABLE_ID).when(manager).getSynapseTableIdFromDdb(task, handler.getDdbTableName(),
+                handler.getDdbTableKeyName(), handler.getDdbTableKeyValue());
     }
 
     @Test

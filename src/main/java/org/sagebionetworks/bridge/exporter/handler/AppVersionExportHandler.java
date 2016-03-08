@@ -10,6 +10,7 @@ import org.apache.commons.lang.StringUtils;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 
+import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
 import org.sagebionetworks.bridge.exporter.worker.ExportSubtask;
 import org.sagebionetworks.bridge.exporter.worker.ExportTask;
 import org.sagebionetworks.bridge.exporter.worker.TsvInfo;
@@ -34,12 +35,12 @@ public class AppVersionExportHandler extends SynapseExportHandler {
 
     @Override
     protected String getDdbTableName() {
-        return "SynapseMetaTables";
+        return SynapseHelper.DDB_TABLE_SYNAPSE_META_TABLES;
     }
 
     @Override
     protected String getDdbTableKeyName() {
-        return "tableName";
+        return SynapseHelper.DDB_KEY_TABLE_NAME;
     }
 
     @Override

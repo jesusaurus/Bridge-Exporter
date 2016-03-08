@@ -13,6 +13,7 @@ import javax.annotation.Resource;
 
 import com.amazonaws.services.dynamodbv2.document.DynamoDB;
 import com.amazonaws.services.dynamodbv2.document.Item;
+import com.amazonaws.services.dynamodbv2.document.Table;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Stopwatch;
 import org.apache.commons.lang.StringUtils;
@@ -34,6 +35,7 @@ import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.exporter.dynamo.StudyInfo;
+import org.sagebionetworks.bridge.exporter.synapse.SynapseStatusTableHelper;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.file.FileHelper;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
@@ -56,6 +58,7 @@ public class ExportWorkerManager {
             "worker.manager.progress.report.period";
 
     // package-scoped, to be available in tests
+    static final String DDB_KEY_TABLE_ID = "tableId";
     static final String SCHEMA_IOS_SURVEY = "ios-survey";
 
     // CONFIG
@@ -85,7 +88,7 @@ public class ExportWorkerManager {
      *         export task, which may or may not have the DDB prefix override
      * @return resolved DDB prefix override
      */
-    public final String getExporterDdbPrefixForTask(ExportTask task) {
+    public String getExporterDdbPrefixForTask(ExportTask task) {
         String override = task.getRequest().getExporterDdbPrefixOverride();
         if (StringUtils.isNotBlank(override)) {
             return override;
@@ -95,8 +98,66 @@ public class ExportWorkerManager {
     }
 
     /** The Synapse principal ID (user ID) for the Bridge Exporter user. */
-    public final long getSynapsePrincipalId() {
+    public long getSynapsePrincipalId() {
         return synapsePrincipalId;
+    }
+
+    // DYNAMO DB HELPERS AND OVERRIDES
+
+    /**
+     * Gets the Synapse table ID, using the DDB Synapse table map. Returns null if the Synapse table doesn't exist (no
+     * entry in the DDB table).
+     *
+     * @param task
+     *         the export task, which contains context needed to get the Synapse table map
+     * @param ddbTableName
+     *         Dynamo DB table that contains the Synapse table map
+     * @param ddbKeyName
+     *         hash key name of the Dynamo DB table
+     * @param ddbKeyValue
+     *         value of the hash key of the Dynamo DB table (generally the Synapse table name)
+     * @return Synapse table ID of the table, or null if it doesn't exist
+     */
+    public String getSynapseTableIdFromDdb(ExportTask task, String ddbTableName, String ddbKeyName,
+            String ddbKeyValue) {
+        Table synapseTableMap = getSynapseDdbTable(task, ddbTableName);
+        Item tableMapItem = synapseTableMap.getItem(ddbKeyName, ddbKeyValue);
+        if (tableMapItem != null) {
+            return tableMapItem.getString(DDB_KEY_TABLE_ID);
+        } else {
+            return null;
+        }
+    }
+
+    /**
+     * Writes the Synapse table ID back to the DDB Synapse table map. This is called at the end of Synapse table
+     * creation.
+     *
+     * @param task
+     *         the export task, which contains context needed to get the Synapse table map
+     * @param ddbTableName
+     *         Dynamo DB table that contains the Synapse table map
+     * @param ddbKeyName
+     *         hash key name of the Dynamo DB table
+     * @param ddbKeyValue
+     *         value of the hash key of the Dynamo DB table (generally the Synapse table name)
+     * @param synapseTableId
+     *         Synapse table ID to write to Dynamo DB
+     */
+    public void setSynapseTableIdToDdb(ExportTask task, String ddbTableName, String ddbKeyName, String ddbKeyValue,
+            String synapseTableId) {
+        Table synapseTableMap = getSynapseDdbTable(task, ddbTableName);
+        Item synapseTableNewItem = new Item();
+        synapseTableNewItem.withString(ddbKeyName, ddbKeyValue);
+        synapseTableNewItem.withString(DDB_KEY_TABLE_ID, synapseTableId);
+        synapseTableMap.putItem(synapseTableNewItem);
+    }
+
+    // Helper method to get the DDB Synapse table map, called both to read and write the Synapse table ID to and from
+    // DDB.
+    private Table getSynapseDdbTable(ExportTask task, String ddbTableName) {
+        String ddbPrefix = getExporterDdbPrefixForTask(task);
+        return ddbClient.getTable(ddbPrefix + ddbTableName);
     }
 
     // HELPER OBJECTS (CONFIGURED BY SPRING)
@@ -106,13 +167,9 @@ public class ExportWorkerManager {
     private ExportHelper exportHelper;
     private FileHelper fileHelper;
     private SynapseHelper synapseHelper;
+    private SynapseStatusTableHelper synapseStatusTableHelper;
 
     /** DDB client, used to get the Synapse table mappings. */
-    public final DynamoDB getDdbClient() {
-        return ddbClient;
-    }
-
-    /** @see #getDdbClient */
     @Autowired
     public final void setDdbClient(DynamoDB ddbClient) {
         this.ddbClient = ddbClient;
@@ -160,6 +217,12 @@ public class ExportWorkerManager {
     @Autowired
     public final void setSynapseHelper(SynapseHelper synapseHelper) {
         this.synapseHelper = synapseHelper;
+    }
+
+    /** Specialized helper to create and write to the Status table in Synapse. */
+    @Autowired
+    final void setSynapseStatusTableHelper(SynapseStatusTableHelper synapseStatusTableHelper) {
+        this.synapseStatusTableHelper = synapseStatusTableHelper;
     }
 
     // STUDY INFO AND OVERRIDES
@@ -230,6 +293,9 @@ public class ExportWorkerManager {
     public void addSubtaskForRecord(ExportTask task, Item record) throws IOException, SchemaNotFoundException {
         UploadSchemaKey schemaKey = BridgeExporterUtil.getSchemaKeyForRecord(record);
         String studyId = schemaKey.getStudyId();
+
+        // Book-keeping: We need to know what study IDs this task has seen.
+        task.addStudyId(studyId);
 
         // Make subtask. Subtasks are immutable, so we can safely use the same one for each of the handlers.
         JsonNode recordDataNode = DefaultObjectMapper.INSTANCE.readTree(record.getString("data"));
@@ -422,6 +488,15 @@ public class ExportWorkerManager {
             } catch (BridgeExporterException | IOException | RuntimeException | SynapseException ex) {
                 LOG.error("Error uploading app version table to Synapse for study=" + studyId + ": " + ex.getMessage(),
                         ex);
+            }
+        }
+
+        // Write status table. Status tables are individual for each study.
+        for (String oneStudyId : task.getStudyIdSet()) {
+            try {
+                synapseStatusTableHelper.initTableAndWriteStatus(task, oneStudyId);
+            } catch (BridgeExporterException | InterruptedException | SynapseException ex) {
+                LOG.error("Error writing to status table for study=" + oneStudyId + ": " + ex.getMessage(), ex);
             }
         }
 

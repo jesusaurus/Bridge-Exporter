@@ -3,20 +3,26 @@ package org.sagebionetworks.bridge.exporter.synapse;
 import static org.mockito.Matchers.anyLong;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Matchers.same;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
+import static org.testng.Assert.assertTrue;
 
 import java.io.File;
 import java.util.List;
+import java.util.Set;
 
 import com.google.common.collect.ImmutableList;
+import org.mockito.ArgumentCaptor;
 import org.sagebionetworks.client.SynapseClient;
 import org.sagebionetworks.client.exceptions.SynapseResultNotReadyException;
 import org.sagebionetworks.repo.model.AccessControlList;
+import org.sagebionetworks.repo.model.ResourceAccess;
 import org.sagebionetworks.repo.model.file.FileHandle;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.CsvTableDescriptor;
@@ -25,7 +31,7 @@ import org.sagebionetworks.repo.model.table.TableEntity;
 import org.sagebionetworks.repo.model.table.UploadToTableResult;
 import org.testng.annotations.Test;
 
-@SuppressWarnings("unchecked")
+@SuppressWarnings({ "unchecked", "rawtypes" })
 public class SynapseHelperTest {
     // Most of these are retry wrappers, but we should test them anyway for branch coverage.
 
@@ -109,6 +115,69 @@ public class SynapseHelperTest {
         // execute and validate
         TableEntity retVal = synapseHelper.createTableWithRetry(inputTable);
         assertSame(retVal, outputTable);
+    }
+
+    @Test
+    public void createTableWithColumnsAndAcls() throws Exception {
+        // Set up inputs. This table will have two columns. We pass this straight through to the create column call,
+        // and we never look inside, so don't bother actually instantiating the columns.
+        List<ColumnModel> columnList = ImmutableList.of(new ColumnModel(), new ColumnModel());
+
+        // Spy SynapseHelper. This way, we can test the logic in SynapseHelper without being tightly coupled to the
+        // imeplementations of create column, create table, and create ACLs.
+        SynapseHelper synapseHelper = spy(new SynapseHelper());
+
+        // mock create column call - We only care about the IDs, so don't bother instantiating the rest.
+        ColumnModel createdFooColumn = new ColumnModel();
+        createdFooColumn.setId("foo-col-id");
+
+        ColumnModel createdBarColumn = new ColumnModel();
+        createdBarColumn.setId("bar-col-id");
+
+        List<ColumnModel> createdColumnList = ImmutableList.of(createdFooColumn, createdBarColumn);
+
+        doReturn(createdColumnList).when(synapseHelper).createColumnModelsWithRetry(columnList);
+
+        // mock create table call - We only care about the table ID, so don't bother instantiating the rest.
+        TableEntity createdTable = new TableEntity();
+        createdTable.setId("test-table");
+
+        ArgumentCaptor<TableEntity> tableCaptor = ArgumentCaptor.forClass(TableEntity.class);
+        doReturn(createdTable).when(synapseHelper).createTableWithRetry(tableCaptor.capture());
+
+        // Mock create ACL call. Even though we don't care about the return value, we have to do it, otherwise it'll
+        // call through to the real method. Likewise, for the result, just return a dummy object. We never look at it
+        // anyway.
+        ArgumentCaptor<AccessControlList> aclCaptor = ArgumentCaptor.forClass(AccessControlList.class);
+        doReturn(new AccessControlList()).when(synapseHelper).createAclWithRetry(aclCaptor.capture());
+
+        // execute and validate
+        String retVal = synapseHelper.createTableWithColumnsAndAcls(columnList, /*data access team ID*/ 1234,
+                /*principal ID*/ 5678, "test-project", "My Table");
+        assertEquals(retVal, "test-table");
+
+        // validate tableCaptor
+        TableEntity table = tableCaptor.getValue();
+        assertEquals(table.getName(), "My Table");
+        assertEquals(table.getParentId(), "test-project");
+        assertEquals(table.getColumnIds(), ImmutableList.of("foo-col-id", "bar-col-id"));
+
+        // validate aclCaptor
+        AccessControlList acl = aclCaptor.getValue();
+        assertEquals(acl.getId(), "test-table");
+
+        Set<ResourceAccess> resourceAccessSet = acl.getResourceAccess();
+        assertEquals(resourceAccessSet.size(), 2);
+
+        ResourceAccess exporterOwnerAccess = new ResourceAccess();
+        exporterOwnerAccess.setPrincipalId(5678L);
+        exporterOwnerAccess.setAccessType(SynapseHelper.ACCESS_TYPE_ALL);
+        assertTrue(resourceAccessSet.contains(exporterOwnerAccess));
+
+        ResourceAccess dataAccessTeamAccess = new ResourceAccess();
+        dataAccessTeamAccess.setPrincipalId(1234L);
+        dataAccessTeamAccess.setAccessType(SynapseHelper.ACCESS_TYPE_READ);
+        assertTrue(resourceAccessSet.contains(dataAccessTeamAccess));
     }
 
     @Test
