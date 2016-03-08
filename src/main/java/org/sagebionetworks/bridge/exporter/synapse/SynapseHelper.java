@@ -2,20 +2,26 @@ package org.sagebionetworks.bridge.exporter.synapse;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import com.amazonaws.AmazonClientException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.jcabi.aspects.RetryOnFailure;
 import org.joda.time.DateTime;
 import org.joda.time.LocalDate;
 import org.sagebionetworks.client.SynapseClient;
 import org.sagebionetworks.client.exceptions.SynapseException;
 import org.sagebionetworks.client.exceptions.SynapseResultNotReadyException;
+import org.sagebionetworks.repo.model.ACCESS_TYPE;
 import org.sagebionetworks.repo.model.AccessControlList;
+import org.sagebionetworks.repo.model.ResourceAccess;
 import org.sagebionetworks.repo.model.file.FileHandle;
 import org.sagebionetworks.repo.model.table.AppendableRowSet;
 import org.sagebionetworks.repo.model.table.ColumnModel;
@@ -46,6 +52,12 @@ public class SynapseHelper {
     // Config keys. Package-scoped to allow unit tests to mock.
     static final String CONFIG_KEY_SYNAPSE_ASYNC_INTERVAL_MILLIS = "synapse.async.interval.millis";
     static final String CONFIG_KEY_SYNAPSE_ASYNC_TIMEOUT_LOOPS = "synapse.async.timeout.loops";
+
+    // Shared constants.
+    public static final Set<ACCESS_TYPE> ACCESS_TYPE_ALL = ImmutableSet.copyOf(ACCESS_TYPE.values());
+    public static final Set<ACCESS_TYPE> ACCESS_TYPE_READ = ImmutableSet.of(ACCESS_TYPE.READ, ACCESS_TYPE.DOWNLOAD);
+    public static final String DDB_TABLE_SYNAPSE_META_TABLES = "SynapseMetaTables";
+    public static final String DDB_KEY_TABLE_NAME = "tableName";
 
     /** Mapping from Bridge types to their respective max lengths. Only covers things that are strings in Synapse. */
     public static final Map<String, Integer> BRIDGE_TYPE_TO_MAX_LENGTH = ImmutableMap.<String, Integer>builder()
@@ -436,6 +448,72 @@ public class SynapseHelper {
     public FileHandle createFileHandleWithRetry(File file, String contentType, String projectId) throws IOException,
             SynapseException {
         return synapseClient.createFileHandle(file, contentType, projectId);
+    }
+
+    /**
+     * Helper method to create a table with the specified columns and set up ACLs. The data access team is set with
+     * read permissions and the principal ID is set with all permissions.
+     *
+     * @param columnList
+     *         list of column models to create on the table
+     * @param dataAccessTeamId
+     *         data access team ID, set with read permissions
+     * @param principalId
+     *         principal ID, set with all permissions
+     * @param projectId
+     *         Synapse project to create the table in
+     * @param tableName
+     *         table name
+     * @return Synapse table ID
+     * @throws BridgeExporterException
+     *         under unexpected circumstances, like a table created with the wrong number of columns
+     * @throws SynapseException
+     *         if the underlying Synapse calls fail
+     */
+    public String createTableWithColumnsAndAcls(List<ColumnModel> columnList, long dataAccessTeamId,
+            long principalId, String projectId, String tableName) throws BridgeExporterException, SynapseException {
+        // Create columns
+        List<ColumnModel> createdColumnList = createColumnModelsWithRetry(columnList);
+        if (columnList.size() != createdColumnList.size()) {
+            throw new BridgeExporterException("Error creating Synapse table " + tableName + ": Tried to create " +
+                    columnList.size() + " columns. Actual: " + createdColumnList.size() + " columns.");
+        }
+
+        List<String> columnIdList = new ArrayList<>();
+        //noinspection Convert2streamapi
+        for (ColumnModel oneCreatedColumn : createdColumnList) {
+            columnIdList.add(oneCreatedColumn.getId());
+        }
+
+        // create table
+        TableEntity synapseTable = new TableEntity();
+        synapseTable.setName(tableName);
+        synapseTable.setParentId(projectId);
+        synapseTable.setColumnIds(columnIdList);
+        TableEntity createdTable = createTableWithRetry(synapseTable);
+        String synapseTableId = createdTable.getId();
+
+        // create ACLs
+        // ResourceAccess is a mutable object, but the Synapse API takes them in a Set. This is a little weird.
+        // IMPORTANT: Do not modify ResourceAccess objects after adding them to the set. This will break the set.
+        Set<ResourceAccess> resourceAccessSet = new HashSet<>();
+
+        ResourceAccess exporterOwnerAccess = new ResourceAccess();
+        exporterOwnerAccess.setPrincipalId(principalId);
+        exporterOwnerAccess.setAccessType(ACCESS_TYPE_ALL);
+        resourceAccessSet.add(exporterOwnerAccess);
+
+        ResourceAccess dataAccessTeamAccess = new ResourceAccess();
+        dataAccessTeamAccess.setPrincipalId(dataAccessTeamId);
+        dataAccessTeamAccess.setAccessType(ACCESS_TYPE_READ);
+        resourceAccessSet.add(dataAccessTeamAccess);
+
+        AccessControlList acl = new AccessControlList();
+        acl.setId(synapseTableId);
+        acl.setResourceAccess(resourceAccessSet);
+        createAclWithRetry(acl);
+
+        return synapseTableId;
     }
 
     /**

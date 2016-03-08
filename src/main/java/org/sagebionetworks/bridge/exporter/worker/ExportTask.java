@@ -2,9 +2,11 @@ package org.sagebionetworks.bridge.exporter.worker;
 
 import java.io.File;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.Future;
 
 import org.joda.time.LocalDate;
@@ -118,6 +120,7 @@ public class ExportTask {
     private final Map<String, TsvInfo> appVersionTsvInfoByStudy = new HashMap<>();
     private final Map<UploadSchemaKey, TsvInfo> healthDataTsvInfoBySchema = new HashMap<>();
     private final Queue<Future<?>> outstandingTaskQueue = new LinkedList<>();
+    private final Set<String> studyIdSet = new HashSet<>();
 
     /** Gets the appVersion table TSV info for the specified study. */
     public TsvInfo getAppVersionTsvInfoForStudy(String studyId) {
@@ -147,5 +150,15 @@ public class ExportTask {
     /** Adds a subtask to the queue for the task. */
     public void addOutstandingTask(Future<?> subtaskFuture) {
         outstandingTaskQueue.add(subtaskFuture);
+    }
+
+    /** Adds the study ID to the set of seen study IDs. */
+    public void addStudyId(String studyId) {
+        studyIdSet.add(studyId);
+    }
+
+    /** Gets the set of study IDs that were seen by this task. Used to do per-study post-processing. */
+    public Set<String> getStudyIdSet() {
+        return studyIdSet;
     }
 }

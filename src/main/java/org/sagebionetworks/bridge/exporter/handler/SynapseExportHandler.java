@@ -7,23 +7,16 @@ import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
-import com.amazonaws.services.dynamodbv2.document.Table;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSet;
 import org.sagebionetworks.client.exceptions.SynapseException;
-import org.sagebionetworks.repo.model.ACCESS_TYPE;
-import org.sagebionetworks.repo.model.AccessControlList;
-import org.sagebionetworks.repo.model.ResourceAccess;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
-import org.sagebionetworks.repo.model.table.TableEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,11 +37,6 @@ import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
  */
 public abstract class SynapseExportHandler extends ExportHandler {
     private static final Logger LOG = LoggerFactory.getLogger(SynapseExportHandler.class);
-
-    // package-scoped so the unit tests can test against these
-    static final Set<ACCESS_TYPE> ACCESS_TYPE_ALL = ImmutableSet.copyOf(ACCESS_TYPE.values());
-    static final Set<ACCESS_TYPE> ACCESS_TYPE_READ = ImmutableSet.of(ACCESS_TYPE.READ, ACCESS_TYPE.DOWNLOAD);
-    static final String DDB_KEY_TABLE_ID = "tableId";
 
     // Package-scoped to be available to unit tests.
     static final List<ColumnModel> COMMON_COLUMN_LIST;
@@ -167,47 +155,41 @@ public abstract class SynapseExportHandler extends ExportHandler {
     // Gets the column name list from Synapse. If the Synapse table doesn't exist, this will create it. This is called
     // when initializing the TSV for a task.
     private List<String> getColumnNameList(ExportTask task) throws BridgeExporterException, SynapseException {
-        String synapseTableId = getSynapseTableIdFromDdb(task);
-        if (synapseTableId != null) {
-            return getColumnNameListForExistingTable(synapseTableId);
-        } else {
-            return getColumnNameListForNewTable(task);
+        String synapseTableId = getManager().getSynapseTableIdFromDdb(task, getDdbTableName(), getDdbTableKeyName(),
+                getDdbTableKeyValue());
+        if (synapseTableId == null) {
+            synapseTableId = createNewTable(task);
         }
+        return getColumnNameListForTable(synapseTableId);
     }
 
-    // Gets the Synapse table ID, using the DDB Synapse table map. Returns null if the Synapse table doesn't exist (no
-    // entry in the DDB table).
-    private String getSynapseTableIdFromDdb(ExportTask task) {
-        Table synapseTableMap = getSynapseDdbTable(task);
-        Item tableMapItem = synapseTableMap.getItem(getDdbTableKeyName(), getDdbTableKeyValue());
-        if (tableMapItem != null) {
-            return tableMapItem.getString(DDB_KEY_TABLE_ID);
-        } else {
-            return null;
-        }
-    }
-
-    // Writes the Synapse table ID back to the DDB Synapse table map. This is called at the end of Synapse table
-    // creation.
-    private void setSynapseTableIdToDdb(ExportTask task, String synapseTableId) {
-        Table synapseTableMap = getSynapseDdbTable(task);
-        Item synapseTableNewItem = new Item();
-        synapseTableNewItem.withString(getDdbTableKeyName(), getDdbTableKeyValue());
-        synapseTableNewItem.withString(DDB_KEY_TABLE_ID, synapseTableId);
-        synapseTableMap.putItem(synapseTableNewItem);
-    }
-
-    // Helper method to get the DDB Synapse table map, called both to read and write the Synapse table ID to and from
-    // DDB.
-    private Table getSynapseDdbTable(ExportTask task) {
+    // Helper method to create the new Synapse table. Returns the Synapse table ID.
+    private String createNewTable(ExportTask task) throws BridgeExporterException,
+            SynapseException {
         ExportWorkerManager manager = getManager();
-        String ddbPrefix = manager.getExporterDdbPrefixForTask(task);
-        return manager.getDdbClient().getTable(ddbPrefix + getDdbTableName());
+
+        // Construct column definition list. Merge COMMON_COLUMN_LIST with getSynapseTableColumnList.
+        List<ColumnModel> columnList = new ArrayList<>();
+        columnList.addAll(COMMON_COLUMN_LIST);
+        columnList.addAll(getSynapseTableColumnList());
+
+        // Delegate table creation to SynapseHelper.
+        long dataAccessTeamId = manager.getDataAccessTeamIdForStudy(getStudyId());
+        long principalId = manager.getSynapsePrincipalId();
+        String projectId = manager.getSynapseProjectIdForStudyAndTask(getStudyId(), task);
+        String tableName = getDdbTableKeyValue();
+        String synapseTableId = manager.getSynapseHelper().createTableWithColumnsAndAcls(columnList, dataAccessTeamId,
+                principalId, projectId, tableName);
+
+        // write back to DDB table
+        manager.setSynapseTableIdToDdb(task, getDdbTableName(), getDdbTableKeyName(), getDdbTableKeyValue(),
+                synapseTableId);
+
+        return synapseTableId;
     }
 
-    // Helper method to get the column name list for an existing Synapse table. This queries the column model list from
-    // Synapse.
-    private List<String> getColumnNameListForExistingTable(String synapseTableId) throws SynapseException {
+    // Helper method to get the column name list for a Synapse table. This queries the column model list from Synapse.
+    private List<String> getColumnNameListForTable(String synapseTableId) throws SynapseException {
         // Get columns from Synapse
         ExportWorkerManager manager = getManager();
         SynapseHelper synapseHelper = manager.getSynapseHelper();
@@ -219,65 +201,6 @@ public abstract class SynapseExportHandler extends ExportHandler {
         for (ColumnModel oneColumnModel : columnModelList) {
             columnNameList.add(oneColumnModel.getName());
         }
-        return columnNameList;
-    }
-
-    // Helper method to get the column name list for a new table. This creates a new Synapse table and returns its
-    // column list.
-    private List<String> getColumnNameListForNewTable(ExportTask task) throws BridgeExporterException,
-            SynapseException {
-        ExportWorkerManager manager = getManager();
-        SynapseHelper synapseHelper = manager.getSynapseHelper();
-
-        // Construct column definition list. Merge COMMON_COLUMN_LIST with getSynapseTableColumnList.
-        List<ColumnModel> columnList = new ArrayList<>();
-        columnList.addAll(COMMON_COLUMN_LIST);
-        columnList.addAll(getSynapseTableColumnList());
-
-        // Create columns
-        List<ColumnModel> createdColumnList = synapseHelper.createColumnModelsWithRetry(columnList);
-        if (columnList.size() != createdColumnList.size()) {
-            throw new BridgeExporterException("Error creating Synapse table " + getDdbTableKeyValue()
-                    + ": Tried to create " + columnList.size() + " columns. Actual: " + createdColumnList.size()
-                    + " columns.");
-        }
-
-        List<String> columnIdList = new ArrayList<>();
-        List<String> columnNameList = new ArrayList<>();
-        for (ColumnModel oneCreatedColumn : createdColumnList) {
-            columnIdList.add(oneCreatedColumn.getId());
-            columnNameList.add(oneCreatedColumn.getName());
-        }
-
-        // create table - Synapse table names must be unique, so use the DDB key value as the name.
-        TableEntity synapseTable = new TableEntity();
-        synapseTable.setName(getDdbTableKeyValue());
-        synapseTable.setParentId(manager.getSynapseProjectIdForStudyAndTask(getStudyId(), task));
-        synapseTable.setColumnIds(columnIdList);
-        TableEntity createdTable = synapseHelper.createTableWithRetry(synapseTable);
-        String synapseTableId = createdTable.getId();
-
-        // create ACLs
-        Set<ResourceAccess> resourceAccessSet = new HashSet<>();
-
-        ResourceAccess exporterOwnerAccess = new ResourceAccess();
-        exporterOwnerAccess.setPrincipalId(manager.getSynapsePrincipalId());
-        exporterOwnerAccess.setAccessType(ACCESS_TYPE_ALL);
-        resourceAccessSet.add(exporterOwnerAccess);
-
-        ResourceAccess dataAccessTeamAccess = new ResourceAccess();
-        dataAccessTeamAccess.setPrincipalId(manager.getDataAccessTeamIdForStudy(getStudyId()));
-        dataAccessTeamAccess.setAccessType(ACCESS_TYPE_READ);
-        resourceAccessSet.add(dataAccessTeamAccess);
-
-        AccessControlList acl = new AccessControlList();
-        acl.setId(synapseTableId);
-        acl.setResourceAccess(resourceAccessSet);
-        synapseHelper.createAclWithRetry(acl);
-
-        // write back to DDB table
-        setSynapseTableIdToDdb(task, synapseTableId);
-
         return columnNameList;
     }
 
@@ -337,7 +260,8 @@ public abstract class SynapseExportHandler extends ExportHandler {
         int lineCount = tsvInfo.getLineCount();
         if (lineCount > 0) {
             String projectId = manager.getSynapseProjectIdForStudyAndTask(getStudyId(), task);
-            String synapseTableId = getSynapseTableIdFromDdb(task);
+            String synapseTableId = manager.getSynapseTableIdFromDdb(task, getDdbTableName(), getDdbTableKeyName(),
+                    getDdbTableKeyValue());
             long linesProcessed = manager.getSynapseHelper().uploadTsvFileToTable(projectId, synapseTableId, tsvFile);
             if (linesProcessed != lineCount) {
                 throw new BridgeExporterException("Wrong number of lines processed importing to table=" +

@@ -8,6 +8,7 @@ import static org.testng.Assert.assertTrue;
 import java.io.File;
 import java.io.PrintWriter;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.Future;
 
 import com.google.common.collect.ImmutableList;
@@ -118,6 +119,20 @@ public class ExportTaskTest {
         assertSame(taskQueue.remove(), mockFooFuture);
         assertSame(taskQueue.remove(), mockBarFuture);
         assertTrue(taskQueue.isEmpty());
+    }
+
+    @Test
+    public void studyIdSet() {
+        ExportTask task = createTask();
+        task.addStudyId("foo");
+        task.addStudyId("bar");
+        task.addStudyId("baz");
+
+        Set<String> studyIdSet = task.getStudyIdSet();
+        assertEquals(studyIdSet.size(), 3);
+        assertTrue(studyIdSet.contains("foo"));
+        assertTrue(studyIdSet.contains("bar"));
+        assertTrue(studyIdSet.contains("baz"));
     }
 
     private static ExportTask createTask() {

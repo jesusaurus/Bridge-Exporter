@@ -1,8 +1,10 @@
 package org.sagebionetworks.bridge.exporter.worker;
 
 import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Matchers.notNull;
+import static org.mockito.Matchers.same;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -11,6 +13,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
 
 import java.io.File;
@@ -20,10 +23,14 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 
+import com.amazonaws.services.dynamodbv2.document.DynamoDB;
 import com.amazonaws.services.dynamodbv2.document.Item;
+import com.amazonaws.services.dynamodbv2.document.Table;
 import com.google.common.collect.ImmutableMap;
 import org.joda.time.LocalDate;
 import org.mockito.ArgumentCaptor;
+import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.config.Config;
@@ -36,58 +43,92 @@ import org.sagebionetworks.bridge.exporter.handler.IosSurveyExportHandler;
 import org.sagebionetworks.bridge.exporter.handler.SynapseExportHandler;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
+import org.sagebionetworks.bridge.exporter.synapse.SynapseStatusTableHelper;
 import org.sagebionetworks.bridge.schema.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
 @SuppressWarnings({ "unchecked", "rawtypes" })
 public class ExportWorkerManagerTest {
+    private static final String DEFAULT_DDB_PREFIX = "default-prefix-";
     private static final String DUMMY_JSON_TEXT = "{\"key\":\"value\"}";
+    private static final String TEST_DDB_KEY_NAME = "test-ddb-key";
+    private static final String TEST_DDB_TABLE_NAME = "test-ddb-table";
     private static final String TEST_SCHEMA_ID = "schemaId";
     private static final int TEST_SCHEMA_REV = 3;
     private static final String TEST_STUDY_ID = "studyId";
+    private static final String TEST_SYNAPSE_TABLE_ID = "test-Synapse-table";
+    private static final String TEST_SYNAPSE_TABLE_NAME = "My Synapse Table";
 
-    @Test
-    public void getDdbPrefixDefault() {
-        // mock config
-        Config mockConfig = mock(Config.class);
-        when(mockConfig.get(ExportWorkerManager.CONFIG_KEY_EXPORTER_DDB_PREFIX)).thenReturn("default-prefix-");
+    private Item ddbSynapseMapItem;
 
-        // mock task
-        BridgeExporterRequest mockRequest = mock(BridgeExporterRequest.class);
-        when(mockRequest.getExporterDdbPrefixOverride()).thenReturn(null);
-
-        ExportTask mockTask = mock(ExportTask.class);
-        when(mockTask.getRequest()).thenReturn(mockRequest);
-
-        // set up worker manager
-        ExportWorkerManager manager = new ExportWorkerManager();
-        manager.setConfig(mockConfig);
-
-        // execute and validate
-        String ddbPrefix = manager.getExporterDdbPrefixForTask(mockTask);
-        assertEquals(ddbPrefix, "default-prefix-");
+    @BeforeMethod
+    public void setup() {
+        // clear vars, because TestNG doesn't always do that
+        ddbSynapseMapItem = null;
     }
 
-    @Test
-    public void getDdbPrefixOverride() {
+    @DataProvider(name = "ddbPrefixOverrideProvider")
+    public Object[][] ddbPrefixOverrideProvider() {
+        return new Object[][] {
+                { null },
+                { "override-prefix-" },
+        };
+    }
+
+    @Test(dataProvider = "ddbPrefixOverrideProvider")
+    public void getSetSynapseTableIdFromDdb(String ddbPrefixOverride) {
+        String ddbPrefix = ddbPrefixOverride != null ? ddbPrefixOverride : DEFAULT_DDB_PREFIX;
+
         // mock config
         Config mockConfig = mock(Config.class);
-        when(mockConfig.get(ExportWorkerManager.CONFIG_KEY_EXPORTER_DDB_PREFIX)).thenReturn("default-prefix-");
+        when(mockConfig.get(ExportWorkerManager.CONFIG_KEY_EXPORTER_DDB_PREFIX)).thenReturn(DEFAULT_DDB_PREFIX);
 
         // mock task
         BridgeExporterRequest mockRequest = mock(BridgeExporterRequest.class);
-        when(mockRequest.getExporterDdbPrefixOverride()).thenReturn("override-prefix-");
+        when(mockRequest.getExporterDdbPrefixOverride()).thenReturn(ddbPrefixOverride);
 
         ExportTask mockTask = mock(ExportTask.class);
         when(mockTask.getRequest()).thenReturn(mockRequest);
 
+        // mock DDB client
+        Table mockDdbTable = mock(Table.class);
+        ArgumentCaptor<Item> putItemCaptor = ArgumentCaptor.forClass(Item.class);
+        when(mockDdbTable.getItem(TEST_DDB_KEY_NAME, TEST_SYNAPSE_TABLE_NAME))
+                .thenAnswer(invocation -> ddbSynapseMapItem);
+        when(mockDdbTable.putItem(putItemCaptor.capture())).thenAnswer(invocation -> {
+            ddbSynapseMapItem = invocation.getArgumentAt(0, Item.class);
+
+            // We don't care about return value, but we require one. Arbitrarily return null.
+            return null;
+        });
+
+        DynamoDB mockDdbClient = mock(DynamoDB.class);
+        when(mockDdbClient.getTable(ddbPrefix + TEST_DDB_TABLE_NAME)).thenReturn(mockDdbTable);
+
         // set up worker manager
         ExportWorkerManager manager = new ExportWorkerManager();
         manager.setConfig(mockConfig);
+        manager.setDdbClient(mockDdbClient);
 
         // execute and validate
-        String ddbPrefix = manager.getExporterDdbPrefixForTask(mockTask);
-        assertEquals(ddbPrefix, "override-prefix-");
+        // initial get is null
+        String retVal1 = manager.getSynapseTableIdFromDdb(mockTask, TEST_DDB_TABLE_NAME, TEST_DDB_KEY_NAME,
+                TEST_SYNAPSE_TABLE_NAME);
+        assertNull(retVal1);
+
+        // set value
+        manager.setSynapseTableIdToDdb(mockTask, TEST_DDB_TABLE_NAME, TEST_DDB_KEY_NAME, TEST_SYNAPSE_TABLE_NAME,
+                TEST_SYNAPSE_TABLE_ID);
+
+        // get value back
+        String retVal2 = manager.getSynapseTableIdFromDdb(mockTask, TEST_DDB_TABLE_NAME, TEST_DDB_KEY_NAME,
+                TEST_SYNAPSE_TABLE_NAME);
+        assertEquals(retVal2, TEST_SYNAPSE_TABLE_ID);
+
+        // validate putItemCaptor
+        Item putItem = putItemCaptor.getValue();
+        assertEquals(putItem.getString(TEST_DDB_KEY_NAME), TEST_SYNAPSE_TABLE_NAME);
+        assertEquals(putItem.getString(ExportWorkerManager.DDB_KEY_TABLE_ID), TEST_SYNAPSE_TABLE_ID);
     }
 
     @Test
@@ -335,10 +376,23 @@ public class ExportWorkerManagerTest {
         Config mockConfig = mock(Config.class);
         when(mockConfig.getInt(ExportWorkerManager.CONFIG_KEY_WORKER_MANAGER_PROGRESS_REPORT_PERIOD)).thenReturn(2);
 
+        // mock Synapse status table helper
+        SynapseStatusTableHelper mockSynapseStatusTableHelper = mock(SynapseStatusTableHelper.class);
+        doAnswer(invocation -> {
+            String studyId = invocation.getArgumentAt(1, String.class);
+            if ("fail-study".equals(studyId)) {
+                throw new BridgeExporterException();
+            }
+
+            // Mockito requires a return value.
+            return null;
+        }).when(mockSynapseStatusTableHelper).initTableAndWriteStatus(same(task), anyString());
+
         // set up worker manager
         ExportWorkerManager manager = spy(new ExportWorkerManager());
         manager.setConfig(mockConfig);
         manager.setExecutor(mockExecutor);
+        manager.setSynapseStatusTableHelper(mockSynapseStatusTableHelper);
 
         // Spy create*Handler() methods. This allows us to inject failures into the handlers to test handler code.
         List<SynapseExportHandler> mockHandlerList = new ArrayList<>();
@@ -385,5 +439,9 @@ public class ExportWorkerManagerTest {
         for (SynapseExportHandler oneMockHandler : mockHandlerList) {
             verify(oneMockHandler).uploadToSynapseForTask(task);
         }
+
+        // verify status tables written for each study
+        verify(mockSynapseStatusTableHelper).initTableAndWriteStatus(task, "success-study");
+        verify(mockSynapseStatusTableHelper).initTableAndWriteStatus(task, "fail-study");
     }
 }
