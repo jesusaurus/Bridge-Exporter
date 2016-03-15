@@ -5,6 +5,8 @@ import java.util.Set;
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSetMultimap;
+import org.jsoup.Jsoup;
+import org.jsoup.safety.Whitelist;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -86,9 +88,14 @@ public class BridgeExporterUtil {
     }
 
     /**
+     * <p>
      * Sanitizes the given string to make it acceptable for a TSV to upload to Synapse. This involves removing
      * TSV-unfriendly chars (newlines, carriage returns, and tabs) and truncating columns that are too wide. This
      * will log an error if truncation happens, so this can be detected post-run.
+     * </p>
+     * <p>
+     * Also strips HTML to defend against HTML Injection attacks.
+     * </p>
      *
      * @param in
      *         value to sanitize
@@ -103,10 +110,13 @@ public class BridgeExporterUtil {
             return null;
         }
 
-        // First, remove tabs and newlines and carriage returns. This is needed to serialize strings into TSVs.
+        // Strip HTML.
+        in = Jsoup.clean(in, Whitelist.none());
+
+        // Remove tabs and newlines and carriage returns. This is needed to serialize strings into TSVs.
         in = in.replaceAll("[\n\r\t]+", " ");
 
-        // Next, check against max length, truncating and warning as necessary.
+        // Check against max length, truncating and warning as necessary.
         if (in.length() > maxLength) {
             LOG.error("Truncating string " + in + " to length " + maxLength + " for record " + recordId);
             in = in.substring(0, maxLength);

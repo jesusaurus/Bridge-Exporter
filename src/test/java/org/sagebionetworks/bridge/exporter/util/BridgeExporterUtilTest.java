@@ -82,15 +82,21 @@ public class BridgeExporterUtilTest {
     }
 
     @Test
-    public void sanitizeStringWhitespace() {
-        String out = BridgeExporterUtil.sanitizeString("   ", 100, "dummy-record");
-        assertEquals(out, "   ");
-    }
-
-    @Test
     public void sanitizeStringPassthrough() {
         String out = BridgeExporterUtil.sanitizeString("lorem ipsum", 100, "dummy-record");
         assertEquals(out, "lorem ipsum");
+    }
+
+    @Test
+    public void sanitizeStringRemoveHtml() {
+        String out = BridgeExporterUtil.sanitizeString("<b>bold text</b>", 100, "dummy-record");
+        assertEquals(out, "bold text");
+    }
+
+    @Test
+    public void sanitizeStringRemovePartialHtml() {
+        String out = BridgeExporterUtil.sanitizeString("imbalanced</i> <p>tags", 100, "dummy-record");
+        assertEquals(out, "imbalanced tags");
     }
 
     @Test
