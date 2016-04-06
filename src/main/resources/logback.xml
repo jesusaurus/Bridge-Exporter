@@ -6,20 +6,8 @@
         </encoder>
     </appender>
 
-    <!-- To test this locally, run mvn spring-boot:run -Dlogentries.token=[token] -->
-    <appender name="LOGENTRIES" class="com.logentries.logback.LogentriesAppender">
-        <Debug>False</Debug>
-        <Token>${logentries.token}</Token>
-        <Ssl>False</Ssl>
-        <facility>USER</facility>
-        <layout>
-            <pattern>%d{ISO8601} %-5p [%t] %logger - %message%n%xException%n%mdc</pattern>
-        </layout>
-    </appender>
-
     <root level="WARN">
         <appender-ref ref="STDOUT" />
-        <appender-ref ref="LOGENTRIES" />
     </root>
 
     <logger name="org.sagebionetworks.bridge.exporter" level="INFO" />
