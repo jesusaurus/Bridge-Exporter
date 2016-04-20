@@ -578,6 +578,21 @@ public class SynapseHelper {
     }
 
     /**
+     * Updates a Synapse table and returns the updated table. This is a retry wrapper.
+     *
+     * @param table
+     *         table to update
+     * @return updated table
+     * @throws SynapseException
+     *         if the Synapse call fails
+     */
+    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
+            randomize = false)
+    public TableEntity updateTableWithRetry(TableEntity table) throws SynapseException {
+        return synapseClient.putEntity(table);
+    }
+
+    /**
      * Starts applying an uploaded TSV file handle to a Synapse table. This is a retry wrapper.
      *
      * @param tableId

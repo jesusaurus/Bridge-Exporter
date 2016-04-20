@@ -352,6 +352,10 @@ public class SynapseExportHandlerTest {
         assertTrue(mockFileHelper.isEmpty());
     }
 
+    public static ExportSubtask makeSubtask(ExportTask parentTask) throws IOException {
+        return makeSubtask(parentTask, "{}");
+    }
+
     public static ExportSubtask makeSubtask(ExportTask parentTask, String key, String value) throws IOException {
         return makeSubtask(parentTask, "{\"" + key + "\":\"" + value + "\"}");
     }

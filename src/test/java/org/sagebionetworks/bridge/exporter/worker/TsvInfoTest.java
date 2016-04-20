@@ -4,7 +4,9 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
+import static org.testng.Assert.fail;
 
 import java.io.File;
 import java.io.PrintWriter;
@@ -65,5 +67,32 @@ public class TsvInfoTest {
         tsvInfo.writeRow(new ImmutableMap.Builder<String, String>().put("foo", "realistic").put("bar", "lines")
                 .build());
         tsvInfo.flushAndCloseWriter();
+    }
+
+    @Test
+    public void initError() {
+        try {
+            TsvInfo.INIT_ERROR_TSV_INFO.checkInitAndThrow();
+            fail("expected exception");
+        } catch (BridgeExporterException ex) {
+            // expected exception
+        }
+
+        try {
+            TsvInfo.INIT_ERROR_TSV_INFO.writeRow(ImmutableMap.of());
+            fail("expected exception");
+        } catch (BridgeExporterException ex) {
+            // expected exception
+        }
+
+        try {
+            TsvInfo.INIT_ERROR_TSV_INFO.flushAndCloseWriter();
+            fail("expected exception");
+        } catch (BridgeExporterException ex) {
+            // expected exception
+        }
+
+        assertNull(TsvInfo.INIT_ERROR_TSV_INFO.getFile());
+        assertEquals(TsvInfo.INIT_ERROR_TSV_INFO.getLineCount(), 0);
     }
 }
