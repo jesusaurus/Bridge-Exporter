@@ -4,6 +4,7 @@ import java.util.Set;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableSetMultimap;
 import org.jsoup.Jsoup;
 import org.jsoup.safety.Whitelist;
@@ -15,6 +16,8 @@ import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 /** Various static utility methods that don't neatly fit anywhere else. */
 public class BridgeExporterUtil {
     private static final Logger LOG = LoggerFactory.getLogger(BridgeExporterUtil.class);
+
+    public static final Joiner COMMA_SPACE_JOINER = Joiner.on(", ").useForNull("");
 
     private static final ImmutableSetMultimap<UploadSchemaKey, String> SCHEMA_FIELDS_TO_CONVERT;
     static {

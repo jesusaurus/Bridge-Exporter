@@ -227,6 +227,22 @@ public class SynapseHelperTest {
     }
 
     @Test
+    public void updateTable() throws Exception {
+        // mock Synapse Client - Assume put entity returns a separate output table.
+        SynapseClient mockSynapseClient = mock(SynapseClient.class);
+        TableEntity inputTable = new TableEntity();
+        TableEntity outputTable = new TableEntity();
+        when(mockSynapseClient.putEntity(inputTable)).thenReturn(outputTable);
+
+        SynapseHelper synapseHelper = new SynapseHelper();
+        synapseHelper.setSynapseClient(mockSynapseClient);
+
+        // execute and validate
+        TableEntity retVal = synapseHelper.updateTableWithRetry(inputTable);
+        assertSame(retVal, outputTable);
+    }
+
+    @Test
     public void uploadTsvStart() throws Exception {
         // mock Synapse Client
         SynapseClient mockSynapseClient = mock(SynapseClient.class);
