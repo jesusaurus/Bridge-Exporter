@@ -115,6 +115,7 @@ public abstract class SynapseExportHandler extends ExportHandler {
         try {
             // get TSV info (init if necessary)
             TsvInfo tsvInfo = initTsvForTask(task);
+            tsvInfo.checkInitAndThrow();
 
             // Construct row value map. Merge row values from common columns and getTsvRowValueMap()
             Map<String, String> rowValueMap = new HashMap<>();
@@ -132,13 +133,14 @@ public abstract class SynapseExportHandler extends ExportHandler {
 
     // Gets the TSV for the task, initializing it if it hasn't been created yet. Also initializes the Synapse table if
     // it hasn't been created.
-    private synchronized TsvInfo initTsvForTask(ExportTask task) throws BridgeExporterException {
+    private synchronized TsvInfo initTsvForTask(ExportTask task) {
         // check if the TSV is already saved in the task
         TsvInfo savedTsvInfo = getTsvInfoForTask(task);
         if (savedTsvInfo != null) {
             return savedTsvInfo;
         }
 
+        TsvInfo tsvInfo;
         try {
             // get column name list
             List<String> columnNameList = getColumnNameList(task);
@@ -149,12 +151,14 @@ public abstract class SynapseExportHandler extends ExportHandler {
             PrintWriter tsvWriter = new PrintWriter(fileHelper.getWriter(tsvFile));
 
             // create TSV info
-            TsvInfo tsvInfo = new TsvInfo(columnNameList, tsvFile, tsvWriter);
-            setTsvInfoForTask(task, tsvInfo);
-            return tsvInfo;
-        } catch (FileNotFoundException | SynapseException ex) {
-            throw new BridgeExporterException("Error initializing TSV: " + ex.getMessage(), ex);
+            tsvInfo = new TsvInfo(columnNameList, tsvFile, tsvWriter);
+        } catch (BridgeExporterException | FileNotFoundException | SynapseException ex) {
+            LOG.error("Error initializing TSV for table " + getDdbTableKeyValue() + ": " + ex.getMessage(), ex);
+            tsvInfo = TsvInfo.INIT_ERROR_TSV_INFO;
         }
+
+        setTsvInfoForTask(task, tsvInfo);
+        return tsvInfo;
     }
 
     // Gets the column name list from Synapse. If the Synapse table doesn't exist, this will create it. This is called
@@ -165,29 +169,27 @@ public abstract class SynapseExportHandler extends ExportHandler {
         columnDefList.addAll(COMMON_COLUMN_LIST);
         columnDefList.addAll(getSynapseTableColumnList());
 
-        // Create or update table if necessary. Get the column list from the create() or update() call to make sure we
-        // have a column list that matches the Synapse table.
-        List<ColumnModel> serverColumnList;
+        // Create or update table if necessary.
         String synapseTableId = getManager().getSynapseTableIdFromDdb(task, getDdbTableName(), getDdbTableKeyName(),
                 getDdbTableKeyValue());
         if (synapseTableId == null) {
-            serverColumnList = createTableAndGetColumnList(task, columnDefList);
+            createNewTable(task, columnDefList);
         } else {
-            serverColumnList = updateTableAndGetColumnList(synapseTableId, columnDefList);
+            updateTableIfNeeded(synapseTableId, columnDefList);
         }
 
         // Extract column names from column models
         List<String> columnNameList = new ArrayList<>();
         //noinspection Convert2streamapi
-        for (ColumnModel oneServerColumn : serverColumnList) {
-            columnNameList.add(oneServerColumn.getName());
+        for (ColumnModel oneColumnDef : columnDefList) {
+            columnNameList.add(oneColumnDef.getName());
         }
         return columnNameList;
     }
 
-    // Helper method to create the new Synapse table. Returns the list of columns, with column IDs.
-    private List<ColumnModel> createTableAndGetColumnList(ExportTask task, List<ColumnModel> columnDefList)
-            throws BridgeExporterException, SynapseException {
+    // Helper method to create the new Synapse table.
+    private void createNewTable(ExportTask task, List<ColumnModel> columnDefList) throws BridgeExporterException,
+            SynapseException {
         ExportWorkerManager manager = getManager();
         SynapseHelper synapseHelper = manager.getSynapseHelper();
 
@@ -202,16 +204,12 @@ public abstract class SynapseExportHandler extends ExportHandler {
         // write back to DDB table
         manager.setSynapseTableIdToDdb(task, getDdbTableName(), getDdbTableKeyName(), getDdbTableKeyValue(),
                 synapseTableId);
-
-        // Get the column list.
-        return synapseHelper.getColumnModelsForTableWithRetry(synapseTableId);
     }
 
     // Helper method to detect when a schema changes and updates the Synapse table accordingly. Will reject schema
     // changes that delete or modify columns. Optimized so if no columns were inserted, it won't modify the table.
-    // Returns the list of columns that matches what's on Synapse.
-    private List<ColumnModel> updateTableAndGetColumnList(String synapseTableId, List<ColumnModel> columnDefList)
-            throws SynapseException {
+    private void updateTableIfNeeded(String synapseTableId, List<ColumnModel> columnDefList)
+            throws BridgeExporterException, SynapseException {
         ExportWorkerManager manager = getManager();
         SynapseHelper synapseHelper = manager.getSynapseHelper();
 
@@ -234,11 +232,11 @@ public abstract class SynapseExportHandler extends ExportHandler {
         Set<String> keptColumnNameSet = Sets.intersection(existingColumnsByName.keySet(), columnDefsByName.keySet());
 
         // Were columns deleted? If so, log an error and shortcut. (Don't modify the table.)
-        boolean shouldUpdateTable = true;
+        boolean shouldThrow = false;
         if (!deletedColumnNameSet.isEmpty()) {
             LOG.error("Table " + getDdbTableKeyValue() + " has deleted columns: " +
                     BridgeExporterUtil.COMMA_SPACE_JOINER.join(deletedColumnNameSet));
-            shouldUpdateTable = false;
+            shouldThrow = true;
         }
 
         // Similarly, were any columns changed?
@@ -256,16 +254,16 @@ public abstract class SynapseExportHandler extends ExportHandler {
         if (!modifiedColumnNameSet.isEmpty()) {
             LOG.error("Table " + getDdbTableKeyValue() + " has modified columns: " +
                     BridgeExporterUtil.COMMA_SPACE_JOINER.join(modifiedColumnNameSet));
-            shouldUpdateTable = false;
+            shouldThrow = true;
+        }
+
+        if (shouldThrow) {
+            throw new BridgeExporterException("Table has deleted and/or modified columns");
         }
 
         // Optimization: Were any columns added?
         if (addedColumnNameSet.isEmpty()) {
-            shouldUpdateTable = false;
-        }
-
-        if (!shouldUpdateTable) {
-            return existingColumnList;
+            return;
         }
 
         // Make sure the columns have been created / get column IDs.
@@ -281,8 +279,6 @@ public abstract class SynapseExportHandler extends ExportHandler {
         TableEntity table = synapseHelper.getTableWithRetry(synapseTableId);
         table.setColumnIds(colIdList);
         synapseHelper.updateTableWithRetry(table);
-
-        return createdColumnList;
     }
 
     // Helper method to get row values that are common across all Synapse tables and handlers.

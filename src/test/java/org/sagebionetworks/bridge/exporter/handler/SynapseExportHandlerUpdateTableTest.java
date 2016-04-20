@@ -11,6 +11,7 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.fail;
 
 import java.io.File;
 import java.io.IOException;
@@ -20,6 +21,7 @@ import java.util.Map;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Multiset;
 import org.mockito.ArgumentCaptor;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
@@ -28,12 +30,14 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.config.Config;
+import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
 import org.sagebionetworks.bridge.exporter.util.TestUtil;
 import org.sagebionetworks.bridge.exporter.worker.ExportSubtask;
 import org.sagebionetworks.bridge.exporter.worker.ExportTask;
 import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
+import org.sagebionetworks.bridge.exporter.worker.TsvInfo;
 import org.sagebionetworks.bridge.file.InMemoryFileHelper;
 
 public class SynapseExportHandlerUpdateTableTest {
@@ -114,7 +118,6 @@ public class SynapseExportHandlerUpdateTableTest {
         manager.setSynapseHelper(mockSynapseHelper);
         handler.setManager(manager);
 
-
         // set up task
         task = new ExportTask.Builder().withExporterDate(SynapseExportHandlerTest.DUMMY_REQUEST_DATE)
                 .withMetrics(new Metrics()).withRequest(SynapseExportHandlerTest.DUMMY_REQUEST).withTmpDir(tmpDir)
@@ -153,33 +156,12 @@ public class SynapseExportHandlerUpdateTableTest {
 
     @Test
     public void rejectDelete() throws Exception {
-        // Existing columns has "delete-this" (rejected). Handler has "add-this" (without which we wouldn't trigger the
-        // update table code anyway).
+        // Existing columns has "delete-this" (rejected).
         List<ColumnModel> existingColumnList = new ArrayList<>();
         existingColumnList.addAll(SynapseExportHandler.COMMON_COLUMN_LIST);
         existingColumnList.add(makeColumn("delete-this"));
         existingColumnList.add(makeColumn("modify-this"));
-        existingColumnList.add(makeColumn("swap-this-A"));
-        existingColumnList.add(makeColumn("swap-this-B"));
-
-        // setup
-        SynapseExportHandler handler = new UpdateTestSynapseHandler();
-        setup(handler, existingColumnList);
-
-        // execute
-        handler.handle(SynapseExportHandlerTest.makeSubtask(task, "{}"));
-        handler.uploadToSynapseForTask(task);
-
-        // validate tsv file
-        List<String> tsvLineList = TestUtil.bytesToLines(tsvBytes);
-        assertEquals(tsvLineList.size(), 2);
-        SynapseExportHandlerTest.validateTsvHeaders(tsvLineList.get(0), "delete-this", "modify-this", "swap-this-A",
-                "swap-this-B");
-        SynapseExportHandlerTest.validateTsvRow(tsvLineList.get(1), "", "modify-this value", "swap-this-A value",
-                "swap-this-B value");
-
-        // verify we did not update the table
-        verify(mockSynapseHelper, never()).updateTableWithRetry(any());
+        testInitError(existingColumnList);
     }
 
     @Test
@@ -193,26 +175,7 @@ public class SynapseExportHandlerUpdateTableTest {
         modifiedTypeColumn.setColumnType(ColumnType.INTEGER);
         existingColumnList.add(modifiedTypeColumn);
 
-        existingColumnList.add(makeColumn("swap-this-A"));
-        existingColumnList.add(makeColumn("swap-this-B"));
-
-        // setup
-        SynapseExportHandler handler = new UpdateTestSynapseHandler();
-        setup(handler, existingColumnList);
-
-        // execute
-        handler.handle(SynapseExportHandlerTest.makeSubtask(task, "{}"));
-        handler.uploadToSynapseForTask(task);
-
-        // validate tsv file
-        List<String> tsvLineList = TestUtil.bytesToLines(tsvBytes);
-        assertEquals(tsvLineList.size(), 2);
-        SynapseExportHandlerTest.validateTsvHeaders(tsvLineList.get(0), "modify-this", "swap-this-A", "swap-this-B");
-        SynapseExportHandlerTest.validateTsvRow(tsvLineList.get(1), "modify-this value", "swap-this-A value",
-                "swap-this-B value");
-
-        // verify we did not update the table
-        verify(mockSynapseHelper, never()).updateTableWithRetry(any());
+        testInitError(existingColumnList);
     }
 
     @Test
@@ -227,6 +190,11 @@ public class SynapseExportHandlerUpdateTableTest {
         modifiedTypeColumn.setMaximumSize(42L);
         existingColumnList.add(modifiedTypeColumn);
 
+        testInitError(existingColumnList);
+    }
+
+    private void testInitError(List<ColumnModel> existingColumnList) throws Exception {
+        existingColumnList.add(makeColumn("add-this"));
         existingColumnList.add(makeColumn("swap-this-A"));
         existingColumnList.add(makeColumn("swap-this-B"));
 
@@ -234,19 +202,33 @@ public class SynapseExportHandlerUpdateTableTest {
         SynapseExportHandler handler = new UpdateTestSynapseHandler();
         setup(handler, existingColumnList);
 
-        // execute
-        handler.handle(SynapseExportHandlerTest.makeSubtask(task, "{}"));
-        handler.uploadToSynapseForTask(task);
+        // execute - First row triggers the error initializing TSV. Second row short-circuit fails.
+        ExportSubtask subtask = SynapseExportHandlerTest.makeSubtask(task);
+        handler.handle(subtask);
+        handler.handle(subtask);
 
-        // validate tsv file
-        List<String> tsvLineList = TestUtil.bytesToLines(tsvBytes);
-        assertEquals(tsvLineList.size(), 2);
-        SynapseExportHandlerTest.validateTsvHeaders(tsvLineList.get(0), "modify-this", "swap-this-A", "swap-this-B");
-        SynapseExportHandlerTest.validateTsvRow(tsvLineList.get(1), "modify-this value", "swap-this-A value",
-                "swap-this-B value");
+        // upload to Synapse should fail
+        try {
+            handler.uploadToSynapseForTask(task);
+            fail("expected exception");
+        } catch (BridgeExporterException ex) {
+            // expected exception
+        }
 
         // verify we did not update the table
         verify(mockSynapseHelper, never()).updateTableWithRetry(any());
+
+        // verify we don't upload the TSV to Synapse
+        verify(mockSynapseHelper, never()).uploadTsvFileToTable(any(), any(), any());
+
+        // validate metrics
+        Multiset<String> counterMap = task.getMetrics().getCounterMap();
+        assertEquals(counterMap.count(handler.getDdbTableKeyValue() + ".lineCount"), 0);
+        assertEquals(counterMap.count(handler.getDdbTableKeyValue() + ".errorCount"), 2);
+
+        // validate tsvInfo
+        TsvInfo tsvInfo = handler.getTsvInfoForTask(task);
+        assertEquals(tsvInfo.getLineCount(), 0);
     }
 
     @Test
@@ -264,16 +246,17 @@ public class SynapseExportHandlerUpdateTableTest {
         setup(handler, existingColumnList);
 
         // execute
-        handler.handle(SynapseExportHandlerTest.makeSubtask(task, "{}"));
+        handler.handle(SynapseExportHandlerTest.makeSubtask(task));
         handler.uploadToSynapseForTask(task);
 
-        // validate tsv file - columns won't be swapped
+        // validate tsv file - The columns will be in the order specified by the column defs, not in the order
+        // specified in Synapse. This is fine. As long as the headers are properly labeled, Synapse can handle this.
         List<String> tsvLineList = TestUtil.bytesToLines(tsvBytes);
         assertEquals(tsvLineList.size(), 2);
-        SynapseExportHandlerTest.validateTsvHeaders(tsvLineList.get(0), "modify-this", "add-this", "swap-this-B",
-                "swap-this-A");
+        SynapseExportHandlerTest.validateTsvHeaders(tsvLineList.get(0), "modify-this", "add-this", "swap-this-A",
+                "swap-this-B");
         SynapseExportHandlerTest.validateTsvRow(tsvLineList.get(1), "modify-this value", "add-this value",
-                "swap-this-B value", "swap-this-A value");
+                "swap-this-A value", "swap-this-B value");
 
         // verify we did not update the table
         verify(mockSynapseHelper, never()).updateTableWithRetry(any());
@@ -293,7 +276,7 @@ public class SynapseExportHandlerUpdateTableTest {
         setup(handler, existingColumnList);
 
         // execute
-        handler.handle(SynapseExportHandlerTest.makeSubtask(task, "{}"));
+        handler.handle(SynapseExportHandlerTest.makeSubtask(task));
         handler.uploadToSynapseForTask(task);
 
         // validate tsv file

@@ -20,8 +20,24 @@ public class TsvInfo {
     private final List<String> columnNameList;
     private final File file;
     private final PrintWriter writer;
+    private final boolean initError;
 
     private int lineCount = 0;
+
+    /**
+     * Singleton instance of a TsvInfo that failed to initialize (because they all have the same internal state). Used
+     * to represent, for example, TSVs where creating or updating the Synapse table failed, or where the schema changes
+     * dictate an impossible table update.
+     */
+    public static final TsvInfo INIT_ERROR_TSV_INFO = new TsvInfo();
+
+    /** Private constructor that represents a TSV initialization error. */
+    private TsvInfo() {
+        this.columnNameList = null;
+        this.file = null;
+        this.writer = null;
+        this.initError = true;
+    }
 
     /**
      * TSV info constructor.
@@ -37,12 +53,22 @@ public class TsvInfo {
         this.columnNameList = columnNameList;
         this.file = file;
         this.writer = writer;
+        this.initError = false;
 
         writer.println(JOINER_COLUMN_JOINER.join(columnNameList));
     }
 
+    /** Checks if the TSV is properly initialized. Throws a BridgeExporterException if it isn't. */
+    public void checkInitAndThrow() throws BridgeExporterException {
+        if (initError) {
+            throw new BridgeExporterException("TSV was not successfully initialized");
+        }
+    }
+
     /** Flushes and closes the writer. This also checks the writer for errors and will throw if there are errors. */
     public void flushAndCloseWriter() throws BridgeExporterException {
+        checkInitAndThrow();
+
         writer.flush();
         if (writer.checkError()) {
             throw new BridgeExporterException("TSV writer has unknown error");
@@ -66,8 +92,12 @@ public class TsvInfo {
      *
      * @param rowValueMap
      *         Map representing the row. Keys are column names, values are column values.
+     * @throws BridgeExporterException
+     *         if the TSV info was not properly initialized
      */
-    public synchronized void writeRow(Map<String, String> rowValueMap) {
+    public synchronized void writeRow(Map<String, String> rowValueMap) throws BridgeExporterException {
+        checkInitAndThrow();
+
         // Using the columnNameList, go through the row values in order and flatten them into a list.
         List<String> rowValueList = new ArrayList<>();
         //noinspection Convert2streamapi
