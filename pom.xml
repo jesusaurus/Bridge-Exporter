@@ -76,7 +76,7 @@
         <dependency>
             <groupId>org.sagebionetworks</groupId>
             <artifactId>synapseJavaClient</artifactId>
-            <version>2015-09-11-1923-6f23893</version>
+            <version>131.0</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
