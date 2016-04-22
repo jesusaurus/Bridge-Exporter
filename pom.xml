@@ -12,6 +12,7 @@
         <aws.version>1.10.49</aws.version>
         <jackson.version>2.4.4</jackson.version>
         <java.version>1.8</java.version>
+        <logback.version>1.1.6</logback.version>
         <maven.compiler.source>${java.version}</maven.compiler.source>
         <maven.compiler.target>${java.version}</maven.compiler.target>
     </properties>
@@ -71,7 +72,7 @@
         <dependency>
             <groupId>org.sagebionetworks</groupId>
             <artifactId>bridge-base</artifactId>
-            <version>1.2</version>
+            <version>1.5</version>
         </dependency>
         <dependency>
             <groupId>org.sagebionetworks</groupId>
@@ -85,6 +86,19 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-logging</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <version>${logback.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-core</artifactId>
+            <version>${logback.version}</version>
+            <scope>runtime</scope>
         </dependency>
 
         <dependency>
