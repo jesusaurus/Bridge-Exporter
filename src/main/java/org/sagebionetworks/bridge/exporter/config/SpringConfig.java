@@ -25,6 +25,7 @@ import org.sagebionetworks.bridge.config.PropertiesConfig;
 import org.sagebionetworks.bridge.dynamodb.DynamoQueryHelper;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterSqsCallback;
 import org.sagebionetworks.bridge.file.FileHelper;
+import org.sagebionetworks.bridge.heartbeat.HeartbeatLogger;
 import org.sagebionetworks.bridge.s3.S3Helper;
 import org.sagebionetworks.bridge.sqs.PollSqsWorker;
 import org.sagebionetworks.bridge.sqs.SqsHelper;
@@ -110,6 +111,13 @@ public class SpringConfig {
     @Bean
     public FileHelper fileHelper() {
         return new FileHelper();
+    }
+
+    @Bean
+    public HeartbeatLogger heartbeatLogger() {
+        HeartbeatLogger heartbeatLogger = new HeartbeatLogger();
+        heartbeatLogger.setIntervalMinutes(bridgeConfig().getInt("heartbeat.interval.minutes"));
+        return heartbeatLogger;
     }
 
     @Bean
