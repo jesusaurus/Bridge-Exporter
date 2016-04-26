@@ -242,13 +242,20 @@ public abstract class SynapseExportHandler extends ExportHandler {
         // Similarly, were any columns changed?
         Set<String> modifiedColumnNameSet = new TreeSet<>();
         for (String oneKeptColumnName : keptColumnNameSet) {
-            // Validate that column type and max size are the same. We can't use .equals() because ID is definitely
+            // Validate that column types are the same. We can't use .equals() because ID is definitely
             // different.
             ColumnModel existingColumn = existingColumnsByName.get(oneKeptColumnName);
             ColumnModel columnDef = columnDefsByName.get(oneKeptColumnName);
-            if (existingColumn.getColumnType() != columnDef.getColumnType() ||
-                    !Objects.equals(existingColumn.getMaximumSize(), columnDef.getMaximumSize())) {
+            if (existingColumn.getColumnType() != columnDef.getColumnType()) {
                 modifiedColumnNameSet.add(oneKeptColumnName);
+            }
+
+            // In very old tables created by a very old version of BridgeEX, some String columns were created with size
+            // 1000 instead of 100. In order tables, they were manually resized to much smaller than 100. In either
+            // case, if the column size is different, we need to set the column def's size to match the existing
+            // column's size so we don't accidentally delete the column.
+            if (!Objects.equals(existingColumn.getMaximumSize(), columnDef.getMaximumSize())) {
+                columnDef.setMaximumSize(existingColumn.getMaximumSize());
             }
         }
         if (!modifiedColumnNameSet.isEmpty()) {
