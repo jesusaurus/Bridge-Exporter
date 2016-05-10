@@ -110,7 +110,7 @@ public class BridgeExporterRecordProcessor {
      *         if we fail to get the record IDs from the record ID factory
      */
     public void processRecordsForRequest(BridgeExporterRequest request) throws IOException {
-        LOG.info("Received request " + request.toLogString());
+        LOG.info("Received request " + request.toString());
 
         // make task
         Metrics metrics = new Metrics();
@@ -165,7 +165,7 @@ public class BridgeExporterRecordProcessor {
             workerManager.endOfStream(task);
         } finally {
             LOG.info("Finished processing request in " + stopwatch.elapsed(TimeUnit.SECONDS) + " seconds, " +
-                    request.toLogString());
+                    request.toString());
             metricsHelper.publishMetrics(metrics);
         }
 

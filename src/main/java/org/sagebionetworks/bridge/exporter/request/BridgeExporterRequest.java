@@ -142,7 +142,8 @@ public class BridgeExporterRequest {
      * Converts the request to a string for use in log messages. Only contains the tag and a basic parameter to
      * identify the record source.
      */
-    public String toLogString() {
+    @Override
+    public String toString() {
         StringBuilder stringBuilder = new StringBuilder();
 
         // Record source is either date, start/endDateTime, or recordIdS3Override.
