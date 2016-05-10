@@ -3,38 +3,47 @@ package org.sagebionetworks.bridge.exporter.request;
 import java.util.Map;
 import java.util.Set;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.datatype.joda.deser.LocalDateDeserializer;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import org.apache.commons.lang.StringUtils;
+import org.joda.time.DateTime;
 import org.joda.time.LocalDate;
 
+import org.sagebionetworks.bridge.json.DateTimeDeserializer;
+import org.sagebionetworks.bridge.json.DateTimeToStringSerializer;
 import org.sagebionetworks.bridge.json.LocalDateToStringSerializer;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
 /** Encapsulates a request to Bridge EX and the ability to serialize to/from JSON. */
 @JsonDeserialize(builder = BridgeExporterRequest.Builder.class)
-@JsonSerialize(include = JsonSerialize.Inclusion.NON_NULL)
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class BridgeExporterRequest {
     private final LocalDate date;
+    private final DateTime endDateTime;
     private final String exporterDdbPrefixOverride;
     private final String recordIdS3Override;
     private final BridgeExporterSharingMode sharingMode;
+    private final DateTime startDateTime;
     private final Set<String> studyWhitelist;
     private final Map<String, String> synapseProjectOverrideMap;
     private final Set<UploadSchemaKey> tableWhitelist;
     private final String tag;
 
     /** Private constructor. To build, go through the builder. */
-    private BridgeExporterRequest(LocalDate date, String exporterDdbPrefixOverride, String recordIdS3Override,
-            BridgeExporterSharingMode sharingMode, Set<String> studyWhitelist,
-            Map<String, String> synapseProjectOverrideMap, Set<UploadSchemaKey> tableWhitelist, String tag) {
+    private BridgeExporterRequest(LocalDate date, DateTime endDateTime, String exporterDdbPrefixOverride,
+            String recordIdS3Override, BridgeExporterSharingMode sharingMode, DateTime startDateTime,
+            Set<String> studyWhitelist, Map<String, String> synapseProjectOverrideMap,
+            Set<UploadSchemaKey> tableWhitelist, String tag) {
         this.date = date;
+        this.endDateTime = endDateTime;
         this.exporterDdbPrefixOverride = exporterDdbPrefixOverride;
         this.recordIdS3Override = recordIdS3Override;
         this.sharingMode = sharingMode;
+        this.startDateTime = startDateTime;
         this.studyWhitelist = studyWhitelist;
         this.synapseProjectOverrideMap = synapseProjectOverrideMap;
         this.tableWhitelist = tableWhitelist;
@@ -42,12 +51,22 @@ public class BridgeExporterRequest {
     }
 
     /**
-     * Date for data that Bridge EX should export (usually yesterday's date). This is required, unless
-     * recordIdS3Override is specified, in which case date should be left blank.
+     * Date for data that Bridge EX should export (usually yesterday's date). You must specify exactly one of date,
+     * start/endDateTime, or recordIdS3Override.
      */
     @JsonSerialize(using = LocalDateToStringSerializer.class)
     public LocalDate getDate() {
         return date;
+    }
+
+    /**
+     * End date, exclusive. For use with export jobs more granular than daily (such as hourly exports). See also
+     * {@link #getStartDateTime}. If this is specified, so must startDateTime. You must specify exactly one of date,
+     * start/endDateTime, or recordIdS3Override.
+     */
+    @JsonSerialize(using = DateTimeToStringSerializer.class)
+    public DateTime getEndDateTime() {
+        return endDateTime;
     }
 
     /**
@@ -61,7 +80,7 @@ public class BridgeExporterRequest {
 
     /**
      * Override to export a list of record IDs instead of querying DDB. This is generally used for redriving specific
-     * records. This is optional, but if this is specified, date must be left blank.
+     * records. You must specify exactly one of date, start/endDateTime, or recordIdS3Override.
      */
     public String getRecordIdS3Override() {
         return recordIdS3Override;
@@ -74,6 +93,16 @@ public class BridgeExporterRequest {
      */
     public BridgeExporterSharingMode getSharingMode() {
         return sharingMode;
+    }
+
+    /**
+     * Start date, inclusive. For use with export jobs more granular than daily (such as hourly exports). See also
+     * {@link #getEndDateTime}. If this is specified, so must startDateTime. You must specify exactly one of date,
+     * start/endDateTime, or recordIdS3Override.
+     */
+    @JsonSerialize(using = DateTimeToStringSerializer.class)
+    public DateTime getStartDateTime() {
+        return startDateTime;
     }
 
     /**
@@ -109,12 +138,43 @@ public class BridgeExporterRequest {
         return tag;
     }
 
+    /**
+     * Converts the request to a string for use in log messages. Only contains the tag and a basic parameter to
+     * identify the record source.
+     */
+    public String toLogString() {
+        StringBuilder stringBuilder = new StringBuilder();
+
+        // Record source is either date, start/endDateTime, or recordIdS3Override.
+        if (date != null) {
+            stringBuilder.append("date=");
+            stringBuilder.append(date);
+        } else if ( startDateTime != null) {
+            stringBuilder.append("startDateTime=");
+            stringBuilder.append(startDateTime);
+            stringBuilder.append(", endDateTime=");
+            stringBuilder.append(endDateTime);
+        } else {
+            // By elimination, this must use recordIdS3Override
+            stringBuilder.append("recordIdS3Override=");
+            stringBuilder.append(recordIdS3Override);
+        }
+
+        // Always include tag.
+        stringBuilder.append(", tag=");
+        stringBuilder.append(tag);
+
+        return stringBuilder.toString();
+    }
+
     /** Request builder. */
     public static class Builder {
         private LocalDate date;
+        private DateTime endDateTime;
         private String exporterDdbPrefixOverride;
         private String recordIdS3Override;
         private BridgeExporterSharingMode sharingMode;
+        private DateTime startDateTime;
         private Set<String> studyWhitelist;
         private Map<String, String> synapseProjectOverrideMap;
         private Set<UploadSchemaKey> tableWhitelist;
@@ -124,6 +184,13 @@ public class BridgeExporterRequest {
         @JsonDeserialize(using = LocalDateDeserializer.class)
         public Builder withDate(LocalDate date) {
             this.date = date;
+            return this;
+        }
+
+        /** @see BridgeExporterRequest#getEndDateTime */
+        @JsonDeserialize(using = DateTimeDeserializer.class)
+        public Builder withEndDateTime(DateTime endDateTime) {
+            this.endDateTime = endDateTime;
             return this;
         }
 
@@ -142,6 +209,13 @@ public class BridgeExporterRequest {
         /** @see BridgeExporterRequest#getSharingMode */
         public Builder withSharingMode(BridgeExporterSharingMode sharingMode) {
             this.sharingMode = sharingMode;
+            return this;
+        }
+
+        /** @see BridgeExporterRequest#getStartDateTime */
+        @JsonDeserialize(using = DateTimeDeserializer.class)
+        public Builder withStartDateTime(DateTime startDateTime) {
+            this.startDateTime = startDateTime;
             return this;
         }
 
@@ -171,11 +245,37 @@ public class BridgeExporterRequest {
 
         /** Builds a Bridge EX request object and validates all parameters. */
         public BridgeExporterRequest build() {
-            // Either date or recordIdS3Override are required, but not both.
-            boolean hasDate = date != null;
-            boolean hasRecordIdS3Override = StringUtils.isNotBlank(recordIdS3Override);
-            if (!(hasDate ^ hasRecordIdS3Override)) {
-                throw new IllegalStateException("Either date or recordIdS3Override must be specified, but not both.");
+            // startDateTime and endDateTime must be both specified or both absent.
+            boolean hasStartDateTime = startDateTime != null;
+            boolean hasEndDateTime = endDateTime != null;
+            if (hasStartDateTime ^ hasEndDateTime) {
+                throw new IllegalStateException("startDateTime and endDateTime must both be specified or both be " +
+                        "absent.");
+            }
+            if (hasStartDateTime && !startDateTime.isBefore(endDateTime)) {
+                throw new IllegalStateException("startDateTime must be before endDateTime.");
+            }
+
+            // If start/endDateTime are specified, there must be a studyWhitelist.
+            if (hasStartDateTime && studyWhitelist == null) {
+                throw new IllegalStateException("If start- and endDateTime are specified, studyWhitelist must also " +
+                        "be specified.");
+            }
+
+            // Exactly one of date, start/endDateTime, and recordIdS3Override must be specified.
+            int numRecordSources = 0;
+            if (hasStartDateTime) {
+                numRecordSources++;
+            }
+            if (date != null) {
+                numRecordSources++;
+            }
+            if (StringUtils.isNotBlank(recordIdS3Override)) {
+                numRecordSources++;
+            }
+            if (numRecordSources != 1) {
+                throw new IllegalStateException("Exactly one of date, start/endDateTime, and recordIdS3Override must" +
+                        " be specified.");
             }
 
             // If exporterDdbPrefixOverride is specified, then so must synapseProjectOverrideMap, and vice versa.
@@ -221,8 +321,8 @@ public class BridgeExporterRequest {
                 tableWhitelist = ImmutableSet.copyOf(tableWhitelist);
             }
 
-            return new BridgeExporterRequest(date, exporterDdbPrefixOverride, recordIdS3Override, sharingMode,
-                    studyWhitelist, synapseProjectOverrideMap, tableWhitelist, tag);
+            return new BridgeExporterRequest(date, endDateTime, exporterDdbPrefixOverride, recordIdS3Override,
+                    sharingMode, startDateTime, studyWhitelist, synapseProjectOverrideMap, tableWhitelist, tag);
         }
     }
 }

@@ -18,6 +18,7 @@ public class BridgeExporterUtil {
     private static final Logger LOG = LoggerFactory.getLogger(BridgeExporterUtil.class);
 
     public static final Joiner COMMA_SPACE_JOINER = Joiner.on(", ").useForNull("");
+    public static final String CONFIG_KEY_TIME_ZONE_NAME = "time.zone.name";
 
     private static final ImmutableSetMultimap<UploadSchemaKey, String> SCHEMA_FIELDS_TO_CONVERT;
     static {

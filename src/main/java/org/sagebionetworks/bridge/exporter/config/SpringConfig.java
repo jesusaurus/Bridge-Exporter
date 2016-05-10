@@ -93,6 +93,11 @@ public class SpringConfig {
         return ddbClient().getTable(ddbPrefix() + "HealthDataRecord3");
     }
 
+    @Bean(name = "ddbRecordStudyUploadedOnIndex")
+    public Index ddbRecordStudyUploadedOnIndex() {
+        return ddbRecordTable().getIndex("study-uploadedOn-index");
+    }
+
     @Bean(name = "ddbRecordUploadDateIndex")
     public Index ddbRecordUploadDateIndex() {
         return ddbRecordTable().getIndex("uploadDate-index");

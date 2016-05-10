@@ -21,6 +21,7 @@ import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.metrics.MetricsHelper;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
+import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.exporter.worker.ExportTask;
 import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
 import org.sagebionetworks.bridge.file.FileHelper;
@@ -37,7 +38,6 @@ public class BridgeExporterRecordProcessor {
     // package-scoped to be available to unit tests
     static final String CONFIG_KEY_RECORD_LOOP_DELAY_MILLIS = "record.loop.delay.millis";
     static final String CONFIG_KEY_RECORD_LOOP_PROGRESS_REPORT_PERIOD = "record.loop.progress.report.period";
-    static final String CONFIG_KEY_TIME_ZONE_NAME = "time.zone.name";
 
     // config attributes
     private int delayMillis;
@@ -57,7 +57,7 @@ public class BridgeExporterRecordProcessor {
     public final void setConfig(Config config) {
         this.delayMillis = config.getInt(CONFIG_KEY_RECORD_LOOP_DELAY_MILLIS);
         this.progressReportPeriod = config.getInt(CONFIG_KEY_RECORD_LOOP_PROGRESS_REPORT_PERIOD);
-        this.timeZone = DateTimeZone.forID(config.get(CONFIG_KEY_TIME_ZONE_NAME));
+        this.timeZone = DateTimeZone.forID(config.get(BridgeExporterUtil.CONFIG_KEY_TIME_ZONE_NAME));
     }
 
     /** DDB Health Data Record table, used for querying full records for the list of record IDs. */
@@ -110,9 +110,7 @@ public class BridgeExporterRecordProcessor {
      *         if we fail to get the record IDs from the record ID factory
      */
     public void processRecordsForRequest(BridgeExporterRequest request) throws IOException {
-        LocalDate requestDate = request.getDate();
-        String requestTag = request.getTag();
-        LOG.info("Received request with date=" + requestDate + ", tag=" + requestTag);
+        LOG.info("Received request " + request.toLogString());
 
         // make task
         Metrics metrics = new Metrics();
@@ -166,8 +164,8 @@ public class BridgeExporterRecordProcessor {
 
             workerManager.endOfStream(task);
         } finally {
-            LOG.info("Finished processing request in " + stopwatch.elapsed(TimeUnit.SECONDS) + " seconds, date=" +
-                    requestDate + ", tag=" + requestTag);
+            LOG.info("Finished processing request in " + stopwatch.elapsed(TimeUnit.SECONDS) + " seconds, " +
+                    request.toLogString());
             metricsHelper.publishMetrics(metrics);
         }
 
