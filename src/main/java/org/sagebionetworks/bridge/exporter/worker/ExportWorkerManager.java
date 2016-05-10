@@ -444,7 +444,7 @@ public class ExportWorkerManager {
      */
     public void endOfStream(ExportTask task) {
         BridgeExporterRequest request = task.getRequest();
-        LOG.info("End of stream signaled for request with date=" + request.getDate() + ", tag=" + request.getTag());
+        LOG.info("End of stream signaled for request " + request.toString());
 
         // Wait for all outstanding tasks to complete
         Stopwatch stopwatch = Stopwatch.createStarted();
@@ -465,7 +465,7 @@ public class ExportWorkerManager {
             }
         }
 
-        LOG.info("All subtasks done for request with date=" + request.getDate() + ", tag=" + request.getTag());
+        LOG.info("All subtasks done for request " + request.toString());
 
         // Tell each handler to upload their TSVs to Synapse.
         for (Map.Entry<UploadSchemaKey, HealthDataExportHandler> healthDataHandlerEntry
@@ -500,6 +500,6 @@ public class ExportWorkerManager {
             }
         }
 
-        LOG.info("Done uploading to Synapse for request with date=" + request.getDate() + ", tag=" + request.getTag());
+        LOG.info("Done uploading to Synapse for request " + request.toString());
     }
 }

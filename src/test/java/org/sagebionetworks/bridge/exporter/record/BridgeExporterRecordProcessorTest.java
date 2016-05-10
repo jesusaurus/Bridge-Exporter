@@ -25,6 +25,7 @@ import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.metrics.MetricsHelper;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
+import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.exporter.worker.ExportTask;
 import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
 import org.sagebionetworks.bridge.file.InMemoryFileHelper;
@@ -48,7 +49,7 @@ public class BridgeExporterRecordProcessorTest {
         when(mockConfig.getInt(BridgeExporterRecordProcessor.CONFIG_KEY_RECORD_LOOP_DELAY_MILLIS)).thenReturn(0);
         when(mockConfig.getInt(BridgeExporterRecordProcessor.CONFIG_KEY_RECORD_LOOP_PROGRESS_REPORT_PERIOD))
                 .thenReturn(2);
-        when(mockConfig.get(BridgeExporterRecordProcessor.CONFIG_KEY_TIME_ZONE_NAME))
+        when(mockConfig.get(BridgeExporterUtil.CONFIG_KEY_TIME_ZONE_NAME))
                 .thenReturn("America/Los_Angeles");
 
         // mock DDB record table - We don't look inside any of these records, so for the purposes of this test, just
