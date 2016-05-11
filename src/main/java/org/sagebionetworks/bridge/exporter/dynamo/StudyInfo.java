@@ -9,11 +9,13 @@ import org.apache.commons.lang.StringUtils;
 public class StudyInfo {
     private final Long dataAccessTeamId;
     private final String synapseProjectId;
+    private final boolean usesCustomExportSchedule;
 
     /** Private constructor. To construct, see builder. */
-    private StudyInfo(Long dataAccessTeamId, String synapseProjectId) {
+    private StudyInfo(Long dataAccessTeamId, String synapseProjectId, boolean usesCustomExportSchedule) {
         this.dataAccessTeamId = dataAccessTeamId;
         this.synapseProjectId = synapseProjectId;
+        this.usesCustomExportSchedule = usesCustomExportSchedule;
     }
 
     /** The team ID of the team that is granted read access to exported data. */
@@ -26,10 +28,19 @@ public class StudyInfo {
         return synapseProjectId;
     }
 
+    /**
+     * False if BridgeEX should include it in the "default" nightly job (which is an export job without a study
+     * whitelist). True otherwise.
+     */
+    public boolean getUsesCustomExportSchedule() {
+        return usesCustomExportSchedule;
+    }
+
     /** StudyInfo Builder. */
     public static class Builder {
         private Long dataAccessTeamId;
         private String synapseProjectId;
+        private Boolean usesCustomExportSchedule;
 
         /** @see StudyInfo#getDataAccessTeamId */
         public Builder withDataAccessTeamId(Long dataAccessTeamId) {
@@ -43,6 +54,12 @@ public class StudyInfo {
             return this;
         }
 
+        /** @see StudyInfo#getUsesCustomExportSchedule */
+        public Builder withUsesCustomExportSchedule(Boolean usesCustomExportSchedule) {
+            this.usesCustomExportSchedule = usesCustomExportSchedule;
+            return this;
+        }
+
         /**
          * Builds the study info object. The study may not have been configured for Bridge-EX yet (that is, no
          * dataAccessTeamId and no synapseProjectId). If that's the case, return null instead of returning an
@@ -51,9 +68,13 @@ public class StudyInfo {
         public StudyInfo build() {
             if (dataAccessTeamId == null || StringUtils.isBlank(synapseProjectId)) {
                 return null;
-            } else {
-                return new StudyInfo(dataAccessTeamId, synapseProjectId);
             }
+
+            // usesCustomExportSchedule defaults to false.
+            boolean finalUsesCustomExportSchedule = usesCustomExportSchedule != null ? usesCustomExportSchedule :
+                    false;
+
+            return new StudyInfo(dataAccessTeamId, synapseProjectId, finalUsesCustomExportSchedule);
         }
     }
 }

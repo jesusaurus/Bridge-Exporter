@@ -30,6 +30,7 @@ public class DynamoHelper {
 
     private static final String STUDY_INFO_KEY_DATA_ACCESS_TEAM = "synapseDataAccessTeamId";
     private static final String STUDY_INFO_KEY_PROJECT_ID = "synapseProjectId";
+    private static final String STUDY_INFO_KEY_USES_CUSTOM_EXPORT_SCHEDULE = "usesCustomExportSchedule";
 
     private Table ddbParticipantOptionsTable;
     private Table ddbSchemaTable;
@@ -138,9 +139,17 @@ public class DynamoHelper {
         if (studyItem.get(STUDY_INFO_KEY_DATA_ACCESS_TEAM) != null) {
             studyInfoBuilder.withDataAccessTeamId(studyItem.getLong(STUDY_INFO_KEY_DATA_ACCESS_TEAM));
         }
+
         if (studyItem.get(STUDY_INFO_KEY_PROJECT_ID) != null) {
             studyInfoBuilder.withSynapseProjectId(studyItem.getString(STUDY_INFO_KEY_PROJECT_ID));
         }
+
+        if (studyItem.get(STUDY_INFO_KEY_USES_CUSTOM_EXPORT_SCHEDULE) != null) {
+            // For some reason, the mapper saves the value as an int, not as a boolean.
+            boolean usesCustomExportSchedule = studyItem.getInt(STUDY_INFO_KEY_USES_CUSTOM_EXPORT_SCHEDULE) != 0;
+            studyInfoBuilder.withUsesCustomExportSchedule(usesCustomExportSchedule);
+        }
+
         return studyInfoBuilder.build();
     }
 }
