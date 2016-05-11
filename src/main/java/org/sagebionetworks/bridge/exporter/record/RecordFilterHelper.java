@@ -70,12 +70,12 @@ public class RecordFilterHelper {
                     BridgeExporterUtil.getSchemaKeyForRecord(record));
         }
 
-        // filter if the study is not configured for Bridge-EX (absence of configuration)
-        boolean excludeUnconfiguredStudy = shouldExcludeUnconfiguredStudies(metrics, studyId);
+        // filter based on study configuration
+        boolean excludeByStudyConfig = shouldExcludeByStudyConfiguration(metrics, studyWhitelist, studyId);
 
         // If any of the filters are hit, we filter the record. (We don't use short-circuiting because we want to
         // collect the metrics.)
-        return excludeBySharingScope || excludeByStudy || excludeByTable || excludeUnconfiguredStudy;
+        return excludeBySharingScope || excludeByStudy || excludeByTable || excludeByStudyConfig;
     }
 
     // Helper method that handles the sharing filter.
@@ -149,15 +149,30 @@ public class RecordFilterHelper {
         }
     }
 
-    // Helper method that handles filtering out unconfigured studies
-    private boolean shouldExcludeUnconfiguredStudies(Metrics metrics, String studyId) {
-        // Configured studies will return non-null studyInfo. Unconfigured studies will return null ones.
+    // Helper method that fetches and filters based on study configuration
+    private boolean shouldExcludeByStudyConfiguration(Metrics metrics, Set<String> studyWhitelist, String studyId) {
         StudyInfo studyInfo = dynamoHelper.getStudyInfo(studyId);
-        if (studyInfo != null) {
+
+        // Configured studies will return non-null studyInfo. Unconfigured studies will return null ones.
+        if (studyInfo == null) {
+            metrics.incrementCounter("unconfigured[" + studyId + "]");
+            return true;
+        }
+
+        // If the study doesn't have a custom export schedule, it's included.
+        if (!studyInfo.getUsesCustomExportSchedule()) {
             metrics.incrementCounter("configured[" + studyId + "]");
             return false;
+        }
+
+        if (studyWhitelist != null && studyWhitelist.contains(studyId)) {
+            // If there is a study whitelist that includes this study, then this is a custom export job. Include the
+            // record.
+            metrics.incrementCounter("custom-export-accepted[" + studyId + "]");
+            return false;
         } else {
-            metrics.incrementCounter("unconfigured[" + studyId + "]");
+            // This is not a custom job. We shouldn't include the record.
+            metrics.incrementCounter("custom-export-excluded[" + studyId + "]");
             return true;
         }
     }
