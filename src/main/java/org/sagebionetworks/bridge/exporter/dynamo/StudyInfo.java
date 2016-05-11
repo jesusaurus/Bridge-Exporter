@@ -29,8 +29,8 @@ public class StudyInfo {
     }
 
     /**
-     * True if BridgeEX should include it in the "default" nightly job (which is an export job without a study
-     * whitelist). False otherwise.
+     * False if BridgeEX should include it in the "default" nightly job (which is an export job without a study
+     * whitelist). True otherwise.
      */
     public boolean getUsesCustomExportSchedule() {
         return usesCustomExportSchedule;
