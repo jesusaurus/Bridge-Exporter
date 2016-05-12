@@ -18,3 +18,5 @@ deploy:
     prod: Bridge-EX-Prod
   bucket_name: elasticbeanstalk-us-east-1-649232250620
   zip-file: target/Bridge-Exporter-2.0.war
+  on:
+    all_branches: true
