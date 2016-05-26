@@ -9,7 +9,6 @@ import org.springframework.stereotype.Component;
 import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
-import org.sagebionetworks.bridge.sdk.ClientInfo;
 import org.sagebionetworks.bridge.sdk.WorkerClient;
 import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
 
@@ -18,10 +17,6 @@ import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
  */
 @Component
 public class BridgeHelper {
-    /** BridgeEX client info to send to Bridge Server. */
-    public static final ClientInfo CLIENT_INFO = new ClientInfo.Builder().withAppName("BridgeEX").withAppVersion(2)
-            .build();
-
     private WorkerClient workerClient;
 
     /** Bridge Client for worker APIs. */
