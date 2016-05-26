@@ -23,11 +23,11 @@ import org.springframework.context.annotation.Configuration;
 import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.config.PropertiesConfig;
 import org.sagebionetworks.bridge.dynamodb.DynamoQueryHelper;
-import org.sagebionetworks.bridge.exporter.helper.BridgeHelper;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterSqsCallback;
 import org.sagebionetworks.bridge.file.FileHelper;
 import org.sagebionetworks.bridge.heartbeat.HeartbeatLogger;
 import org.sagebionetworks.bridge.s3.S3Helper;
+import org.sagebionetworks.bridge.sdk.ClientInfo;
 import org.sagebionetworks.bridge.sdk.ClientProvider;
 import org.sagebionetworks.bridge.sdk.Session;
 import org.sagebionetworks.bridge.sdk.WorkerClient;
@@ -68,7 +68,8 @@ public class SpringConfig {
     @Bean
     public WorkerClient bridgeWorkerClient() {
         // set client info
-        ClientProvider.setClientInfo(BridgeHelper.CLIENT_INFO);
+        ClientInfo clientInfo = new ClientInfo.Builder().withAppName("BridgeEX").withAppVersion(2).build();
+        ClientProvider.setClientInfo(clientInfo);
 
         // get credentials
         Config config = bridgeConfig();
