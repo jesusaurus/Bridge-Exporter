@@ -5,14 +5,36 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
+import java.util.Map;
+
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.testng.annotations.Test;
 
+import org.sagebionetworks.bridge.exporter.helper.BridgeHelperTest;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
+import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldDefinition;
+import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldType;
+import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
 
 public class BridgeExporterUtilTest {
+    @Test
+    public void getFieldDefMapFromSchema() {
+        // set up test schema
+        UploadFieldDefinition fooField = new UploadFieldDefinition.Builder().withName("foo")
+                .withType(UploadFieldType.STRING).build();
+        UploadFieldDefinition barField = new UploadFieldDefinition.Builder().withName("bar")
+                .withType(UploadFieldType.INT).build();
+        UploadSchema schema = BridgeHelperTest.simpleSchemaBuilder().withFieldDefinitions(fooField, barField).build();
+
+        // execute and validate
+        Map<String, UploadFieldDefinition> fieldDefMap = BridgeExporterUtil.getFieldDefMapFromSchema(schema);
+        assertEquals(fieldDefMap.size(), 2);
+        assertEquals(fieldDefMap.get("foo"), fooField);
+        assertEquals(fieldDefMap.get("bar"), barField);
+    }
+
     @Test
     public void getSchemaKeyForRecord() {
         // mock DDB Health Record
@@ -20,6 +42,21 @@ public class BridgeExporterUtilTest {
                 .withInt("schemaRevision", 13);
         UploadSchemaKey schemaKey = BridgeExporterUtil.getSchemaKeyForRecord(recordItem);
         assertEquals(schemaKey.toString(), "test-study-test-schema-v13");
+    }
+
+    @Test
+    public void getSchemaKeyFromSchema() {
+        // set up test schema
+        UploadFieldDefinition fooField = new UploadFieldDefinition.Builder().withName("foo")
+                .withType(UploadFieldType.STRING).build();
+        UploadSchema schema = BridgeHelperTest.simpleSchemaBuilder().withStudyId("test-study")
+                .withSchemaId("test-schema").withRevision(3).withFieldDefinitions(fooField).build();
+
+        // execute and validate
+        UploadSchemaKey schemaKey = BridgeExporterUtil.getSchemaKeyFromSchema(schema);
+        assertEquals(schemaKey.getStudyId(), "test-study");
+        assertEquals(schemaKey.getSchemaId(), "test-schema");
+        assertEquals(schemaKey.getRevision(), 3);
     }
 
     @Test

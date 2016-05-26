@@ -12,56 +12,8 @@ import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
 import org.testng.annotations.Test;
 
-import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
-import org.sagebionetworks.bridge.exporter.metrics.Metrics;
-import org.sagebionetworks.bridge.schema.UploadSchema;
-import org.sagebionetworks.bridge.schema.UploadSchemaKey;
-
 @SuppressWarnings("unchecked")
 public class DynamoHelperTest {
-    @Test
-    public void getSchema() throws Exception {
-        // mock DDB Schema table
-        String fieldDefListJson = "[\n" +
-                "   {\n" +
-                "       \"name\":\"foo-field\",\n" +
-                "       \"type\":\"STRING\"\n" +
-                "   }\n" +
-                "]";
-        Item dummySchemaItem = new Item().withString("key", "test-study:test-schema").withInt("revision", 42)
-                .withString("fieldDefinitions", fieldDefListJson);
-
-        Table mockSchemaTable = mock(Table.class);
-        when(mockSchemaTable.getItem("key", "test-study:test-schema", "revision", 42)).thenReturn(dummySchemaItem);
-
-        // set up Dynamo Helper
-        DynamoHelper helper = new DynamoHelper();
-        helper.setDdbSchemaTable(mockSchemaTable);
-
-        // execute and validate - The goal here isn't an exhaustive test of parsing an DDB record into an Upload
-        // Schema. That's handled by bridge-base. Just verify basic params.
-        UploadSchemaKey schemaKey = new UploadSchemaKey.Builder().withStudyId("test-study").withSchemaId("test-schema")
-                .withRevision(42).build();
-        UploadSchema schema = helper.getSchema(new Metrics(), schemaKey);
-        assertEquals(schema.getKey().toString(), "test-study-test-schema-v42");
-    }
-
-    @Test(expectedExceptions = SchemaNotFoundException.class)
-    public void schemaNotFound() throws Exception {
-        // mock DDB Schema table
-        Table mockSchemaTable = mock(Table.class);
-        when(mockSchemaTable.getItem("key", "test-study:missing-schema", "revision", 3)).thenReturn(null);
-
-        // set up Dynamo Helper
-        DynamoHelper helper = new DynamoHelper();
-        helper.setDdbSchemaTable(mockSchemaTable);
-
-        // execute and validate
-        UploadSchemaKey schemaKey = new UploadSchemaKey.Builder().withStudyId("test-study")
-                .withSchemaId("missing-schema").withRevision(3).build();
-        helper.getSchema(new Metrics(), schemaKey);
-    }
-
     @Test
     public void getSharingScope() {
         // mock DDB Participant Options table

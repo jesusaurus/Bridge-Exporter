@@ -23,10 +23,15 @@ import org.springframework.context.annotation.Configuration;
 import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.config.PropertiesConfig;
 import org.sagebionetworks.bridge.dynamodb.DynamoQueryHelper;
+import org.sagebionetworks.bridge.exporter.helper.BridgeHelper;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterSqsCallback;
 import org.sagebionetworks.bridge.file.FileHelper;
 import org.sagebionetworks.bridge.heartbeat.HeartbeatLogger;
 import org.sagebionetworks.bridge.s3.S3Helper;
+import org.sagebionetworks.bridge.sdk.ClientProvider;
+import org.sagebionetworks.bridge.sdk.Session;
+import org.sagebionetworks.bridge.sdk.WorkerClient;
+import org.sagebionetworks.bridge.sdk.models.users.SignInCredentials;
 import org.sagebionetworks.bridge.sqs.PollSqsWorker;
 import org.sagebionetworks.bridge.sqs.SqsHelper;
 
@@ -58,6 +63,23 @@ public class SpringConfig {
         } catch (IOException ex) {
             throw new RuntimeException(ex);
         }
+    }
+
+    @Bean
+    public WorkerClient bridgeWorkerClient() {
+        // set client info
+        ClientProvider.setClientInfo(BridgeHelper.CLIENT_INFO);
+
+        // get credentials
+        Config config = bridgeConfig();
+        String study = config.get("bridge.worker.study");
+        String email = config.get("bridge.worker.email");
+        String password = config.get("bridge.worker.password");
+        SignInCredentials credentials = new SignInCredentials(study, email, password);
+
+        // sign in and get client
+        Session session = ClientProvider.signIn(credentials);
+        return session.getWorkerClient();
     }
 
     @Bean
@@ -101,11 +123,6 @@ public class SpringConfig {
     @Bean(name = "ddbRecordUploadDateIndex")
     public Index ddbRecordUploadDateIndex() {
         return ddbRecordTable().getIndex("uploadDate-index");
-    }
-
-    @Bean(name = "ddbSchemaTable")
-    public Table ddbSchemaTable() {
-        return ddbClient().getTable(ddbPrefix() + "UploadSchema");
     }
 
     @Bean(name = "ddbStudyTable")

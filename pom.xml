@@ -75,6 +75,11 @@
             <version>2.2</version>
         </dependency>
         <dependency>
+            <groupId>org.sagebionetworks.bridge</groupId>
+            <artifactId>java-sdk</artifactId>
+            <version>0.8.2</version>
+        </dependency>
+        <dependency>
             <groupId>org.sagebionetworks</groupId>
             <artifactId>synapseJavaClient</artifactId>
             <version>131.0</version>

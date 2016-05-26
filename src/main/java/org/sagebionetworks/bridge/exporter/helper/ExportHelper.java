@@ -20,10 +20,12 @@ import org.springframework.stereotype.Component;
 import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.exporter.config.SpringConfig;
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
+import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
 import org.sagebionetworks.bridge.s3.S3Helper;
-import org.sagebionetworks.bridge.schema.UploadSchema;
 import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
+import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldDefinition;
+import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
 
 /**
  * This class contains utility methods that call multiple backend services that doesn't really fit into any of the
@@ -113,7 +115,8 @@ public class ExportHelper {
         }
 
         // get schema and field type map, so we can process attachments
-        Map<String, String> surveyFieldTypeMap = surveySchema.getFieldTypeMap();
+        Map<String, UploadFieldDefinition> surveyFieldDefMap = BridgeExporterUtil.getFieldDefMapFromSchema(
+                surveySchema);
 
         // copy fields to "non-survey" format
         ObjectNode convertedSurveyNode = DefaultObjectMapper.INSTANCE.createObjectNode();
@@ -164,14 +167,14 @@ public class ExportHelper {
             JsonNode answerAnswerNode = oneAnswerNode.get(answerKey);
             if (answerAnswerNode != null && !answerAnswerNode.isNull()) {
                 // handle attachment types (file handle types)
-                String bridgeType = surveyFieldTypeMap.get(answerItem);
-                if (bridgeType == null) {
+                UploadFieldDefinition fieldDef = surveyFieldDefMap.get(answerItem);
+                if (fieldDef == null) {
                     // Not in the schema. Log an error and skip.
                     LOG.error("Survey record ID " + recordId + " item " + answerItem + " not found in schema");
                     continue;
                 }
 
-                ColumnType synapseType = SynapseHelper.BRIDGE_TYPE_TO_SYNAPSE_TYPE.get(bridgeType);
+                ColumnType synapseType = SynapseHelper.BRIDGE_TYPE_TO_SYNAPSE_TYPE.get(fieldDef.getType());
                 if (synapseType == ColumnType.FILEHANDLEID) {
                     String attachmentId = uploadFreeformTextAsAttachment(recordId, answerAnswerNode.toString());
                     convertedSurveyNode.put(answerItem, attachmentId);

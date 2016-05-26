@@ -21,7 +21,7 @@ import org.joda.time.DateTime;
 import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
-import org.sagebionetworks.bridge.schema.UploadFieldTypes;
+import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldType;
 
 // Tests for SynapseHelper.serializeToSynapseType()
 public class SynapseHelperSerializeTest {
@@ -33,35 +33,28 @@ public class SynapseHelperSerializeTest {
     @Test
     public void nullValue() throws Exception {
         String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                TEST_FIELD_NAME, UploadFieldTypes.STRING, null);
+                TEST_FIELD_NAME, UploadFieldType.STRING, null);
         assertNull(retVal);
     }
 
     @Test
     public void jsonNull() throws Exception {
         String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                TEST_FIELD_NAME, UploadFieldTypes.STRING, NullNode.instance);
+                TEST_FIELD_NAME, UploadFieldType.STRING, NullNode.instance);
         assertNull(retVal);
-    }
-
-    @Test
-    public void invalidBridgeType() throws Exception {
-        String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                TEST_FIELD_NAME, "BAD_TYPE", new TextNode("bad type value"));
-        assertEquals(retVal, "bad type value");
     }
 
     @Test
     public void booleanTrue() throws Exception {
         String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                TEST_FIELD_NAME, UploadFieldTypes.BOOLEAN, BooleanNode.TRUE);
+                TEST_FIELD_NAME, UploadFieldType.BOOLEAN, BooleanNode.TRUE);
         assertEquals(retVal, "true");
     }
 
     @Test
     public void booleanFalse() throws Exception {
         String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                TEST_FIELD_NAME, UploadFieldTypes.BOOLEAN, BooleanNode.FALSE);
+                TEST_FIELD_NAME, UploadFieldType.BOOLEAN, BooleanNode.FALSE);
         assertEquals(retVal, "false");
     }
 
@@ -69,35 +62,35 @@ public class SynapseHelperSerializeTest {
     public void booleanInvalidType() throws Exception {
         // We don't parse JSON strings. We only accept JSON booleans.
         String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                TEST_FIELD_NAME, UploadFieldTypes.BOOLEAN, new TextNode("true"));
+                TEST_FIELD_NAME, UploadFieldType.BOOLEAN, new TextNode("true"));
         assertNull(retVal);
     }
 
     @Test
     public void calendarDate() throws Exception {
         String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                TEST_FIELD_NAME, UploadFieldTypes.CALENDAR_DATE, new TextNode("2015-12-01"));
+                TEST_FIELD_NAME, UploadFieldType.CALENDAR_DATE, new TextNode("2015-12-01"));
         assertEquals(retVal, "2015-12-01");
     }
 
     @Test
     public void calendarDateMalformatted() throws Exception {
         String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                TEST_FIELD_NAME, UploadFieldTypes.CALENDAR_DATE, new TextNode("foobarbaz"));
+                TEST_FIELD_NAME, UploadFieldType.CALENDAR_DATE, new TextNode("foobarbaz"));
         assertNull(retVal);
     }
 
     @Test
     public void floatValue() throws Exception {
         String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                TEST_FIELD_NAME, UploadFieldTypes.FLOAT, new DecimalNode(new BigDecimal("3.14")));
+                TEST_FIELD_NAME, UploadFieldType.FLOAT, new DecimalNode(new BigDecimal("3.14")));
         assertEquals(retVal, "3.14");
     }
 
     @Test
     public void floatFromInt() throws Exception {
         String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                TEST_FIELD_NAME, UploadFieldTypes.FLOAT, new IntNode(42));
+                TEST_FIELD_NAME, UploadFieldType.FLOAT, new IntNode(42));
         assertEquals(retVal, "42");
     }
 
@@ -105,7 +98,7 @@ public class SynapseHelperSerializeTest {
     public void floatInvalidType() throws Exception {
         // We don't parse JSON strings. We only accept JSON booleans.
         String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                TEST_FIELD_NAME, UploadFieldTypes.FLOAT, new TextNode("3.14"));
+                TEST_FIELD_NAME, UploadFieldType.FLOAT, new TextNode("3.14"));
         assertNull(retVal);
     }
 
@@ -117,7 +110,7 @@ public class SynapseHelperSerializeTest {
 
         // serialize, which basically just copies the JSON text as is
         String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                TEST_FIELD_NAME, UploadFieldTypes.INLINE_JSON_BLOB, originalNode);
+                TEST_FIELD_NAME, UploadFieldType.INLINE_JSON_BLOB, originalNode);
 
         // parse back into JSON and compare
         JsonNode reparsedNode = DefaultObjectMapper.INSTANCE.readTree(retVal);
@@ -132,7 +125,7 @@ public class SynapseHelperSerializeTest {
     @Test
     public void intValue() throws Exception {
         String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                TEST_FIELD_NAME, UploadFieldTypes.INT, new IntNode(42));
+                TEST_FIELD_NAME, UploadFieldType.INT, new IntNode(42));
         assertEquals(retVal, "42");
     }
 
@@ -140,7 +133,7 @@ public class SynapseHelperSerializeTest {
     public void intFromFloat() throws Exception {
         // This simply calls longValue() on the node, which causes truncation instead of rounding.
         String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                TEST_FIELD_NAME, UploadFieldTypes.INT, new DecimalNode(new BigDecimal("-13.9")));
+                TEST_FIELD_NAME, UploadFieldType.INT, new DecimalNode(new BigDecimal("-13.9")));
         assertEquals(retVal, "-13");
     }
 
@@ -148,14 +141,14 @@ public class SynapseHelperSerializeTest {
     public void intInvalidType() throws Exception {
         // We don't parse JSON strings. We only accept JSON booleans.
         String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                TEST_FIELD_NAME, UploadFieldTypes.INT, new TextNode("-13"));
+                TEST_FIELD_NAME, UploadFieldType.INT, new TextNode("-13"));
         assertNull(retVal);
     }
 
     @Test
     public void stringValue() throws Exception {
         String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                TEST_FIELD_NAME, UploadFieldTypes.STRING, new TextNode("foobarbaz"));
+                TEST_FIELD_NAME, UploadFieldType.STRING, new TextNode("foobarbaz"));
         assertEquals(retVal, "foobarbaz");
     }
 
@@ -166,7 +159,7 @@ public class SynapseHelperSerializeTest {
 
         // Synapse timestamps are always epoch milliseconds (long)
         String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                TEST_FIELD_NAME, UploadFieldTypes.TIMESTAMP, new TextNode(timestampString));
+                TEST_FIELD_NAME, UploadFieldType.TIMESTAMP, new TextNode(timestampString));
         assertEquals(retVal, String.valueOf(timestampMillis));
     }
 
@@ -174,21 +167,21 @@ public class SynapseHelperSerializeTest {
     public void timestampInvalidString() throws Exception {
         // We parse strings as ISO timestamps, not as longs.
         String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                TEST_FIELD_NAME, UploadFieldTypes.TIMESTAMP, new TextNode("1234567890"));
+                TEST_FIELD_NAME, UploadFieldType.TIMESTAMP, new TextNode("1234567890"));
         assertNull(retVal);
     }
 
     @Test
     public void timestampLong() throws Exception {
         String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                TEST_FIELD_NAME, UploadFieldTypes.TIMESTAMP, new LongNode(1234567890L));
+                TEST_FIELD_NAME, UploadFieldType.TIMESTAMP, new LongNode(1234567890L));
         assertEquals(retVal, "1234567890");
     }
 
     @Test
     public void timestampInvalidType() throws Exception {
         String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                TEST_FIELD_NAME, UploadFieldTypes.TIMESTAMP, BooleanNode.TRUE);
+                TEST_FIELD_NAME, UploadFieldType.TIMESTAMP, BooleanNode.TRUE);
         assertNull(retVal);
     }
 
@@ -196,7 +189,7 @@ public class SynapseHelperSerializeTest {
     public void attachmentInvalidType() throws Exception {
         // Attachments are strings, which is the attachment ID.
         String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                TEST_FIELD_NAME, UploadFieldTypes.ATTACHMENT_BLOB, new LongNode(1234567890L));
+                TEST_FIELD_NAME, UploadFieldType.ATTACHMENT_BLOB, new LongNode(1234567890L));
         assertNull(retVal);
     }
 
@@ -206,10 +199,10 @@ public class SynapseHelperSerializeTest {
         // of tests, just mock it out.
         SynapseHelper synapseHelper = spy(new SynapseHelper());
         doReturn("dummy-filehandle-id").when(synapseHelper).uploadFromS3ToSynapseFileHandle(MOCK_TEMP_DIR,
-                TEST_PROJECT_ID, TEST_FIELD_NAME, UploadFieldTypes.ATTACHMENT_BLOB, "dummy-attachment-id");
+                TEST_PROJECT_ID, TEST_FIELD_NAME, UploadFieldType.ATTACHMENT_BLOB, "dummy-attachment-id");
 
         String retVal = synapseHelper.serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                TEST_FIELD_NAME, UploadFieldTypes.ATTACHMENT_BLOB, new TextNode("dummy-attachment-id"));
+                TEST_FIELD_NAME, UploadFieldType.ATTACHMENT_BLOB, new TextNode("dummy-attachment-id"));
         assertEquals(retVal, "dummy-filehandle-id");
     }
 }

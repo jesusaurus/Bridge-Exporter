@@ -31,6 +31,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.config.Config;
+import org.sagebionetworks.bridge.exporter.helper.BridgeHelperTest;
 import org.sagebionetworks.bridge.exporter.helper.ExportHelper;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
@@ -42,9 +43,10 @@ import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
 import org.sagebionetworks.bridge.exporter.worker.TsvInfo;
 import org.sagebionetworks.bridge.file.InMemoryFileHelper;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
-import org.sagebionetworks.bridge.schema.UploadFieldTypes;
-import org.sagebionetworks.bridge.schema.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
+import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldDefinition;
+import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldType;
+import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
 
 public class SynapseExportHandlerTest {
     // Constants needed to create metadata (phone info, app version)
@@ -75,8 +77,10 @@ public class SynapseExportHandlerTest {
     // test for our old hack to convert freeform text to attachments, we key off specific studies and schemas. This
     // isn't ideal for a test, but we need to test it.
     public static final String TEST_STUDY_ID = "breastcancer";
+    public static final String TEST_SCHEMA_ID = "BreastCancer-DailyJournal";
+    public static final int TEST_SCHEMA_REV = 1;
     public static final UploadSchemaKey DUMMY_SCHEMA_KEY = new UploadSchemaKey.Builder().withStudyId(TEST_STUDY_ID)
-            .withSchemaId("BreastCancer-DailyJournal").withRevision(1).build();
+            .withSchemaId(TEST_SCHEMA_ID).withRevision(TEST_SCHEMA_REV).build();
 
     // Misc test constants. Some are shared with other tests.
     private static final String DUMMY_ATTACHMENT_ID = "dummy-attachment-id";
@@ -280,8 +284,13 @@ public class SynapseExportHandlerTest {
         // Our test columns: foo (string), bar (int), and one of the freeform text -> attachment columns
         // Since we want to test that our hack works, we'll need to use the breastcancer-BreastCancer-DailyJournal-v1
         // schema, field DailyJournalStep103_data.content
-        UploadSchema testSchema = new UploadSchema.Builder().withKey(DUMMY_SCHEMA_KEY).addField("foo", "STRING")
-                .addField("bar", "INT").addField(FREEFORM_FIELD_NAME, "STRING").build();
+        UploadSchema testSchema = BridgeHelperTest.simpleSchemaBuilder().withStudyId(TEST_STUDY_ID)
+                .withSchemaId(TEST_SCHEMA_ID).withRevision(TEST_SCHEMA_REV).withFieldDefinitions(
+                        new UploadFieldDefinition.Builder().withName("foo").withType(UploadFieldType.STRING).build(),
+                        new UploadFieldDefinition.Builder().withName("bar").withType(UploadFieldType.INT).build(),
+                        new UploadFieldDefinition.Builder().withName(FREEFORM_FIELD_NAME)
+                                .withType(UploadFieldType.STRING).build())
+                .build();
 
         // Set up handler and test. setSchema() needs to be called before setup, since a lot of the stuff in the
         // handler depends on it, even while we're mocking stuff.
@@ -300,7 +309,7 @@ public class SynapseExportHandlerTest {
         // uploadFromS3ToSynapseFileHandle() to avoid hitting real back-ends.
         when(mockSynapseHelper.serializeToSynapseType(any(), any(), any(), any(), any(), any())).thenCallRealMethod();
         when(mockSynapseHelper.uploadFromS3ToSynapseFileHandle(task.getTmpDir(), TEST_SYNAPSE_PROJECT_ID,
-                FREEFORM_FIELD_NAME, UploadFieldTypes.ATTACHMENT_BLOB, DUMMY_ATTACHMENT_ID)).thenReturn(
+                FREEFORM_FIELD_NAME, UploadFieldType.ATTACHMENT_BLOB, DUMMY_ATTACHMENT_ID)).thenReturn(
                 DUMMY_FILEHANDLE_ID);
 
         // make subtasks

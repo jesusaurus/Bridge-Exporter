@@ -19,8 +19,9 @@ import org.sagebionetworks.bridge.exporter.config.SpringConfig;
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
 import org.sagebionetworks.bridge.s3.S3Helper;
-import org.sagebionetworks.bridge.schema.UploadSchema;
-import org.sagebionetworks.bridge.schema.UploadSchemaKey;
+import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldDefinition;
+import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldType;
+import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
 
 public class ExportHelperConvertSurveyTest {
     private static final String DUMMY_ANSWERS_ATTACHMENT_ID = "answers-attachment-id";
@@ -31,10 +32,6 @@ public class ExportHelperConvertSurveyTest {
             "   \"item\":\"" + TEST_SURVEY_ID + "\",\n" +
             "   \"answers\":\"" + DUMMY_ANSWERS_ATTACHMENT_ID + "\"\n" +
             "}";
-    private static final UploadSchemaKey TEST_SCHEMA_KEY = new UploadSchemaKey.Builder().withStudyId("test-study")
-            .withSchemaId(TEST_SURVEY_ID).withRevision(1).build();
-    private static final UploadSchema MINIMAL_SCHEMA = new UploadSchema.Builder().withKey(TEST_SCHEMA_KEY)
-            .addField("foo", "STRING").build();
 
     @DataProvider(name = "noAnswersDataProvider")
     public Object[][] noAnswersDataProvider() {
@@ -57,7 +54,8 @@ public class ExportHelperConvertSurveyTest {
     @Test(dataProvider = "noAnswersDataProvider", expectedExceptions = BridgeExporterException.class)
     public void noAnswersLink(String oldJsonText) throws Exception {
         JsonNode oldJsonNode = DefaultObjectMapper.INSTANCE.readTree(oldJsonText);
-        new ExportHelper().convertSurveyRecordToHealthDataJsonNode(DUMMY_RECORD_ID, oldJsonNode, MINIMAL_SCHEMA);
+        new ExportHelper().convertSurveyRecordToHealthDataJsonNode(DUMMY_RECORD_ID, oldJsonNode,
+                BridgeHelperTest.TEST_SCHEMA);
     }
 
     @DataProvider(name = "badAnswersAttachmentProvider")
@@ -77,7 +75,8 @@ public class ExportHelperConvertSurveyTest {
     @Test(dataProvider = "badAnswersAttachmentProvider", expectedExceptions = BridgeExporterException.class)
     public void badAnswersAttachment(String answersAttachmentText) throws Exception {
         ExportHelper helper = setupHelperWithAnswers(answersAttachmentText);
-        helper.convertSurveyRecordToHealthDataJsonNode(DUMMY_RECORD_ID, dummyRecordJsonNode(), MINIMAL_SCHEMA);
+        helper.convertSurveyRecordToHealthDataJsonNode(DUMMY_RECORD_ID, dummyRecordJsonNode(),
+                BridgeHelperTest.TEST_SCHEMA);
     }
 
     @Test
@@ -85,7 +84,7 @@ public class ExportHelperConvertSurveyTest {
         // extreme case where the survey is completely empty
         ExportHelper helper = setupHelperWithAnswers("[]");
         JsonNode convertedSurveyNode = helper.convertSurveyRecordToHealthDataJsonNode(DUMMY_RECORD_ID,
-                dummyRecordJsonNode(), MINIMAL_SCHEMA);
+                dummyRecordJsonNode(), BridgeHelperTest.TEST_SCHEMA);
         assertTrue(convertedSurveyNode.isObject());
         assertEquals(convertedSurveyNode.size(), 0);
     }
@@ -93,13 +92,25 @@ public class ExportHelperConvertSurveyTest {
     @Test
     public void normalCase() throws Exception {
         // Make schema with all fields from the below answers.
-        UploadSchema testSchema = new UploadSchema.Builder().withKey(TEST_SCHEMA_KEY)
-                .addField("no-question-type-name", "STRING").addField("fallback-to-question-type", "STRING")
-                .addField("bad-type", "STRING").addField("null-value", "STRING").addField("inline-string", "STRING")
-                .addField("attachment-string", "ATTACHMENT_JSON_BLOB").addField("integer", "INTEGER")
-                .addField("integer_unit", "STRING").addField("single-choice", "INLINE_JSON_BLOB")
-                .addField("inline-multiple-choice", "INLINE_JSON_BLOB")
-                .addField("attachment-multiple-choice", "ATTACHMENT_JSON_BLOB").build();
+        UploadSchema testSchema = BridgeHelperTest.simpleSchemaBuilder().withFieldDefinitions(
+                new UploadFieldDefinition.Builder().withName("no-question-type-name").withType(UploadFieldType.STRING)
+                        .build(),
+                new UploadFieldDefinition.Builder().withName("fallback-to-question-type")
+                        .withType(UploadFieldType.STRING).build(),
+                new UploadFieldDefinition.Builder().withName("bad-type").withType(UploadFieldType.STRING).build(),
+                new UploadFieldDefinition.Builder().withName("null-value").withType(UploadFieldType.STRING).build(),
+                new UploadFieldDefinition.Builder().withName("inline-string").withType(UploadFieldType.STRING).build(),
+                new UploadFieldDefinition.Builder().withName("attachment-string")
+                        .withType(UploadFieldType.ATTACHMENT_JSON_BLOB).build(),
+                new UploadFieldDefinition.Builder().withName("integer").withType(UploadFieldType.INT).build(),
+                new UploadFieldDefinition.Builder().withName("integer_unit").withType(UploadFieldType.STRING).build(),
+                new UploadFieldDefinition.Builder().withName("single-choice")
+                        .withType(UploadFieldType.INLINE_JSON_BLOB).build(),
+                new UploadFieldDefinition.Builder().withName("inline-multiple-choice")
+                        .withType(UploadFieldType.INLINE_JSON_BLOB).build(),
+                new UploadFieldDefinition.Builder().withName("attachment-multiple-choice")
+                        .withType(UploadFieldType.ATTACHMENT_JSON_BLOB).build())
+                .build();
 
         // Make answers array. This is semi-realistic.
         String answersAttachmentText = "[\n" +

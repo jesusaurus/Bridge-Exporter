@@ -30,6 +30,7 @@ import org.sagebionetworks.bridge.exporter.handler.AppVersionExportHandler;
 import org.sagebionetworks.bridge.exporter.handler.ExportHandler;
 import org.sagebionetworks.bridge.exporter.handler.HealthDataExportHandler;
 import org.sagebionetworks.bridge.exporter.handler.IosSurveyExportHandler;
+import org.sagebionetworks.bridge.exporter.helper.BridgeHelper;
 import org.sagebionetworks.bridge.exporter.helper.ExportHelper;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
@@ -39,9 +40,9 @@ import org.sagebionetworks.bridge.exporter.synapse.SynapseStatusTableHelper;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.file.FileHelper;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
-import org.sagebionetworks.bridge.schema.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
+import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
 
 /**
  * This class manages export handlers and workers. This includes holding the config and helper objects that the
@@ -162,6 +163,7 @@ public class ExportWorkerManager {
 
     // HELPER OBJECTS (CONFIGURED BY SPRING)
 
+    private BridgeHelper bridgeHelper;
     private DynamoDB ddbClient;
     private DynamoHelper dynamoHelper;
     private ExportHelper exportHelper;
@@ -169,18 +171,24 @@ public class ExportWorkerManager {
     private SynapseHelper synapseHelper;
     private SynapseStatusTableHelper synapseStatusTableHelper;
 
+    /** BridgeHelper, calls Bridge to get schemas and other data the exporter needs. */
+    public BridgeHelper getBridgeHelper() {
+        return bridgeHelper;
+    }
+
+    /** @see #getBridgeHelper */
+    @Autowired
+    public final void setBridgeHelper(BridgeHelper bridgeHelper) {
+        this.bridgeHelper = bridgeHelper;
+    }
+
     /** DDB client, used to get the Synapse table mappings. */
     @Autowired
     public final void setDdbClient(DynamoDB ddbClient) {
         this.ddbClient = ddbClient;
     }
 
-    /** DynamoHelper, used to get schemas. */
-    public DynamoHelper getDynamoHelper() {
-        return dynamoHelper;
-    }
-
-    /** @see #getDynamoHelper */
+    /** DynamoHelper, used to get study info. */
     @Autowired
     public void setDynamoHelper(DynamoHelper dynamoHelper) {
         this.dynamoHelper = dynamoHelper;
@@ -411,7 +419,7 @@ public class ExportWorkerManager {
         handler.setStudyId(schemaKey.getStudyId());
 
         // set schema
-        UploadSchema schema = dynamoHelper.getSchema(metrics, schemaKey);
+        UploadSchema schema = bridgeHelper.getSchema(metrics, schemaKey);
         handler.setSchema(schema);
 
         return handler;

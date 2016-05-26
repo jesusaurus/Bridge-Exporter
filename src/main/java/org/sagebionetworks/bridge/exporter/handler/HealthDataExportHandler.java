@@ -20,16 +20,19 @@ import org.sagebionetworks.bridge.exporter.worker.ExportSubtask;
 import org.sagebionetworks.bridge.exporter.worker.ExportTask;
 import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
 import org.sagebionetworks.bridge.exporter.worker.TsvInfo;
-import org.sagebionetworks.bridge.schema.UploadFieldTypes;
-import org.sagebionetworks.bridge.schema.UploadSchema;
 import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
+import org.sagebionetworks.bridge.schema.UploadSchemaKey;
+import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldDefinition;
+import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldType;
+import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
 
 /** Synapse export worker for health data tables. */
 public class HealthDataExportHandler extends SynapseExportHandler {
     private static final Logger LOG = LoggerFactory.getLogger(HealthDataExportHandler.class);
 
     private UploadSchema schema;
+    private UploadSchemaKey schemaKey;
 
     /**
      * Schema that this handler represents. This is used for determining the table keys in DDB as well as determining
@@ -42,6 +45,7 @@ public class HealthDataExportHandler extends SynapseExportHandler {
     /** @see #getSchema */
     public final void setSchema(UploadSchema schema) {
         this.schema = schema;
+        this.schemaKey = BridgeExporterUtil.getSchemaKeyFromSchema(schema);
     }
 
     @Override
@@ -56,17 +60,16 @@ public class HealthDataExportHandler extends SynapseExportHandler {
 
     @Override
     protected String getDdbTableKeyValue() {
-        return schema.getKey().toString();
+        return schemaKey.toString();
     }
 
     @Override
     @Cacheable(forever = true)
     protected List<ColumnModel> getSynapseTableColumnList() {
         List<ColumnModel> columnList = new ArrayList<>();
-        List<String> fieldNameList = schema.getFieldNameList();
-        Map<String, String> fieldTypeMap = schema.getFieldTypeMap();
-        for (String oneFieldName : fieldNameList) {
-            String bridgeType = fieldTypeMap.get(oneFieldName);
+        for (UploadFieldDefinition oneFieldDef : schema.getFieldDefinitions()) {
+            String oneFieldName = oneFieldDef.getName();
+            UploadFieldType bridgeType = oneFieldDef.getType();
 
             ColumnType synapseType = SynapseHelper.BRIDGE_TYPE_TO_SYNAPSE_TYPE.get(bridgeType);
             if (synapseType == null) {
@@ -76,7 +79,7 @@ public class HealthDataExportHandler extends SynapseExportHandler {
 
             // hack to cover legacy schemas pre-1k char limit on strings. See comments on
             // shouldConvertFreeformTextToAttachment() for more details.
-            if (BridgeExporterUtil.shouldConvertFreeformTextToAttachment(schema.getKey(), oneFieldName)) {
+            if (BridgeExporterUtil.shouldConvertFreeformTextToAttachment(schemaKey, oneFieldName)) {
                 synapseType = ColumnType.FILEHANDLEID;
             }
 
@@ -101,12 +104,12 @@ public class HealthDataExportHandler extends SynapseExportHandler {
 
     @Override
     protected TsvInfo getTsvInfoForTask(ExportTask task) {
-        return task.getHealthDataTsvInfoForSchema(schema.getKey());
+        return task.getHealthDataTsvInfoForSchema(schemaKey);
     }
 
     @Override
     protected void setTsvInfoForTask(ExportTask task, TsvInfo tsvInfo) {
-        task.setHealthDataTsvInfoForSchema(schema.getKey(), tsvInfo);
+        task.setHealthDataTsvInfoForSchema(schemaKey, tsvInfo);
     }
 
     @Override
@@ -120,15 +123,14 @@ public class HealthDataExportHandler extends SynapseExportHandler {
 
         // schema-specific columns
         Map<String, String> rowValueMap = new HashMap<>();
-        List<String> fieldNameList = schema.getFieldNameList();
-        Map<String, String> fieldTypeMap = schema.getFieldTypeMap();
-        for (String oneFieldName : fieldNameList) {
-            String bridgeType = fieldTypeMap.get(oneFieldName);
+        for (UploadFieldDefinition oneFieldDef : schema.getFieldDefinitions()) {
+            String oneFieldName = oneFieldDef.getName();
+            UploadFieldType bridgeType = oneFieldDef.getType();
             JsonNode valueNode = dataJson.get(oneFieldName);
 
-            if (BridgeExporterUtil.shouldConvertFreeformTextToAttachment(schema.getKey(), oneFieldName)) {
+            if (BridgeExporterUtil.shouldConvertFreeformTextToAttachment(schemaKey, oneFieldName)) {
                 // special hack, see comments on shouldConvertFreeformTextToAttachment()
-                bridgeType = UploadFieldTypes.ATTACHMENT_BLOB;
+                bridgeType = UploadFieldType.ATTACHMENT_BLOB;
                 if (valueNode != null && !valueNode.isNull() && valueNode.isTextual()) {
                     String attachmentId = manager.getExportHelper().uploadFreeformTextAsAttachment(recordId,
                             valueNode.textValue());
