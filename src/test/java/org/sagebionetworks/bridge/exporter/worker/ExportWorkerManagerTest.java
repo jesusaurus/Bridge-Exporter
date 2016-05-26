@@ -41,10 +41,11 @@ import org.sagebionetworks.bridge.exporter.handler.AppVersionExportHandler;
 import org.sagebionetworks.bridge.exporter.handler.HealthDataExportHandler;
 import org.sagebionetworks.bridge.exporter.handler.IosSurveyExportHandler;
 import org.sagebionetworks.bridge.exporter.handler.SynapseExportHandler;
+import org.sagebionetworks.bridge.exporter.helper.BridgeHelper;
+import org.sagebionetworks.bridge.exporter.helper.BridgeHelperTest;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
 import org.sagebionetworks.bridge.exporter.synapse.SynapseStatusTableHelper;
-import org.sagebionetworks.bridge.schema.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
 @SuppressWarnings({ "unchecked", "rawtypes" })
@@ -283,13 +284,13 @@ public class ExportWorkerManagerTest {
         // mock DynamoHelper to get schema
         UploadSchemaKey testSchemaKey = new UploadSchemaKey.Builder().withStudyId(TEST_STUDY_ID)
                 .withSchemaId(TEST_SCHEMA_ID).withRevision(TEST_SCHEMA_REV).build();
-        UploadSchema mockSchema = mock(UploadSchema.class);
-        DynamoHelper mockDynamoHelper = mock(DynamoHelper.class);
-        when(mockDynamoHelper.getSchema(notNull(Metrics.class), eq(testSchemaKey))).thenReturn(mockSchema);
+        BridgeHelper mockBridgeHelper = mock(BridgeHelper.class);
+        when(mockBridgeHelper.getSchema(notNull(Metrics.class), eq(testSchemaKey))).thenReturn(
+                BridgeHelperTest.TEST_SCHEMA);
 
         // set up worker manager
         ExportWorkerManager manager = new ExportWorkerManager();
-        manager.setDynamoHelper(mockDynamoHelper);
+        manager.setBridgeHelper(mockBridgeHelper);
         manager.setExecutor(mockExecutor);
 
         // Execute twice. Second time will hit the cache for the app version and health data handlers
@@ -332,14 +333,14 @@ public class ExportWorkerManagerTest {
         assertEquals(appVersionHandler.getStudyId(), TEST_STUDY_ID);
 
         assertSame(healthDataHandler.getManager(), manager);
-        assertSame(healthDataHandler.getSchema(), mockSchema);
+        assertSame(healthDataHandler.getSchema(), BridgeHelperTest.TEST_SCHEMA);
         assertEquals(healthDataHandler.getStudyId(), TEST_STUDY_ID);
 
         // verify task queue
         verify(mockTask, times(4)).addOutstandingTask(any());
 
         // verify only one call to DDB
-        verify(mockDynamoHelper, times(1)).getSchema(any(), any());
+        verify(mockBridgeHelper, times(1)).getSchema(any(), any());
     }
 
     @Test

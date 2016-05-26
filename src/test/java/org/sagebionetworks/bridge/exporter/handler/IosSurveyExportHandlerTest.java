@@ -21,7 +21,8 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import org.sagebionetworks.bridge.exporter.dynamo.DynamoHelper;
+import org.sagebionetworks.bridge.exporter.helper.BridgeHelper;
+import org.sagebionetworks.bridge.exporter.helper.BridgeHelperTest;
 import org.sagebionetworks.bridge.exporter.helper.ExportHelper;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
@@ -29,7 +30,6 @@ import org.sagebionetworks.bridge.exporter.worker.ExportSubtask;
 import org.sagebionetworks.bridge.exporter.worker.ExportTask;
 import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
-import org.sagebionetworks.bridge.schema.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
 // Test strategy here is a one question survey. Survey conversion is tested in the ExportHelper, so we just only test
@@ -56,7 +56,7 @@ public class IosSurveyExportHandlerTest {
     public void setup() throws Exception {
         // set up manager
         ExportWorkerManager manager = spy(new ExportWorkerManager());
-        manager.setDynamoHelper(mock(DynamoHelper.class));
+        manager.setBridgeHelper(mock(BridgeHelper.class));
         manager.setExportHelper(mock(ExportHelper.class));
 
         // set up handler
@@ -99,7 +99,7 @@ public class IosSurveyExportHandlerTest {
 
         // verify that the manager's mock helpers were not called
         ExportWorkerManager manager = handler.getManager();
-        verifyZeroInteractions(manager.getDynamoHelper(), manager.getExportHelper());
+        verifyZeroInteractions(manager.getBridgeHelper(), manager.getExportHelper());
 
         // verify metrics
         Multiset<String> counterMap = subtask.getParentTask().getMetrics().getCounterMap();
@@ -124,14 +124,13 @@ public class IosSurveyExportHandlerTest {
         // get manager
         ExportWorkerManager manager = handler.getManager();
 
-        // mock Dynamo Helper
-        UploadSchema schema = new UploadSchema.Builder().withKey(SCHEMA_KEY_REAL).addField("foo", "STRING").build();
-        when(manager.getDynamoHelper().getSchema(metrics, SCHEMA_KEY_REAL)).thenReturn(schema);
+        // mock Bridge Helper
+        when(manager.getBridgeHelper().getSchema(metrics, SCHEMA_KEY_REAL)).thenReturn(BridgeHelperTest.TEST_SCHEMA);
 
         // mock Export Helper
         JsonNode convertedSurveyNode = DefaultObjectMapper.INSTANCE.createObjectNode();
         when(manager.getExportHelper().convertSurveyRecordToHealthDataJsonNode(DUMMY_RECORD_ID, recordDataJsonNode,
-                schema)).thenReturn(convertedSurveyNode);
+                BridgeHelperTest.TEST_SCHEMA)).thenReturn(convertedSurveyNode);
 
         // spy manager.addHealthDataSubtask()
         ArgumentCaptor<ExportSubtask> convertedSubtaskCaptor = ArgumentCaptor.forClass(ExportSubtask.class);

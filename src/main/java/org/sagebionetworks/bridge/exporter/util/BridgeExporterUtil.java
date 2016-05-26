@@ -1,5 +1,7 @@
 package org.sagebionetworks.bridge.exporter.util;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
@@ -12,6 +14,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
+import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldDefinition;
+import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
 
 /** Various static utility methods that don't neatly fit anywhere else. */
 public class BridgeExporterUtil {
@@ -39,6 +43,21 @@ public class BridgeExporterUtil {
     }
 
     /**
+     * Helper method to get a field definition map from a schema, keyed by field name
+     *
+     * @param schema
+     *         schema to get field definition map from
+     * @return field definition map
+     */
+    public static Map<String, UploadFieldDefinition> getFieldDefMapFromSchema(UploadSchema schema) {
+        Map<String, UploadFieldDefinition> fieldDefMap = new HashMap<>();
+        for (UploadFieldDefinition oneFieldDef : schema.getFieldDefinitions()) {
+            fieldDefMap.put(oneFieldDef.getName(), oneFieldDef);
+        }
+        return fieldDefMap;
+    }
+
+    /**
      * Helper method to get the schema key for a DDB health data record
      *
      * @param record
@@ -51,6 +70,18 @@ public class BridgeExporterUtil {
         int schemaRev = record.getInt("schemaRevision");
         return new UploadSchemaKey.Builder().withStudyId(studyId).withSchemaId(schemaId).withRevision(schemaRev)
                 .build();
+    }
+
+    /**
+     * Helper method to get an UploadSchemaKey object from a schema.
+     *
+     * @param schema
+     *         schema to get key from
+     * @return schema key
+     */
+    public static UploadSchemaKey getSchemaKeyFromSchema(UploadSchema schema) {
+        return new UploadSchemaKey.Builder().withStudyId(schema.getStudyId()).withSchemaId(schema.getSchemaId())
+                .withRevision(schema.getRevision()).build();
     }
 
     /**

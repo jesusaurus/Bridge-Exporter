@@ -13,11 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
-import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
-import org.sagebionetworks.bridge.schema.UploadSchema;
-import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
 /**
  * Encapsulates common calls Bridge-EX makes to DDB. Some of these have a little bit of logic or require marshalling
@@ -33,7 +29,6 @@ public class DynamoHelper {
     private static final String STUDY_INFO_KEY_USES_CUSTOM_EXPORT_SCHEDULE = "usesCustomExportSchedule";
 
     private Table ddbParticipantOptionsTable;
-    private Table ddbSchemaTable;
     private Table ddbStudyTable;
 
     /** Participant options table, used to get user sharing scope. */
@@ -42,46 +37,10 @@ public class DynamoHelper {
         this.ddbParticipantOptionsTable = ddbParticipantOptionsTable;
     }
 
-    /** Schema table, used to get schemas to create Synapse tables and serialize health data. */
-    @Resource(name = "ddbSchemaTable")
-    public final void setDdbSchemaTable(Table ddbSchemaTable) {
-        this.ddbSchemaTable = ddbSchemaTable;
-    }
-
     /** Study table, used to get study config, like linked Synapse project. */
     @Resource(name = "ddbStudyTable")
     public final void setDdbStudyTable(Table ddbStudyTable) {
         this.ddbStudyTable = ddbStudyTable;
-    }
-
-    /**
-     * Returns the schema for the given key.
-     *
-     * @param metrics
-     *         metrics object, used to keep a record of "schemas not found"
-     * @param schemaKey
-     *         key for the schema to get
-     * @return the schema
-     * @throws IOException
-     *         if we fail to deserialize the schema
-     * @throws SchemaNotFoundException
-     *         if the schema doesn't exist
-     */
-    public UploadSchema getSchema(Metrics metrics, UploadSchemaKey schemaKey) throws IOException,
-            SchemaNotFoundException {
-        Item schemaItem = getSchemaCached(schemaKey);
-        if (schemaItem == null) {
-            metrics.addKeyValuePair("schemasNotFound", schemaKey.toString());
-            throw new SchemaNotFoundException("Schema not found: " + schemaKey.toString());
-        }
-        return UploadSchema.fromDdbItem(schemaItem);
-    }
-
-    // Helper method that encapsulates just the DDB call, cached with annotation.
-    @Cacheable(lifetime = 5, unit = TimeUnit.MINUTES)
-    private Item getSchemaCached(UploadSchemaKey schemaKey) {
-        return ddbSchemaTable.getItem("key", schemaKey.getStudyId() + ":" + schemaKey.getSchemaId(),
-                "revision", schemaKey.getRevision());
     }
 
     /**

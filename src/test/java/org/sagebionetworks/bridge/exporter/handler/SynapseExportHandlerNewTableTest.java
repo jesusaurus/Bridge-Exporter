@@ -22,6 +22,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.config.Config;
+import org.sagebionetworks.bridge.exporter.helper.BridgeHelperTest;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
 import org.sagebionetworks.bridge.exporter.util.TestUtil;
@@ -29,7 +30,9 @@ import org.sagebionetworks.bridge.exporter.worker.ExportSubtask;
 import org.sagebionetworks.bridge.exporter.worker.ExportTask;
 import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
 import org.sagebionetworks.bridge.file.InMemoryFileHelper;
-import org.sagebionetworks.bridge.schema.UploadSchema;
+import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldDefinition;
+import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldType;
+import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
 
 public class SynapseExportHandlerNewTableTest {
     private String ddbSynapseTableId;
@@ -168,8 +171,10 @@ public class SynapseExportHandlerNewTableTest {
     public void healthDataExportHandlerTest() throws Exception {
         // Freeform text to attachments is already tested in SynapseExportHandlerTest. Just test simple string and int
         // fields.
-        UploadSchema testSchema = new UploadSchema.Builder().withKey(SynapseExportHandlerTest.DUMMY_SCHEMA_KEY)
-                .addField("foo", "STRING").addField("bar", "INT").build();
+        UploadSchema testSchema = BridgeHelperTest.simpleSchemaBuilder().withFieldDefinitions(
+                new UploadFieldDefinition.Builder().withName("foo").withType(UploadFieldType.STRING).build(),
+                new UploadFieldDefinition.Builder().withName("bar").withType(UploadFieldType.INT).build())
+                .build();
 
         // Set up handler and test. setSchema() needs to be called before setup, since a lot of the stuff in the
         // handler depends on it, even while we're mocking stuff.

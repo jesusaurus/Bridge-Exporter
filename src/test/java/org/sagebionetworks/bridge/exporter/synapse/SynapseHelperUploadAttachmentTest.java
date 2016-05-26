@@ -25,74 +25,74 @@ import org.sagebionetworks.bridge.exporter.config.SpringConfig;
 import org.sagebionetworks.bridge.file.FileHelper;
 import org.sagebionetworks.bridge.file.InMemoryFileHelper;
 import org.sagebionetworks.bridge.s3.S3Helper;
-import org.sagebionetworks.bridge.schema.UploadFieldTypes;
+import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldType;
 
 // Tests for SynapseHelper.uploadFromS3ToSynapseFileHandle() and related methods.
 @SuppressWarnings("unchecked")
 public class SynapseHelperUploadAttachmentTest {
     @Test
     public void filenameJsonBlob() {
-        assertEquals(SynapseHelper.generateFilename("test.json.blob", UploadFieldTypes.ATTACHMENT_JSON_BLOB, "attId"),
+        assertEquals(SynapseHelper.generateFilename("test.json.blob", UploadFieldType.ATTACHMENT_JSON_BLOB, "attId"),
                 "test.json.blob-attId.json");
     }
 
     @Test
     public void filenameJsonTable() {
-        assertEquals(SynapseHelper.generateFilename("test.json.table", UploadFieldTypes.ATTACHMENT_JSON_TABLE,
+        assertEquals(SynapseHelper.generateFilename("test.json.table", UploadFieldType.ATTACHMENT_JSON_TABLE,
                 "attId"), "test.json.table-attId.json");
     }
 
     @Test
     public void filenameJsonWithJsonExtension() {
-        assertEquals(SynapseHelper.generateFilename("test.json", UploadFieldTypes.ATTACHMENT_JSON_BLOB, "attId"),
+        assertEquals(SynapseHelper.generateFilename("test.json", UploadFieldType.ATTACHMENT_JSON_BLOB, "attId"),
                 "test-attId.json");
     }
 
     @Test
     public void filenameCsv() {
-        assertEquals(SynapseHelper.generateFilename("csv.data", UploadFieldTypes.ATTACHMENT_CSV, "attId"),
+        assertEquals(SynapseHelper.generateFilename("csv.data", UploadFieldType.ATTACHMENT_CSV, "attId"),
                 "csv.data-attId.csv");
     }
 
     @Test
     public void filenameCsvWithCsvExtension() {
-        assertEquals(SynapseHelper.generateFilename("data.csv", UploadFieldTypes.ATTACHMENT_CSV, "attId"),
+        assertEquals(SynapseHelper.generateFilename("data.csv", UploadFieldType.ATTACHMENT_CSV, "attId"),
                 "data-attId.csv");
     }
 
     @Test
     public void filenameBlob() {
-        assertEquals(SynapseHelper.generateFilename("generic.blob", UploadFieldTypes.ATTACHMENT_BLOB, "attId"),
+        assertEquals(SynapseHelper.generateFilename("generic.blob", UploadFieldType.ATTACHMENT_BLOB, "attId"),
                 "generic-attId.blob");
     }
 
     @Test
     public void filenameBlobWithNoExtension() {
-        assertEquals(SynapseHelper.generateFilename("genericBlob", UploadFieldTypes.ATTACHMENT_BLOB, "attId"),
+        assertEquals(SynapseHelper.generateFilename("genericBlob", UploadFieldType.ATTACHMENT_BLOB, "attId"),
                 "genericBlob-attId");
     }
 
     @Test
     public void filenameBlobWithMultipleDots() {
-        assertEquals(SynapseHelper.generateFilename("generic.blob.ext", UploadFieldTypes.ATTACHMENT_BLOB, "attId"),
+        assertEquals(SynapseHelper.generateFilename("generic.blob.ext", UploadFieldType.ATTACHMENT_BLOB, "attId"),
                 "generic.blob-attId.ext");
     }
 
     @Test
     public void filenameBlobStartsWithDot() {
-        assertEquals(SynapseHelper.generateFilename(".dot", UploadFieldTypes.ATTACHMENT_BLOB, "attId"),
+        assertEquals(SynapseHelper.generateFilename(".dot", UploadFieldType.ATTACHMENT_BLOB, "attId"),
                 ".dot-attId");
     }
 
     @Test
     public void filenameBlobStartsWithDotWithExtension() {
-        assertEquals(SynapseHelper.generateFilename(".dot.ext", UploadFieldTypes.ATTACHMENT_BLOB, "attId"),
+        assertEquals(SynapseHelper.generateFilename(".dot.ext", UploadFieldType.ATTACHMENT_BLOB, "attId"),
                 ".dot-attId.ext");
     }
 
     @Test
     public void filenameBlobEndsWithDot() {
-        assertEquals(SynapseHelper.generateFilename("dot.dot.", UploadFieldTypes.ATTACHMENT_BLOB, "attId"),
+        assertEquals(SynapseHelper.generateFilename("dot.dot.", UploadFieldType.ATTACHMENT_BLOB, "attId"),
                 "dot.dot.-attId");
     }
 
@@ -138,7 +138,7 @@ public class SynapseHelperUploadAttachmentTest {
 
         // execute and validate
         String fileHandleId = synapseHelper.uploadFromS3ToSynapseFileHandle(tmpDir, TEST_PROJECT_ID, TEST_FIELD_NAME,
-                UploadFieldTypes.ATTACHMENT_BLOB, TEST_ATTACHMENT_ID);
+                UploadFieldType.ATTACHMENT_BLOB, TEST_ATTACHMENT_ID);
         assertEquals(fileHandleId, TEST_FILE_HANDLE_ID);
 
         // validate that SynapseHelper cleans up after itself
@@ -167,7 +167,7 @@ public class SynapseHelperUploadAttachmentTest {
         // execute and validate
         try {
             synapseHelper.uploadFromS3ToSynapseFileHandle(tmpDir, TEST_PROJECT_ID, TEST_FIELD_NAME,
-                    UploadFieldTypes.ATTACHMENT_BLOB, TEST_ATTACHMENT_ID);
+                    UploadFieldType.ATTACHMENT_BLOB, TEST_ATTACHMENT_ID);
             fail("expected exception");
         } catch (SynapseException ex) {
             // expected exception

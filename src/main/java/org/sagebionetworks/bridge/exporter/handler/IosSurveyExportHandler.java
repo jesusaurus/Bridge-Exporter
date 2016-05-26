@@ -14,8 +14,8 @@ import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.worker.ExportSubtask;
 import org.sagebionetworks.bridge.exporter.worker.ExportTask;
 import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
-import org.sagebionetworks.bridge.schema.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
+import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
 
 /**
  * This class is responsible for converting the raw survey answers into a form the Synapse Export Worker can consume.
@@ -69,7 +69,7 @@ public class IosSurveyExportHandler extends ExportHandler {
                 .withSchemaId(schemaId).withRevision(schemaRev).build();
 
         // get schema and field type map, so we can process attachments
-        UploadSchema surveySchema = manager.getDynamoHelper().getSchema(parentTask.getMetrics(), surveySchemaKey);
+        UploadSchema surveySchema = manager.getBridgeHelper().getSchema(parentTask.getMetrics(), surveySchemaKey);
 
         // convert to health data node
         JsonNode convertedSurveyNode = manager.getExportHelper().convertSurveyRecordToHealthDataJsonNode(recordId,
