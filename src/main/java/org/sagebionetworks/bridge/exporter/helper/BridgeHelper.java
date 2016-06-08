@@ -9,7 +9,10 @@ import org.springframework.stereotype.Component;
 import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
-import org.sagebionetworks.bridge.sdk.WorkerClient;
+import org.sagebionetworks.bridge.sdk.ClientProvider;
+import org.sagebionetworks.bridge.sdk.Session;
+import org.sagebionetworks.bridge.sdk.UploadSchemaClient;
+import org.sagebionetworks.bridge.sdk.models.accounts.SignInCredentials;
 import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
 
 /**
@@ -17,12 +20,21 @@ import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
  */
 @Component
 public class BridgeHelper {
-    private WorkerClient workerClient;
+    private SignInCredentials credentials;
 
-    /** Bridge Client for worker APIs. */
     @Autowired
-    final void setWorkerClient(WorkerClient workerClient) {
-        this.workerClient = workerClient;
+    final void setCredentials(SignInCredentials credentials) {
+        this.credentials = credentials;
+    }
+
+    /**
+     * Helper method to encapsulate refreshing the Bridge session. This uses a cache to cache the session for 5
+     * minutes. Package-scoped to enable unit tests to mock this out.
+     */
+    @Cacheable(lifetime = 5, unit = TimeUnit.MINUTES)
+    UploadSchemaClient getSchemaClient() {
+        Session session = ClientProvider.signIn(credentials);
+        return session.getUploadSchemaClient();
     }
 
     /**
@@ -48,6 +60,6 @@ public class BridgeHelper {
     // Helper method that encapsulates just the service call, cached with annotation.
     @Cacheable(lifetime = 5, unit = TimeUnit.MINUTES)
     private UploadSchema getSchemaCached(UploadSchemaKey schemaKey) {
-        return workerClient.getSchema(schemaKey.getStudyId(), schemaKey.getSchemaId(), schemaKey.getRevision());
+        return getSchemaClient().getSchema(schemaKey.getStudyId(), schemaKey.getSchemaId(), schemaKey.getRevision());
     }
 }
