@@ -29,9 +29,7 @@ import org.sagebionetworks.bridge.heartbeat.HeartbeatLogger;
 import org.sagebionetworks.bridge.s3.S3Helper;
 import org.sagebionetworks.bridge.sdk.ClientInfo;
 import org.sagebionetworks.bridge.sdk.ClientProvider;
-import org.sagebionetworks.bridge.sdk.Session;
-import org.sagebionetworks.bridge.sdk.WorkerClient;
-import org.sagebionetworks.bridge.sdk.models.users.SignInCredentials;
+import org.sagebionetworks.bridge.sdk.models.accounts.SignInCredentials;
 import org.sagebionetworks.bridge.sqs.PollSqsWorker;
 import org.sagebionetworks.bridge.sqs.SqsHelper;
 
@@ -47,6 +45,13 @@ public class SpringConfig {
     private static final String CONFIG_FILE = "BridgeExporter.conf";
     private static final String DEFAULT_CONFIG_FILE = CONFIG_FILE;
     private static final String USER_CONFIG_FILE = System.getProperty("user.home") + "/" + CONFIG_FILE;
+
+    // ClientProvider needs to be statically configured.
+    static {
+        // set client info
+        ClientInfo clientInfo = new ClientInfo.Builder().withAppName("BridgeEX").withAppVersion(2).build();
+        ClientProvider.setClientInfo(clientInfo);
+    }
 
     @Bean
     public Config bridgeConfig() {
@@ -66,21 +71,12 @@ public class SpringConfig {
     }
 
     @Bean
-    public WorkerClient bridgeWorkerClient() {
-        // set client info
-        ClientInfo clientInfo = new ClientInfo.Builder().withAppName("BridgeEX").withAppVersion(2).build();
-        ClientProvider.setClientInfo(clientInfo);
-
-        // get credentials
+    public SignInCredentials bridgeWorkerCredentials() {
         Config config = bridgeConfig();
         String study = config.get("bridge.worker.study");
         String email = config.get("bridge.worker.email");
         String password = config.get("bridge.worker.password");
-        SignInCredentials credentials = new SignInCredentials(study, email, password);
-
-        // sign in and get client
-        Session session = ClientProvider.signIn(credentials);
-        return session.getWorkerClient();
+        return new SignInCredentials(study, email, password);
     }
 
     @Bean

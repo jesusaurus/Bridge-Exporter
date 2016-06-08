@@ -1,6 +1,8 @@
 package org.sagebionetworks.bridge.exporter.helper;
 
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
@@ -14,7 +16,7 @@ import org.testng.annotations.Test;
 import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
-import org.sagebionetworks.bridge.sdk.WorkerClient;
+import org.sagebionetworks.bridge.sdk.UploadSchemaClient;
 import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldDefinition;
 import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldType;
 import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
@@ -38,12 +40,8 @@ public class BridgeHelperTest {
 
     @Test
     public void getSchema() throws Exception {
-        // mock worker client
-        WorkerClient mockWorkerClient = mock(WorkerClient.class);
-        when(mockWorkerClient.getSchema(TEST_STUDY_ID, TEST_SCHEMA_ID, TEST_SCHEMA_REV)).thenReturn(TEST_SCHEMA);
-
-        BridgeHelper bridgeHelper = new BridgeHelper();
-        bridgeHelper.setWorkerClient(mockWorkerClient);
+        // set up bridge helper
+        BridgeHelper bridgeHelper = setupBridgeHelperWithSchema(TEST_SCHEMA);
 
         // execute and validate
         UploadSchema retVal = bridgeHelper.getSchema(new Metrics(), TEST_SCHEMA_KEY);
@@ -52,12 +50,8 @@ public class BridgeHelperTest {
 
     @Test
     public void getSchemaNotFound() throws Exception {
-        // mock worker client
-        WorkerClient mockWorkerClient = mock(WorkerClient.class);
-        when(mockWorkerClient.getSchema(TEST_STUDY_ID, TEST_SCHEMA_ID, TEST_SCHEMA_REV)).thenReturn(null);
-
-        BridgeHelper bridgeHelper = new BridgeHelper();
-        bridgeHelper.setWorkerClient(mockWorkerClient);
+        // set up bridge helper
+        BridgeHelper bridgeHelper = setupBridgeHelperWithSchema(null);
 
         Metrics metrics = new Metrics();
 
@@ -73,5 +67,16 @@ public class BridgeHelperTest {
         SortedSet<String> schemasNotFoundSet = keyValuesMap.get("schemasNotFound");
         assertEquals(schemasNotFoundSet.size(), 1);
         assertTrue(schemasNotFoundSet.contains(TEST_SCHEMA_KEY.toString()));
+    }
+
+    private static BridgeHelper setupBridgeHelperWithSchema(UploadSchema schema) throws Exception {
+        // mock schema client
+        UploadSchemaClient mockSchemaClient = mock(UploadSchemaClient.class);
+        when(mockSchemaClient.getSchema(TEST_STUDY_ID, TEST_SCHEMA_ID, TEST_SCHEMA_REV)).thenReturn(schema);
+
+        // Spy bridge helper, because getSchemaClient() statically calls ClientProvider.signIn()
+        BridgeHelper bridgeHelper = spy(new BridgeHelper());
+        doReturn(mockSchemaClient).when(bridgeHelper).getSchemaClient();
+        return bridgeHelper;
     }
 }
