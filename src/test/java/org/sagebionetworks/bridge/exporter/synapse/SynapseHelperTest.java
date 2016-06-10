@@ -29,10 +29,41 @@ import org.sagebionetworks.repo.model.table.CsvTableDescriptor;
 import org.sagebionetworks.repo.model.table.RowSet;
 import org.sagebionetworks.repo.model.table.TableEntity;
 import org.sagebionetworks.repo.model.table.UploadToTableResult;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+
+import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldDefinition;
+import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldType;
 
 @SuppressWarnings({ "unchecked", "rawtypes" })
 public class SynapseHelperTest {
+    @DataProvider
+    public Object[][] maxLengthTestDataProvider() {
+        // { fieldDef, expectedMaxLength }
+        return new Object[][] {
+                { new UploadFieldDefinition.Builder().withName("dummy").withType(UploadFieldType.CALENDAR_DATE)
+                        .build(), 10 },
+                { new UploadFieldDefinition.Builder().withName("dummy").withType(UploadFieldType.DURATION_V2).build(),
+                        24 },
+                { new UploadFieldDefinition.Builder().withName("dummy").withType(UploadFieldType.INLINE_JSON_BLOB)
+                        .build(), 100 },
+                { new UploadFieldDefinition.Builder().withName("dummy").withType(UploadFieldType.SINGLE_CHOICE)
+                        .build(), 100 },
+                { new UploadFieldDefinition.Builder().withName("dummy").withType(UploadFieldType.STRING).build(),
+                        100 },
+                { new UploadFieldDefinition.Builder().withName("dummy").withType(UploadFieldType.TIME_V2).build(),
+                        12 },
+                { new UploadFieldDefinition.Builder().withName("dummy").withType(UploadFieldType.STRING)
+                        .withMaxLength(256).build(), 256 },
+        };
+    }
+
+    @Test(dataProvider = "maxLengthTestDataProvider")
+    public void getMaxLengthForFieldDef(UploadFieldDefinition fieldDef, int expectedMaxLength) {
+        int retVal = SynapseHelper.getMaxLengthForFieldDef(fieldDef);
+        assertEquals(retVal, expectedMaxLength);
+    }
+
     // Most of these are retry wrappers, but we should test them anyway for branch coverage.
 
     @Test
