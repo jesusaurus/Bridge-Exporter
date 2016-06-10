@@ -25,6 +25,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Multiset;
 import com.google.common.collect.SetMultimap;
+import org.joda.time.DateTime;
 import org.joda.time.LocalDate;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.testng.annotations.BeforeMethod;
@@ -281,13 +282,20 @@ public class SynapseExportHandlerTest {
 
     @Test
     public void healthDataExportHandlerTest() throws Exception {
-        // Our test columns: foo (string), bar (int), and one of the freeform text -> attachment columns
+        // We don't need to exhaustively test all column types, as a lot of it is baked into
+        // SynapseHelper.BRIDGE_TYPE_TO_SYNAPSE_TYPE. We just need to test multi_choice (when implemented), timestamp,
+        // int (non-string), short string, long string (large text aka blob), and freeform text -> attachment
         // Since we want to test that our hack works, we'll need to use the breastcancer-BreastCancer-DailyJournal-v1
         // schema, field DailyJournalStep103_data.content
         UploadSchema testSchema = BridgeHelperTest.simpleSchemaBuilder().withStudyId(TEST_STUDY_ID)
                 .withSchemaId(TEST_SCHEMA_ID).withRevision(TEST_SCHEMA_REV).withFieldDefinitions(
-                        new UploadFieldDefinition.Builder().withName("foo").withType(UploadFieldType.STRING).build(),
+                        new UploadFieldDefinition.Builder().withName("foo").withType(UploadFieldType.STRING)
+                                .withMaxLength(20).build(),
+                        new UploadFieldDefinition.Builder().withName("foooo").withType(UploadFieldType.STRING)
+                                .withMaxLength(9999).build(),
                         new UploadFieldDefinition.Builder().withName("bar").withType(UploadFieldType.INT).build(),
+                        new UploadFieldDefinition.Builder().withName("submitTime").withType(UploadFieldType.TIMESTAMP)
+                                .build(),
                         new UploadFieldDefinition.Builder().withName(FREEFORM_FIELD_NAME)
                                 .withType(UploadFieldType.STRING).build())
                 .build();
@@ -307,15 +315,22 @@ public class SynapseExportHandlerTest {
 
         // mock serializeToSynapseType() - We actually call through to the real method, but we mock out the underlying
         // uploadFromS3ToSynapseFileHandle() to avoid hitting real back-ends.
-        when(mockSynapseHelper.serializeToSynapseType(any(), any(), any(), any(), any(), any())).thenCallRealMethod();
+        when(mockSynapseHelper.serializeToSynapseType(any(), any(), any(), any(), any())).thenCallRealMethod();
+
+        UploadFieldDefinition freeformAttachmentFieldDef = new UploadFieldDefinition.Builder()
+                .withName(FREEFORM_FIELD_NAME).withType(UploadFieldType.ATTACHMENT_V2).build();
         when(mockSynapseHelper.uploadFromS3ToSynapseFileHandle(task.getTmpDir(), TEST_SYNAPSE_PROJECT_ID,
-                FREEFORM_FIELD_NAME, UploadFieldType.ATTACHMENT_BLOB, DUMMY_ATTACHMENT_ID)).thenReturn(
+                freeformAttachmentFieldDef, DUMMY_ATTACHMENT_ID)).thenReturn(
                 DUMMY_FILEHANDLE_ID);
 
         // make subtasks
+        String submitTimeStr = "2016-06-09T15:54+0900";
+        long submitTimeMillis = DateTime.parse(submitTimeStr).getMillis();
         String recordJsonText = "{\n" +
                 "   \"foo\":\"This is a string.\",\n" +
+                "   \"foooo\":\"Example (not) long string\",\n" +
                 "   \"bar\":42,\n" +
+                "   \"submitTime\":\"" + submitTimeStr + "\",\n" +
                 "   \"" + FREEFORM_FIELD_NAME + "\":\"" + DUMMY_FREEFORM_TEXT_CONTENT + "\"\n" +
                 "}";
         ExportSubtask subtask = makeSubtask(task, recordJsonText);
@@ -327,8 +342,10 @@ public class SynapseExportHandlerTest {
         // validate tsv file
         List<String> tsvLineList = TestUtil.bytesToLines(tsvBytes);
         assertEquals(tsvLineList.size(), 2);
-        validateTsvHeaders(tsvLineList.get(0), "foo", "bar", FREEFORM_FIELD_NAME);
-        validateTsvRow(tsvLineList.get(1), "This is a string.", "42", DUMMY_FILEHANDLE_ID);
+        validateTsvHeaders(tsvLineList.get(0), "foo", "foooo", "bar", "submitTime", "submitTime.timezone",
+                FREEFORM_FIELD_NAME);
+        validateTsvRow(tsvLineList.get(1), "This is a string.", "Example (not) long string", "42",
+                String.valueOf(submitTimeMillis), "+0900", DUMMY_FILEHANDLE_ID);
 
         // validate metrics
         Multiset<String> counterMap = task.getMetrics().getCounterMap();

@@ -14,8 +14,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.jcabi.aspects.RetryOnFailure;
-import org.joda.time.DateTime;
-import org.joda.time.LocalDate;
 import org.sagebionetworks.client.SynapseClient;
 import org.sagebionetworks.client.exceptions.SynapseException;
 import org.sagebionetworks.client.exceptions.SynapseResultNotReadyException;
@@ -40,6 +38,7 @@ import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.file.FileHelper;
 import org.sagebionetworks.bridge.s3.S3Helper;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
+import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldDefinition;
 import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldType;
 
 /** Helper class for Synapse calls, including complex logic around asynchronous calls and retry helper. */
@@ -60,39 +59,57 @@ public class SynapseHelper {
     public static final String DDB_KEY_TABLE_NAME = "tableName";
 
     /** Mapping from Bridge types to their respective max lengths. Only covers things that are strings in Synapse. */
-    public static final Map<UploadFieldType, Integer> BRIDGE_TYPE_TO_MAX_LENGTH =
+    private static final Map<UploadFieldType, Integer> BRIDGE_TYPE_TO_MAX_LENGTH =
             ImmutableMap.<UploadFieldType, Integer>builder()
                     .put(UploadFieldType.CALENDAR_DATE, 10)
-                    .put(UploadFieldType.INLINE_JSON_BLOB, 100)
-                    .put(UploadFieldType.STRING, 100)
+                    .put(UploadFieldType.DURATION_V2, 24)
+                    .put(UploadFieldType.TIME_V2, 12)
                     .build();
 
     /** Default max length for string columns in Synapse, if the mapping is absent from BRIDGE_TYPE_TO_MAX_LENGTH. */
-    public static final int DEFAULT_MAX_LENGTH = 100;
+    private static final int DEFAULT_MAX_LENGTH = 100;
+
+    /**
+     * Mapping from attachment types to file extensions. This helps generate a more user-friendly attachment filename.
+     */
+    private static final Map<UploadFieldType, String> BRIDGE_TYPE_TO_FILE_EXTENSION =
+            ImmutableMap.<UploadFieldType, String>builder()
+                    .put(UploadFieldType.ATTACHMENT_CSV, ".csv")
+                    .put(UploadFieldType.ATTACHMENT_JSON_BLOB, ".json")
+                    .put(UploadFieldType.ATTACHMENT_JSON_TABLE, ".json")
+                    .build();
 
     /** Mapping from attachment types to MIME types, for use with telling Synapse what kind of file handle this is. */
-    public static final Map<UploadFieldType, String> BRIDGE_TYPE_TO_MIME_TYPE =
+    private static final Map<UploadFieldType, String> BRIDGE_TYPE_TO_MIME_TYPE =
             ImmutableMap.<UploadFieldType, String>builder()
-                    .put(UploadFieldType.ATTACHMENT_BLOB, "application/octet-stream")
                     .put(UploadFieldType.ATTACHMENT_CSV, "text/csv")
                     .put(UploadFieldType.ATTACHMENT_JSON_BLOB, "text/json")
                     .put(UploadFieldType.ATTACHMENT_JSON_TABLE, "text/json")
                     .build();
 
-    /** Mapping from Bridge schema column types to Synapse table column types. */
+    /** Default MIME type. application/octet-stream is used for arbitrary (potentially binary) data. */
+    private static final String DEFAULT_MIME_TYPE = "application/octet-stream";
+
+    /**
+     * Mapping from Bridge schema column types to Synapse table column types. Excludes types that map to multiple
+     * Synapse columns, such as MULTI_CHOICE or TIMESTAMP.
+     */
     public static final Map<UploadFieldType, ColumnType> BRIDGE_TYPE_TO_SYNAPSE_TYPE =
             ImmutableMap.<UploadFieldType, ColumnType>builder()
                     .put(UploadFieldType.ATTACHMENT_BLOB, ColumnType.FILEHANDLEID)
                     .put(UploadFieldType.ATTACHMENT_CSV, ColumnType.FILEHANDLEID)
                     .put(UploadFieldType.ATTACHMENT_JSON_BLOB, ColumnType.FILEHANDLEID)
                     .put(UploadFieldType.ATTACHMENT_JSON_TABLE, ColumnType.FILEHANDLEID)
+                    .put(UploadFieldType.ATTACHMENT_V2, ColumnType.FILEHANDLEID)
                     .put(UploadFieldType.BOOLEAN, ColumnType.BOOLEAN)
                     .put(UploadFieldType.CALENDAR_DATE, ColumnType.STRING)
+                    .put(UploadFieldType.DURATION_V2, ColumnType.STRING)
                     .put(UploadFieldType.FLOAT, ColumnType.DOUBLE)
                     .put(UploadFieldType.INLINE_JSON_BLOB, ColumnType.STRING)
                     .put(UploadFieldType.INT, ColumnType.INTEGER)
+                    .put(UploadFieldType.SINGLE_CHOICE, ColumnType.STRING)
                     .put(UploadFieldType.STRING, ColumnType.STRING)
-                    .put(UploadFieldType.TIMESTAMP, ColumnType.DATE)
+                    .put(UploadFieldType.TIME_V2, ColumnType.STRING)
                     .build();
 
     // config
@@ -132,7 +149,13 @@ public class SynapseHelper {
     }
 
     /**
+     * <p>
      * Serializes a Bridge health data record column into a Synapse table column.
+     * </p>
+     * <p>
+     * This should not be called for MULTI_CHOICE or TIMESTAMP types, as these types serialize into multiple columns.
+     * This method is intended only for fields that serialize into a single column.
+     * </p>
      *
      * @param tmpDir
      *         temp directory, used for scratch space for uploading attachments
@@ -140,10 +163,8 @@ public class SynapseHelper {
      *         Synapse project ID, used to determine where to upload attachments to
      * @param recordId
      *         Bridge record ID, used for logging
-     * @param fieldName
-     *         record field name, used to determine attachment filenames
-     * @param bridgeType
-     *         bridge type to serialize from
+     * @param fieldDef
+     *         field definition, to determine how to serialize the field
      * @param node
      *         value to serialize
      * @return serialized value, to be uploaded to a Synapse table
@@ -152,86 +173,66 @@ public class SynapseHelper {
      * @throws SynapseException
      *         if uploading the attachment to Synapse fails
      */
-    public String serializeToSynapseType(File tmpDir, String projectId, String recordId, String fieldName,
-            UploadFieldType bridgeType, JsonNode node) throws IOException, SynapseException {
+    public String serializeToSynapseType(File tmpDir, String projectId, String recordId,
+            UploadFieldDefinition fieldDef, JsonNode node) throws IOException, SynapseException {
         if (node == null || node.isNull()) {
             return null;
         }
 
-        ColumnType synapseType = BRIDGE_TYPE_TO_SYNAPSE_TYPE.get(bridgeType);
-        if (synapseType == null) {
-            LOG.error("No Synapse type found for Bridge type " + bridgeType + ", record ID " + recordId);
-            synapseType = ColumnType.STRING;
-        }
-
-        switch (synapseType) {
-            case BOOLEAN:
+        UploadFieldType fieldType = fieldDef.getType();
+        switch (fieldType) {
+            case ATTACHMENT_BLOB:
+            case ATTACHMENT_CSV:
+            case ATTACHMENT_JSON_BLOB:
+            case ATTACHMENT_JSON_TABLE:
+            case ATTACHMENT_V2: {
+                // file handles are text nodes, where the text is the attachment ID (which is the S3 Key)
+                if (node.isTextual()) {
+                    String s3Key = node.textValue();
+                    return uploadFromS3ToSynapseFileHandle(tmpDir, projectId, fieldDef, s3Key);
+                }
+                return null;
+            }
+            case BOOLEAN: {
                 if (node.isBoolean()) {
                     return String.valueOf(node.booleanValue());
                 }
                 return null;
-            case DATE:
-                // date is a long epoch millis
+            }
+            case CALENDAR_DATE:
+            case DURATION_V2:
+            case INLINE_JSON_BLOB:
+            case SINGLE_CHOICE:
+            case STRING:
+            case TIME_V2: {
+                // These types are all strings. Some are fixed length, some are variable length. Some are short enough
+                // to use the Synapse String type. Some are too long and need to use the blob (large text) type.
+                // Regardless, they all go through the same logic here and are serialized in the TSV as just a string.
+                String nodeValue;
                 if (node.isTextual()) {
-                    String timestampString = node.textValue();
-                    try {
-                        DateTime dateTime = DateTime.parse(timestampString);
-                        return String.valueOf(dateTime.getMillis());
-                    } catch (IllegalArgumentException ex) {
-                        // log an error, but throw out malformatted dates and return null
-                        LOG.error("Invalid timestamp " + timestampString + " for record ID " + recordId);
-                        return null;
-                    }
-                } else if (node.isNumber()) {
-                    return String.valueOf(node.longValue());
+                    nodeValue = node.textValue();
+                } else {
+                    // Some types (notably INLINE_JSON_BLOB) will use the whole JSON value.
+                    nodeValue = node.toString();
                 }
-                return null;
-            case DOUBLE:
+                Integer maxLength = getMaxLengthForFieldDef(fieldDef);
+                String sanitizedValue = BridgeExporterUtil.sanitizeString(nodeValue, maxLength, recordId);
+                return sanitizedValue;
+            }
+            case FLOAT: {
                 if (node.isNumber()) {
                     return String.valueOf(node.decimalValue());
                 }
                 return null;
-            case FILEHANDLEID:
-                // file handles are text nodes, where the text is the attachment ID (which is the S3 Key)
-                if (node.isTextual()) {
-                    String s3Key = node.textValue();
-                    return uploadFromS3ToSynapseFileHandle(tmpDir, projectId, fieldName, bridgeType, s3Key);
-                }
-                return null;
-            case INTEGER:
-                // int includes long
+            }
+            case INT: {
                 if (node.isNumber()) {
-                    return String.valueOf(node.longValue());
+                    return String.valueOf(node.bigIntegerValue());
                 }
                 return null;
-            case STRING:
-                // String includes calendar_date (as JSON string) and inline_json_blob (arbitrary JSON)
-                String nodeValue;
-                if (UploadFieldType.INLINE_JSON_BLOB.equals(bridgeType)) {
-                    nodeValue = node.toString();
-                } else {
-                    nodeValue = node.asText();
-                }
-
-                if (UploadFieldType.CALENDAR_DATE.equals(bridgeType)) {
-                    // Validate calendar date format. Log an error and return null if the format is invalid.
-                    try {
-                        LocalDate.parse(nodeValue);
-                    } catch (IllegalArgumentException ex) {
-                        LOG.error("Invalid calendar date " + nodeValue + " for record ID " + recordId);
-                        return null;
-                    }
-                }
-
-                Integer maxLength = BRIDGE_TYPE_TO_MAX_LENGTH.get(bridgeType);
-                if (maxLength == null) {
-                    LOG.error("No max length found for Bridge type " + bridgeType);
-                    maxLength = DEFAULT_MAX_LENGTH;
-                }
-                String sanitizedValue = BridgeExporterUtil.sanitizeString(nodeValue, maxLength, recordId);
-                return sanitizedValue;
+            }
             default:
-                LOG.error("Unexpected Synapse Type " + String.valueOf(synapseType) + " for record ID " + recordId);
+                LOG.error("Unexpected type " + fieldType.name() + " for record ID " + recordId);
                 return null;
         }
     }
@@ -244,10 +245,8 @@ public class SynapseHelper {
      *         temporary directory to use as scratch space for downloading from S3 and uploading to Synapse
      * @param projectId
      *         synapse project ID to upload
-     * @param fieldName
-     *         field name of the attachment, used to determine the file handle's file name
-     * @param bridgeType
-     *         Bridge type, used to help determine the file handle's file extension
+     * @param fieldDef
+     *         field definition, used to determine file name, extension, and MIME type
      * @param attachmentId
      *         attachment ID, also used as the S3 key into the attachments bucket
      * @return the uploaded Synapse file handle ID
@@ -256,13 +255,13 @@ public class SynapseHelper {
      * @throws SynapseException
      *         if uploading the file handle to Synapse fails
      */
-    public String uploadFromS3ToSynapseFileHandle(File tmpDir, String projectId, String fieldName,
-            UploadFieldType bridgeType, String attachmentId) throws IOException, SynapseException {
+    public String uploadFromS3ToSynapseFileHandle(File tmpDir, String projectId, UploadFieldDefinition fieldDef,
+            String attachmentId) throws IOException, SynapseException {
         // Create temp file with unique name based on field name, bridge type, and attachment ID.
-        String uniqueFilename = generateFilename(fieldName, bridgeType, attachmentId);
+        String uniqueFilename = generateFilename(fieldDef, attachmentId);
         File tempFile = fileHelper.newFile(tmpDir, uniqueFilename);
+        String mimeType = getMimeTypeForFieldDef(fieldDef);
 
-        String mimeType = BRIDGE_TYPE_TO_MIME_TYPE.get(bridgeType);
         try {
             // download from S3
             s3Helper.downloadS3File(attachmentBucket, attachmentId, tempFile);
@@ -278,34 +277,47 @@ public class SynapseHelper {
 
     // Helper method to generate a unique filename for attachments / file handles.
     // Package-scoped to facilitate testing.
-    static String generateFilename(String fieldName, UploadFieldType bridgeType, String attachmentId) {
-        // Determine file name and extension.
-        String fileBaseName, fileExt;
-        if (UploadFieldType.ATTACHMENT_JSON_BLOB == bridgeType ||
-                UploadFieldType.ATTACHMENT_JSON_TABLE == bridgeType) {
-            fileExt = ".json";
-            fileBaseName = removeFileExtensionIfPresent(fieldName, fileExt);
-        } else if (UploadFieldType.ATTACHMENT_CSV == bridgeType) {
-            fileExt = ".csv";
-            fileBaseName = removeFileExtensionIfPresent(fieldName, fileExt);
-        } else {
-            int dotIndex = fieldName.lastIndexOf('.');
-            if (dotIndex > 0 && dotIndex < fieldName.length() - 1) {
-                // If there's a dot and it's not the first or last char. (That is, there's a dot separating the base
-                // name and extension.
-                fileExt = fieldName.substring(dotIndex);
-                fileBaseName = removeFileExtensionIfPresent(fieldName, fileExt);
-            } else {
-                // Field name has no file extension, so our new name will have no extension. Base name stays the same.
-                fileBaseName = fieldName;
-                fileExt = "";
+    static String generateFilename(UploadFieldDefinition fieldDef, String attachmentId) {
+        // File name with pattern [fileBaseName]-[attachmentId][fileExt]. This guarantees filename uniqueness and
+        // allows us to have a useful file extension, for OSes that still depend on file extension.
+
+        String fieldName = fieldDef.getName();
+
+        // Check field def to determine file extension first.
+        String fileExt = null;
+        String defFileExt = fieldDef.getFileExtension();
+        if (defFileExt != null) {
+            fileExt = defFileExt;
+        }
+
+        // Fall back to defaults per field type.
+        if (fileExt == null) {
+            String typeFileExt = BRIDGE_TYPE_TO_FILE_EXTENSION.get(fieldDef.getType());
+            if (typeFileExt != null) {
+                fileExt = typeFileExt;
             }
         }
 
-        // File name with pattern [fileBaseName]-[attachmentId][fileExt]. This guarantees filename uniqueness and
-        // allows us to have a useful file extension, for OSes that still depend on file extension.
-        // Note that fileExt already includes the dot.
-        return fileBaseName + '-' + attachmentId + fileExt;
+        // Fall back to the file's own file extension.
+        if (fileExt == null) {
+            // If there's a dot and it's not the first or last char. (That is, there's a dot separating the base name
+            // and extension.)
+            int dotIndex = fieldName.lastIndexOf('.');
+            if (dotIndex > 0 && dotIndex < fieldName.length() - 1) {
+                fileExt = fieldName.substring(dotIndex);
+            }
+        }
+
+        if (fileExt != null) {
+            // If we have a file extension, remove it from the from the base name, or we end up with things like
+            // foo.json-attachmentId.json.
+            String fileBaseName = removeFileExtensionIfPresent(fieldName, fileExt);
+
+            // Note that fileExt already includes the dot.
+            return fileBaseName + '-' + attachmentId + fileExt;
+        } else {
+            return fieldName + '-' + attachmentId;
+        }
     }
 
     // Helper method which removes the extension from a filename, unless it doesn't have the extension.
@@ -316,6 +328,48 @@ public class SynapseHelper {
         } else {
             return filename.substring(0, filename.length() - fileExt.length());
         }
+    }
+
+    /**
+     * Helper method to get the MIME type for the given field definitions, using the field definitions parameters and
+     * its type.
+     */
+    private static String getMimeTypeForFieldDef(UploadFieldDefinition fieldDef) {
+        // First try MIME type defined in the field def.
+        String defMimeType = fieldDef.getMimeType();
+        if (defMimeType != null) {
+            return defMimeType;
+        }
+
+        // Fall back to type specific MIME types.
+        String typeMimeType = BRIDGE_TYPE_TO_MIME_TYPE.get(fieldDef.getType());
+        if (typeMimeType != null) {
+            return typeMimeType;
+        }
+
+        // Fall back to global default.
+        return DEFAULT_MIME_TYPE;
+    }
+
+    /**
+     * Helper method to get the max string length for the given field definitions, using the field definitions
+     * parameters and its type.
+     */
+    public static int getMaxLengthForFieldDef(UploadFieldDefinition fieldDef) {
+        // First try max length defined in field def.
+        Integer defMaxLength = fieldDef.getMaxLength();
+        if (defMaxLength != null) {
+            return defMaxLength;
+        }
+
+        // Fall back to type specific max length.
+        Integer typeMaxLength = BRIDGE_TYPE_TO_MAX_LENGTH.get(fieldDef.getType());
+        if (typeMaxLength != null) {
+            return typeMaxLength;
+        }
+
+        // Fall back to global default.
+        return DEFAULT_MAX_LENGTH;
     }
 
     /**
