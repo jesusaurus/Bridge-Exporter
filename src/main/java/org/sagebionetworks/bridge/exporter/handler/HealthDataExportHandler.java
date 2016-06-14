@@ -3,8 +3,10 @@ package org.sagebionetworks.bridge.exporter.handler;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
@@ -36,6 +38,7 @@ import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
 public class HealthDataExportHandler extends SynapseExportHandler {
     private static final Logger LOG = LoggerFactory.getLogger(HealthDataExportHandler.class);
 
+    private static final char MULTI_CHOICE_FIELD_SEPARATOR = '.';
     private static final String TIME_ZONE_FIELD_SUFFIX = ".timezone";
     private static final long TIME_ZONE_FIELD_LENGTH = 5;
     private static final DateTimeFormatter TIME_ZONE_FORMATTER = DateTimeFormat.forPattern("Z");
@@ -82,7 +85,16 @@ public class HealthDataExportHandler extends SynapseExportHandler {
             UploadFieldType bridgeType = oneFieldDef.getType();
 
             if (bridgeType == UploadFieldType.MULTI_CHOICE) {
-                throw new UnsupportedOperationException("MULTI_CHOICE not yet implemented");
+                // Multi-Choice questions create a boolean column for each possible answer in the multi-choice answer
+                // list. For example, if Multi-Choice field "sports" has possible answers "fencing", "football",
+                // "running", and "swimming", then we create boolean columns "sports.fencing", "sports.football",
+                // "sports.running", and "sports.swimming".
+                for (String oneAnswer : oneFieldDef.getMultiChoiceAnswerList()) {
+                    ColumnModel oneColumn = new ColumnModel();
+                    oneColumn.setName(oneFieldName + MULTI_CHOICE_FIELD_SEPARATOR + oneAnswer);
+                    oneColumn.setColumnType(ColumnType.BOOLEAN);
+                    columnList.add(oneColumn);
+                }
             } else if (bridgeType == UploadFieldType.TIMESTAMP) {
                 // Timestamps have 2 columns, one for the timestamp (as a Synapse DATE field) and one for the timezone.
                 ColumnModel timestampColumn = new ColumnModel();
@@ -169,7 +181,9 @@ public class HealthDataExportHandler extends SynapseExportHandler {
             }
 
             if (bridgeType == UploadFieldType.MULTI_CHOICE) {
-                throw new UnsupportedOperationException("MULTI_CHOICE not yet implemented");
+                // MULTI_CHOICE serializes into multiple fields. See getSynapseTableColumnList() for details.
+                Map<String, String> serializedMultiChoiceFields = serializeMultiChoice(oneFieldDef, valueNode);
+                rowValueMap.putAll(serializedMultiChoiceFields);
             } else if (bridgeType == UploadFieldType.TIMESTAMP) {
                 // Similarly, TIMESTAMP serializes into 2 different fields.
                 Map<String, String> serializedTimestampFields = serializeTimestamp(recordId, oneFieldName, valueNode);
@@ -182,6 +196,56 @@ public class HealthDataExportHandler extends SynapseExportHandler {
         }
 
         return rowValueMap;
+    }
+
+    /**
+     * <p>
+     * Serialize a multi-choice answer to a row value map. The map is a partial map and can be written to a TSV and
+     * uploaded to Synapse.
+     * </p>
+     * <p>
+     * Package-scoped to facilitate unit testing.
+     * </p>
+     *
+     * @param fieldDef
+     *         field definition, used to get the multi-choice answer list and generate column names
+     * @param node
+     *         value of the multi-choice answer field
+     * @return partial row value map with serialized multi-choice answers
+     */
+    static Map<String, String> serializeMultiChoice(UploadFieldDefinition fieldDef, JsonNode node) {
+        if (node == null || node.isNull() || !node.isArray()) {
+            // Missing or invalid format. Return empty map (no values).
+            return ImmutableMap.of();
+        }
+
+        // Determine selected answers.
+        int numSelected = node.size();
+        Set<String> selectedSet = new HashSet<>();
+        for (int i = 0; i < numSelected; i++) {
+            JsonNode oneSelectedNode = node.get(i);
+            String oneSelectedAnswer;
+            if (oneSelectedNode.isTextual()) {
+                // Multi-Choice answers _should_ be strings.
+                oneSelectedAnswer = oneSelectedNode.textValue();
+            } else {
+                // Convert everything else trivially to a string, for robustness.
+                oneSelectedAnswer = oneSelectedNode.toString();
+            }
+
+            selectedSet.add(oneSelectedAnswer);
+        }
+
+        // Write "true" and "false" values based on fieldDef answer list.
+        String fieldName = fieldDef.getName();
+        Map<String, String> partialValueMap = new HashMap<>();
+        for (String oneAnswer : fieldDef.getMultiChoiceAnswerList()) {
+            String answerFieldName = fieldName + MULTI_CHOICE_FIELD_SEPARATOR + oneAnswer;
+            String answerFieldValue = String.valueOf(selectedSet.contains(oneAnswer));
+            partialValueMap.put(answerFieldName, answerFieldValue);
+        }
+
+        return partialValueMap;
     }
 
     /**
