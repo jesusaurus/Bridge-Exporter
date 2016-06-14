@@ -283,7 +283,7 @@ public class SynapseExportHandlerTest {
     @Test
     public void healthDataExportHandlerTest() throws Exception {
         // We don't need to exhaustively test all column types, as a lot of it is baked into
-        // SynapseHelper.BRIDGE_TYPE_TO_SYNAPSE_TYPE. We just need to test multi_choice (when implemented), timestamp,
+        // SynapseHelper.BRIDGE_TYPE_TO_SYNAPSE_TYPE. We just need to test multi_choice, timestamp,
         // int (non-string), short string, long string (large text aka blob), and freeform text -> attachment
         // Since we want to test that our hack works, we'll need to use the breastcancer-BreastCancer-DailyJournal-v1
         // schema, field DailyJournalStep103_data.content
@@ -296,6 +296,8 @@ public class SynapseExportHandlerTest {
                         new UploadFieldDefinition.Builder().withName("bar").withType(UploadFieldType.INT).build(),
                         new UploadFieldDefinition.Builder().withName("submitTime").withType(UploadFieldType.TIMESTAMP)
                                 .build(),
+                        new UploadFieldDefinition.Builder().withName("sports").withType(UploadFieldType.MULTI_CHOICE)
+                                .withMultiChoiceAnswerList("fencing", "football", "running", "swimming").build(),
                         new UploadFieldDefinition.Builder().withName(FREEFORM_FIELD_NAME)
                                 .withType(UploadFieldType.STRING).build())
                 .build();
@@ -331,6 +333,7 @@ public class SynapseExportHandlerTest {
                 "   \"foooo\":\"Example (not) long string\",\n" +
                 "   \"bar\":42,\n" +
                 "   \"submitTime\":\"" + submitTimeStr + "\",\n" +
+                "   \"sports\":[\"fencing\", \"running\"],\n" +
                 "   \"" + FREEFORM_FIELD_NAME + "\":\"" + DUMMY_FREEFORM_TEXT_CONTENT + "\"\n" +
                 "}";
         ExportSubtask subtask = makeSubtask(task, recordJsonText);
@@ -343,9 +346,9 @@ public class SynapseExportHandlerTest {
         List<String> tsvLineList = TestUtil.bytesToLines(tsvBytes);
         assertEquals(tsvLineList.size(), 2);
         validateTsvHeaders(tsvLineList.get(0), "foo", "foooo", "bar", "submitTime", "submitTime.timezone",
-                FREEFORM_FIELD_NAME);
+                "sports.fencing", "sports.football", "sports.running", "sports.swimming", FREEFORM_FIELD_NAME);
         validateTsvRow(tsvLineList.get(1), "This is a string.", "Example (not) long string", "42",
-                String.valueOf(submitTimeMillis), "+0900", DUMMY_FILEHANDLE_ID);
+                String.valueOf(submitTimeMillis), "+0900", "true", "false", "true", "false", DUMMY_FILEHANDLE_ID);
 
         // validate metrics
         Multiset<String> counterMap = task.getMetrics().getCounterMap();

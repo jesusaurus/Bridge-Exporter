@@ -5,6 +5,7 @@ import static org.testng.Assert.assertTrue;
 
 import java.util.Map;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.BooleanNode;
 import com.fasterxml.jackson.databind.node.IntNode;
 import com.fasterxml.jackson.databind.node.NullNode;
@@ -13,27 +14,35 @@ import org.joda.time.DateTime;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
+import org.sagebionetworks.bridge.json.DefaultObjectMapper;
+import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldDefinition;
+import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldType;
+
 public class HealthDataExportHandlerTest {
     private static final String FIELD_NAME = "foo-field";
     private static final String FIELD_NAME_TIMEZONE = FIELD_NAME + ".timezone";
 
+    private static final UploadFieldDefinition MULTI_CHOICE_FIELD_DEF = new UploadFieldDefinition.Builder()
+            .withName(FIELD_NAME).withType(UploadFieldType.MULTI_CHOICE).withMultiChoiceAnswerList("foo", "bar", "baz",
+                    "true", "42").build();
+
     // branch coverage
     @Test
-    public void nullNode() {
+    public void nullTimestamp() {
         Map<String, String> rowValueMap = HealthDataExportHandler.serializeTimestamp("dummy", FIELD_NAME, null);
         assertTrue(rowValueMap.isEmpty());
     }
 
     // branch coverage
     @Test
-    public void javaNull() {
+    public void jsonNullTimestamp() {
         Map<String, String> rowValueMap = HealthDataExportHandler.serializeTimestamp("dummy", FIELD_NAME,
                 NullNode.instance);
         assertTrue(rowValueMap.isEmpty());
     }
 
     @Test
-    public void invalidType() {
+    public void invalidTypeTimestamp() {
         Map<String, String> rowValueMap = HealthDataExportHandler.serializeTimestamp("dummy", FIELD_NAME,
                 BooleanNode.TRUE);
         assertTrue(rowValueMap.isEmpty());
@@ -77,5 +86,43 @@ public class HealthDataExportHandlerTest {
         assertEquals(rowValueMap.size(), 2);
         assertEquals(rowValueMap.get(FIELD_NAME), "12345");
         assertEquals(rowValueMap.get(FIELD_NAME_TIMEZONE), "+0000");
+    }
+
+    // branch coverage
+    @Test
+    public void nullMultiChoice() {
+        Map<String, String> rowValueMap = HealthDataExportHandler.serializeMultiChoice(MULTI_CHOICE_FIELD_DEF, null);
+        assertTrue(rowValueMap.isEmpty());
+    }
+
+    // branch coverage
+    @Test
+    public void jsonNullMultiChoice() {
+        Map<String, String> rowValueMap = HealthDataExportHandler.serializeMultiChoice(MULTI_CHOICE_FIELD_DEF,
+                NullNode.instance);
+        assertTrue(rowValueMap.isEmpty());
+    }
+
+    @Test
+    public void invalidTypeMultiChoice() {
+        Map<String, String> rowValueMap = HealthDataExportHandler.serializeMultiChoice(MULTI_CHOICE_FIELD_DEF,
+                new TextNode("baz"));
+        assertTrue(rowValueMap.isEmpty());
+    }
+
+    @Test
+    public void validMultiChoice() throws Exception {
+        // Some of the fields aren't strings, to test robustness and string conversion.
+        String answerText = "[\"bar\", true, 42]";
+        JsonNode answerNode = DefaultObjectMapper.INSTANCE.readTree(answerText);
+
+        Map<String, String> rowValueMap = HealthDataExportHandler.serializeMultiChoice(MULTI_CHOICE_FIELD_DEF,
+                answerNode);
+        assertEquals(rowValueMap.size(), 5);
+        assertEquals(rowValueMap.get("foo-field.foo"), "false");
+        assertEquals(rowValueMap.get("foo-field.bar"), "true");
+        assertEquals(rowValueMap.get("foo-field.baz"), "false");
+        assertEquals(rowValueMap.get("foo-field.true"), "true");
+        assertEquals(rowValueMap.get("foo-field.42"), "true");
     }
 }
