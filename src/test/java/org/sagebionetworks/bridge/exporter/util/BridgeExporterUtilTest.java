@@ -151,6 +151,13 @@ public class BridgeExporterUtilTest {
         assertEquals(out, "1234");
     }
 
+    // branch coverage
+    @Test
+    public void sanitizeStringNullMaxLength() {
+        String out = BridgeExporterUtil.sanitizeString("stuff", null, "dummy-record");
+        assertEquals(out, "stuff");
+    }
+
     @Test
     public void shouldConvertFreeformTextToAttachment() {
         // This is a hack, but we still need to test it.

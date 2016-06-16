@@ -120,8 +120,9 @@ public class HealthDataExportHandler extends SynapseExportHandler {
                         oneColumn.setColumnType(ColumnType.FILEHANDLEID);
                     } else {
                         // Could be String or LargeText, depending on max length.
+                        Boolean isUnboundedText = oneFieldDef.isUnboundedText();
                         int maxLength = SynapseHelper.getMaxLengthForFieldDef(oneFieldDef);
-                        if (maxLength > 1000) {
+                        if ((isUnboundedText != null && isUnboundedText) || maxLength > 1000) {
                             oneColumn.setColumnType(ColumnType.LARGETEXT);
                         } else {
                             oneColumn.setColumnType(ColumnType.STRING);

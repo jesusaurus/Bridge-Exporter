@@ -293,6 +293,8 @@ public class SynapseExportHandlerTest {
                                 .withMaxLength(20).build(),
                         new UploadFieldDefinition.Builder().withName("foooo").withType(UploadFieldType.STRING)
                                 .withMaxLength(9999).build(),
+                        new UploadFieldDefinition.Builder().withName("unbounded-foo").withType(UploadFieldType.STRING)
+                                .withUnboundedText(true).build(),
                         new UploadFieldDefinition.Builder().withName("bar").withType(UploadFieldType.INT).build(),
                         new UploadFieldDefinition.Builder().withName("submitTime").withType(UploadFieldType.TIMESTAMP)
                                 .build(),
@@ -331,6 +333,7 @@ public class SynapseExportHandlerTest {
         String recordJsonText = "{\n" +
                 "   \"foo\":\"This is a string.\",\n" +
                 "   \"foooo\":\"Example (not) long string\",\n" +
+                "   \"unbounded-foo\":\"Potentially unbounded string\",\n" +
                 "   \"bar\":42,\n" +
                 "   \"submitTime\":\"" + submitTimeStr + "\",\n" +
                 "   \"sports\":[\"fencing\", \"running\"],\n" +
@@ -345,10 +348,12 @@ public class SynapseExportHandlerTest {
         // validate tsv file
         List<String> tsvLineList = TestUtil.bytesToLines(tsvBytes);
         assertEquals(tsvLineList.size(), 2);
-        validateTsvHeaders(tsvLineList.get(0), "foo", "foooo", "bar", "submitTime", "submitTime.timezone",
-                "sports.fencing", "sports.football", "sports.running", "sports.swimming", FREEFORM_FIELD_NAME);
-        validateTsvRow(tsvLineList.get(1), "This is a string.", "Example (not) long string", "42",
-                String.valueOf(submitTimeMillis), "+0900", "true", "false", "true", "false", DUMMY_FILEHANDLE_ID);
+        validateTsvHeaders(tsvLineList.get(0), "foo", "foooo", "unbounded-foo", "bar", "submitTime",
+                "submitTime.timezone", "sports.fencing", "sports.football", "sports.running", "sports.swimming",
+                FREEFORM_FIELD_NAME);
+        validateTsvRow(tsvLineList.get(1), "This is a string.", "Example (not) long string",
+                "Potentially unbounded string", "42", String.valueOf(submitTimeMillis), "+0900", "true", "false",
+                "true", "false", DUMMY_FILEHANDLE_ID);
 
         // validate metrics
         Multiset<String> counterMap = task.getMetrics().getCounterMap();

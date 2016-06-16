@@ -215,7 +215,13 @@ public class SynapseHelper {
                     // Some types (notably INLINE_JSON_BLOB) will use the whole JSON value.
                     nodeValue = node.toString();
                 }
-                Integer maxLength = getMaxLengthForFieldDef(fieldDef);
+
+                Boolean isUnboundedText = fieldDef.isUnboundedText();
+                Integer maxLength = null;
+                if (isUnboundedText == null || !isUnboundedText) {
+                    maxLength = getMaxLengthForFieldDef(fieldDef);
+                }
+
                 String sanitizedValue = BridgeExporterUtil.sanitizeString(nodeValue, maxLength, recordId);
                 return sanitizedValue;
             }
