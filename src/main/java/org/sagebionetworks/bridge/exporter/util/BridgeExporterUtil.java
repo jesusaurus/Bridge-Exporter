@@ -135,12 +135,12 @@ public class BridgeExporterUtil {
      * @param in
      *         value to sanitize
      * @param maxLength
-     *         max length of the column
+     *         max length of the column, null if the string can be unbounded
      * @param recordId
      *         record ID, for logging purposes
      * @return sanitized string
      */
-    public static String sanitizeString(String in, int maxLength, String recordId) {
+    public static String sanitizeString(String in, Integer maxLength, String recordId) {
         if (in == null) {
             return null;
         }
@@ -152,7 +152,7 @@ public class BridgeExporterUtil {
         in = in.replaceAll("[\n\r\t]+", " ");
 
         // Check against max length, truncating and warning as necessary.
-        if (in.length() > maxLength) {
+        if (maxLength != null && in.length() > maxLength) {
             LOG.error("Truncating string " + in + " to length " + maxLength + " for record " + recordId);
             in = in.substring(0, maxLength);
         }

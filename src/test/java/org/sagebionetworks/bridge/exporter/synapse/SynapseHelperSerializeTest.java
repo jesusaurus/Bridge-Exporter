@@ -184,6 +184,26 @@ public class SynapseHelperSerializeTest {
         assertEquals(retVal, "link");
     }
 
+    // branch coverage
+    @Test(dataProvider = "stringTypeProvider")
+    public void stringUnboundedTrue(UploadFieldType stringType) throws Exception {
+        UploadFieldDefinition fieldDef = new UploadFieldDefinition.Builder().withName(TEST_FIELD_NAME)
+                .withType(stringType).withUnboundedText(true).build();
+        String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
+                fieldDef, new TextNode("unbounded text not really"));
+        assertEquals(retVal, "unbounded text not really");
+    }
+
+    // branch coverage
+    @Test(dataProvider = "stringTypeProvider")
+    public void stringUnboundedFalse(UploadFieldType stringType) throws Exception {
+        UploadFieldDefinition fieldDef = new UploadFieldDefinition.Builder().withName(TEST_FIELD_NAME)
+                .withType(stringType).withUnboundedText(false).build();
+        String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
+                fieldDef, new TextNode("not really unbounded text"));
+        assertEquals(retVal, "not really unbounded text");
+    }
+
     @Test
     public void time() throws Exception {
         String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
