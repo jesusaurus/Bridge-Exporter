@@ -300,6 +300,9 @@ public class SynapseExportHandlerTest {
                                 .build(),
                         new UploadFieldDefinition.Builder().withName("sports").withType(UploadFieldType.MULTI_CHOICE)
                                 .withMultiChoiceAnswerList("fencing", "football", "running", "swimming").build(),
+                        new UploadFieldDefinition.Builder().withName("delicious")
+                                .withType(UploadFieldType.MULTI_CHOICE).withMultiChoiceAnswerList("Yes", "No")
+                                .withAllowOtherChoices(true).build(),
                         new UploadFieldDefinition.Builder().withName(FREEFORM_FIELD_NAME)
                                 .withType(UploadFieldType.STRING).build())
                 .build();
@@ -337,6 +340,7 @@ public class SynapseExportHandlerTest {
                 "   \"bar\":42,\n" +
                 "   \"submitTime\":\"" + submitTimeStr + "\",\n" +
                 "   \"sports\":[\"fencing\", \"running\"],\n" +
+                "   \"delicious\":[\"Yes\", \"No\", \"Maybe\"],\n" +
                 "   \"" + FREEFORM_FIELD_NAME + "\":\"" + DUMMY_FREEFORM_TEXT_CONTENT + "\"\n" +
                 "}";
         ExportSubtask subtask = makeSubtask(task, recordJsonText);
@@ -350,10 +354,10 @@ public class SynapseExportHandlerTest {
         assertEquals(tsvLineList.size(), 2);
         validateTsvHeaders(tsvLineList.get(0), "foo", "foooo", "unbounded-foo", "bar", "submitTime",
                 "submitTime.timezone", "sports.fencing", "sports.football", "sports.running", "sports.swimming",
-                FREEFORM_FIELD_NAME);
+                "delicious.Yes", "delicious.No", "delicious.other", FREEFORM_FIELD_NAME);
         validateTsvRow(tsvLineList.get(1), "This is a string.", "Example (not) long string",
                 "Potentially unbounded string", "42", String.valueOf(submitTimeMillis), "+0900", "true", "false",
-                "true", "false", DUMMY_FILEHANDLE_ID);
+                "true", "false", "true", "true", "Maybe", DUMMY_FILEHANDLE_ID);
 
         // validate metrics
         Multiset<String> counterMap = task.getMetrics().getCounterMap();

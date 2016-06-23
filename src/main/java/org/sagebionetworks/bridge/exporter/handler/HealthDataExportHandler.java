@@ -3,16 +3,17 @@ package org.sagebionetworks.bridge.exporter.handler;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Iterables;
 import com.jcabi.aspects.Cacheable;
 import org.joda.time.DateTime;
 import org.joda.time.format.DateTimeFormat;
@@ -39,6 +40,7 @@ public class HealthDataExportHandler extends SynapseExportHandler {
     private static final Logger LOG = LoggerFactory.getLogger(HealthDataExportHandler.class);
 
     private static final char MULTI_CHOICE_FIELD_SEPARATOR = '.';
+    private static final String OTHER_CHOICE_FIELD_SUFFIX = ".other";
     private static final String TIME_ZONE_FIELD_SUFFIX = ".timezone";
     private static final long TIME_ZONE_FIELD_LENGTH = 5;
     private static final DateTimeFormatter TIME_ZONE_FORMATTER = DateTimeFormat.forPattern("Z");
@@ -94,6 +96,15 @@ public class HealthDataExportHandler extends SynapseExportHandler {
                     oneColumn.setName(oneFieldName + MULTI_CHOICE_FIELD_SEPARATOR + oneAnswer);
                     oneColumn.setColumnType(ColumnType.BOOLEAN);
                     columnList.add(oneColumn);
+                }
+
+                // If this field allows other, we also include the "[name].other" column. Since there's no way to set
+                // max length for multi-choice questions, it could be unbounded, so use LargeText.
+                if (Boolean.TRUE.equals(oneFieldDef.getAllowOtherChoices())) {
+                    ColumnModel otherColumn = new ColumnModel();
+                    otherColumn.setName(oneFieldName + OTHER_CHOICE_FIELD_SUFFIX);
+                    otherColumn.setColumnType(ColumnType.LARGETEXT);
+                    columnList.add(otherColumn);
                 }
             } else if (bridgeType == UploadFieldType.TIMESTAMP) {
                 // Timestamps have 2 columns, one for the timestamp (as a Synapse DATE field) and one for the timezone.
@@ -183,7 +194,8 @@ public class HealthDataExportHandler extends SynapseExportHandler {
 
             if (bridgeType == UploadFieldType.MULTI_CHOICE) {
                 // MULTI_CHOICE serializes into multiple fields. See getSynapseTableColumnList() for details.
-                Map<String, String> serializedMultiChoiceFields = serializeMultiChoice(oneFieldDef, valueNode);
+                Map<String, String> serializedMultiChoiceFields = serializeMultiChoice(recordId, oneFieldDef,
+                        valueNode);
                 rowValueMap.putAll(serializedMultiChoiceFields);
             } else if (bridgeType == UploadFieldType.TIMESTAMP) {
                 // Similarly, TIMESTAMP serializes into 2 different fields.
@@ -214,15 +226,15 @@ public class HealthDataExportHandler extends SynapseExportHandler {
      *         value of the multi-choice answer field
      * @return partial row value map with serialized multi-choice answers
      */
-    static Map<String, String> serializeMultiChoice(UploadFieldDefinition fieldDef, JsonNode node) {
+    static Map<String, String> serializeMultiChoice(String recordId, UploadFieldDefinition fieldDef, JsonNode node) {
         if (node == null || node.isNull() || !node.isArray()) {
             // Missing or invalid format. Return empty map (no values).
             return ImmutableMap.of();
         }
 
-        // Determine selected answers.
+        // Determine selected answers. Use TreeSet to maintain answers in a predictable (alphabetical) order.
         int numSelected = node.size();
-        Set<String> selectedSet = new HashSet<>();
+        Set<String> selectedSet = new TreeSet<>();
         for (int i = 0; i < numSelected; i++) {
             JsonNode oneSelectedNode = node.get(i);
             String oneSelectedAnswer;
@@ -244,6 +256,25 @@ public class HealthDataExportHandler extends SynapseExportHandler {
             String answerFieldName = fieldName + MULTI_CHOICE_FIELD_SEPARATOR + oneAnswer;
             String answerFieldValue = String.valueOf(selectedSet.contains(oneAnswer));
             partialValueMap.put(answerFieldName, answerFieldValue);
+
+            // Remove the answer from the set, so we can determine leftover answers for "allow other".
+            selectedSet.remove(oneAnswer);
+        }
+
+        if (!selectedSet.isEmpty()) {
+            String otherChoice;
+            if (selectedSet.size() == 1) {
+                otherChoice = Iterables.getOnlyElement(selectedSet);
+            } else {
+                otherChoice = BridgeExporterUtil.COMMA_SPACE_JOINER.join(selectedSet);
+                LOG.error("Multiple other choices " + otherChoice + " for field " + fieldName + " record " + recordId);
+            }
+
+            if (Boolean.TRUE.equals(fieldDef.getAllowOtherChoices())) {
+                partialValueMap.put(fieldName + OTHER_CHOICE_FIELD_SUFFIX, otherChoice);
+            } else {
+                LOG.error("Unknown choice(s) " + otherChoice + " for field " + fieldName + " record " + recordId);
+            }
         }
 
         return partialValueMap;
