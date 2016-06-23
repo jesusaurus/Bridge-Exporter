@@ -25,6 +25,9 @@ public class HealthDataExportHandlerTest {
     private static final UploadFieldDefinition MULTI_CHOICE_FIELD_DEF = new UploadFieldDefinition.Builder()
             .withName(FIELD_NAME).withType(UploadFieldType.MULTI_CHOICE).withMultiChoiceAnswerList("foo", "bar", "baz",
                     "true", "42").build();
+    private static final UploadFieldDefinition OTHER_CHOICE_FIELD_DEF = new UploadFieldDefinition.Builder()
+            .withAllowOtherChoices(true).withName(FIELD_NAME).withType(UploadFieldType.MULTI_CHOICE)
+            .withMultiChoiceAnswerList("one", "two").build();
 
     // branch coverage
     @Test
@@ -91,21 +94,22 @@ public class HealthDataExportHandlerTest {
     // branch coverage
     @Test
     public void nullMultiChoice() {
-        Map<String, String> rowValueMap = HealthDataExportHandler.serializeMultiChoice(MULTI_CHOICE_FIELD_DEF, null);
+        Map<String, String> rowValueMap = HealthDataExportHandler.serializeMultiChoice("dummy", MULTI_CHOICE_FIELD_DEF,
+                null);
         assertTrue(rowValueMap.isEmpty());
     }
 
     // branch coverage
     @Test
     public void jsonNullMultiChoice() {
-        Map<String, String> rowValueMap = HealthDataExportHandler.serializeMultiChoice(MULTI_CHOICE_FIELD_DEF,
+        Map<String, String> rowValueMap = HealthDataExportHandler.serializeMultiChoice("dummy", MULTI_CHOICE_FIELD_DEF,
                 NullNode.instance);
         assertTrue(rowValueMap.isEmpty());
     }
 
     @Test
     public void invalidTypeMultiChoice() {
-        Map<String, String> rowValueMap = HealthDataExportHandler.serializeMultiChoice(MULTI_CHOICE_FIELD_DEF,
+        Map<String, String> rowValueMap = HealthDataExportHandler.serializeMultiChoice("dummy", MULTI_CHOICE_FIELD_DEF,
                 new TextNode("baz"));
         assertTrue(rowValueMap.isEmpty());
     }
@@ -116,7 +120,7 @@ public class HealthDataExportHandlerTest {
         String answerText = "[\"bar\", true, 42]";
         JsonNode answerNode = DefaultObjectMapper.INSTANCE.readTree(answerText);
 
-        Map<String, String> rowValueMap = HealthDataExportHandler.serializeMultiChoice(MULTI_CHOICE_FIELD_DEF,
+        Map<String, String> rowValueMap = HealthDataExportHandler.serializeMultiChoice("dummy", MULTI_CHOICE_FIELD_DEF,
                 answerNode);
         assertEquals(rowValueMap.size(), 5);
         assertEquals(rowValueMap.get("foo-field.foo"), "false");
@@ -124,5 +128,62 @@ public class HealthDataExportHandlerTest {
         assertEquals(rowValueMap.get("foo-field.baz"), "false");
         assertEquals(rowValueMap.get("foo-field.true"), "true");
         assertEquals(rowValueMap.get("foo-field.42"), "true");
+    }
+
+    // branch coverage: If we're expecting an "other choice", but don't get one, that's fine.
+    @Test
+    public void noOtherChoice() throws Exception {
+        String answerText = "[\"one\"]";
+        JsonNode answerNode = DefaultObjectMapper.INSTANCE.readTree(answerText);
+
+        Map<String, String> rowValueMap = HealthDataExportHandler.serializeMultiChoice("dummy", OTHER_CHOICE_FIELD_DEF,
+                answerNode);
+        assertEquals(rowValueMap.size(), 2);
+        assertEquals(rowValueMap.get("foo-field.one"), "true");
+        assertEquals(rowValueMap.get("foo-field.two"), "false");
+    }
+
+    @Test
+    public void oneOtherChoice() throws Exception {
+        String answerText = "[\"one\", \"foo\"]";
+        JsonNode answerNode = DefaultObjectMapper.INSTANCE.readTree(answerText);
+
+        Map<String, String> rowValueMap = HealthDataExportHandler.serializeMultiChoice("dummy", OTHER_CHOICE_FIELD_DEF,
+                answerNode);
+        assertEquals(rowValueMap.size(), 3);
+        assertEquals(rowValueMap.get("foo-field.one"), "true");
+        assertEquals(rowValueMap.get("foo-field.two"), "false");
+        assertEquals(rowValueMap.get("foo-field.other"), "foo");
+    }
+
+    // branch coverage: Test we do something reasonable if there are multiple "other" answers.
+    @Test
+    public void multipleOtherChoice() throws Exception {
+        String answerText = "[\"one\", \"foo\", \"bar\", \"baz\"]";
+        JsonNode answerNode = DefaultObjectMapper.INSTANCE.readTree(answerText);
+
+        Map<String, String> rowValueMap = HealthDataExportHandler.serializeMultiChoice("dummy", OTHER_CHOICE_FIELD_DEF,
+                answerNode);
+        assertEquals(rowValueMap.size(), 3);
+        assertEquals(rowValueMap.get("foo-field.one"), "true");
+        assertEquals(rowValueMap.get("foo-field.two"), "false");
+        assertEquals(rowValueMap.get("foo-field.other"), "bar, baz, foo");
+    }
+
+    // branch coverage: The other choice is silently dropped and logged. Here, we just exercise the code and make sure
+    // nothing crashes.
+    @Test
+    public void otherChoiceNotAllowed() throws Exception {
+        String answerText = "[\"foo\", \"bar\", \"one\", \"two\"]";
+        JsonNode answerNode = DefaultObjectMapper.INSTANCE.readTree(answerText);
+
+        Map<String, String> rowValueMap = HealthDataExportHandler.serializeMultiChoice("dummy", MULTI_CHOICE_FIELD_DEF,
+                answerNode);
+        assertEquals(rowValueMap.size(), 5);
+        assertEquals(rowValueMap.get("foo-field.foo"), "true");
+        assertEquals(rowValueMap.get("foo-field.bar"), "true");
+        assertEquals(rowValueMap.get("foo-field.baz"), "false");
+        assertEquals(rowValueMap.get("foo-field.true"), "false");
+        assertEquals(rowValueMap.get("foo-field.42"), "false");
     }
 }
