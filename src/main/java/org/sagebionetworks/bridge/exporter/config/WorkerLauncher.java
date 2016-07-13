@@ -48,7 +48,7 @@ public class WorkerLauncher implements CommandLineRunner {
 
         LOG.info("Starting poll SQS workers...");
         for (PollSqsWorker pollSqsWorker : pollSqsWorkers) {
-            LOG.info("Starting poll SQS worker: " + pollSqsWorker.getClass().getCanonicalName());
+            LOG.info("Starting poll SQS worker");
             new Thread(pollSqsWorker).start();
         }
     }
