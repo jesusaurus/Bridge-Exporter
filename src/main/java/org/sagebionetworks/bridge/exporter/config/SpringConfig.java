@@ -13,8 +13,7 @@ import com.amazonaws.services.dynamodbv2.document.Index;
 import com.amazonaws.services.dynamodbv2.document.Table;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.sqs.AmazonSQSClient;
-import org.sagebionetworks.client.SynapseAdminClientImpl;
-import org.sagebionetworks.client.SynapseClient;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
@@ -23,6 +22,7 @@ import org.springframework.context.annotation.Configuration;
 import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.config.PropertiesConfig;
 import org.sagebionetworks.bridge.dynamodb.DynamoQueryHelper;
+import org.sagebionetworks.bridge.exporter.notification.S3EventNotificationCallback;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterSqsCallback;
 import org.sagebionetworks.bridge.file.FileHelper;
 import org.sagebionetworks.bridge.heartbeat.HeartbeatLogger;
@@ -32,6 +32,8 @@ import org.sagebionetworks.bridge.sdk.ClientProvider;
 import org.sagebionetworks.bridge.sdk.models.accounts.SignInCredentials;
 import org.sagebionetworks.bridge.sqs.PollSqsWorker;
 import org.sagebionetworks.bridge.sqs.SqsHelper;
+import org.sagebionetworks.client.SynapseAdminClientImpl;
+import org.sagebionetworks.client.SynapseClient;
 
 // These configs get credentials from the default credential chain. For developer desktops, this is ~/.aws/credentials.
 // For EC2 instances, this happens transparently.
@@ -155,13 +157,26 @@ public class SpringConfig {
 
     @Bean
     @Autowired
-    public PollSqsWorker sqsWorker(BridgeExporterSqsCallback exporterSqsCallback) {
+    public PollSqsWorker exporterSqsWorker(BridgeExporterSqsCallback exporterSqsCallback) {
         Config config = bridgeConfig();
 
         PollSqsWorker sqsWorker = new PollSqsWorker();
         sqsWorker.setCallback(exporterSqsCallback);
         sqsWorker.setQueueUrl(config.get("exporter.request.sqs.queue.url"));
         sqsWorker.setSleepTimeMillis(config.getInt("exporter.request.sqs.sleep.time.millis"));
+        sqsWorker.setSqsHelper(sqsHelper());
+        return sqsWorker;
+    }
+
+    @Bean
+    @Autowired
+    public PollSqsWorker s3NotificationSqsWorker(S3EventNotificationCallback s3NotificationCallback) {
+        Config config = bridgeConfig();
+
+        PollSqsWorker sqsWorker = new PollSqsWorker();
+        sqsWorker.setCallback(s3NotificationCallback);
+        sqsWorker.setQueueUrl(config.get("s3.notification.sqs.queue.url"));
+        sqsWorker.setSleepTimeMillis(config.getInt("s3.notification.sqs.sleep.time.millis"));
         sqsWorker.setSqsHelper(sqsHelper());
         return sqsWorker;
     }

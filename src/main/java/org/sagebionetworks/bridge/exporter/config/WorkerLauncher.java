@@ -1,5 +1,7 @@
 package org.sagebionetworks.bridge.exporter.config;
 
+import java.util.List;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,7 +20,7 @@ public class WorkerLauncher implements CommandLineRunner {
     private static final Logger LOG = LoggerFactory.getLogger(WorkerLauncher.class);
 
     private HeartbeatLogger heartbeatLogger;
-    private PollSqsWorker sqsWorker;
+    private List<PollSqsWorker> pollSqsWorkers;
 
     @Autowired
     public final void setHeartbeatLogger(HeartbeatLogger heartbeatLogger) {
@@ -29,8 +31,8 @@ public class WorkerLauncher implements CommandLineRunner {
     // many export jobs we can do in parallel. If we for some reason find we need to do parallel export jobs, we can
     // move this to multi-threading.
     @Autowired
-    public final void setSqsWorker(PollSqsWorker sqsWorker) {
-        this.sqsWorker = sqsWorker;
+    public final void setPollSqsWorkers(List<PollSqsWorker> pollSqsWorkers) {
+        this.pollSqsWorkers = pollSqsWorkers;
     }
 
     /**
@@ -44,7 +46,10 @@ public class WorkerLauncher implements CommandLineRunner {
         LOG.info("Starting heartbeat...");
         new Thread(heartbeatLogger).start();
 
-        LOG.info("Starting worker...");
-        new Thread(sqsWorker).start();
+        LOG.info("Starting poll SQS workers...");
+        for (PollSqsWorker pollSqsWorker : pollSqsWorkers) {
+            LOG.info("Starting poll SQS worker: " + pollSqsWorker.getClass().getCanonicalName());
+            new Thread(pollSqsWorker).start();
+        }
     }
 }
