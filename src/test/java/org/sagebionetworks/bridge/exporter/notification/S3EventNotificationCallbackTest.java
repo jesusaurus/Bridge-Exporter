@@ -1,11 +1,14 @@
 package org.sagebionetworks.bridge.exporter.notification;
 
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 
 import com.amazonaws.services.s3.event.S3EventNotification;
 
@@ -20,6 +23,19 @@ import org.sagebionetworks.bridge.sdk.WorkerClient;
  * Created by liujoshua on 7/12/16.
  */
 public class S3EventNotificationCallbackTest {
+
+    private static final String UPLOAD_COMPLETE_MESSAGE="{\"Records\":[{\"eventVersion\":\"2.0\",\"eventSource\":\"aws:s3\"," +
+            "\"awsRegion\":\"us-east-1\"," +
+            "\"eventTime\":\"2016-07-12T22:06:54.454Z\",\"eventName\":\"ObjectCreated:Put\"," +
+            "\"userIdentity\":{\"principalId\":\"AWS:AIDAJCSQZ35H7B4BFOVAW\"},\"requestParameters\":{\"sourceIPAddress\":\"54.87.180" +
+            ".29\"},\"responseElements\":{\"x-amz-request-id\":\"006B5645F94646A3\"," +
+            "\"x-amz-id-2\":\"wk7j6of4ftpRy+lbjt4olcNqp8S2s9d7XUbdOv4UEDh7B+8myhMe45xBEZPUP4+5oxwY9r2z9Yw=\"}," +
+            "\"s3\":{\"s3SchemaVersion\":\"1.0\",\"configurationId\":\"Bridge Upload Complete Notification UAT\"," +
+            "\"bucket\":{\"name\":\"org-sagebridge-upload-uat\",\"ownerIdentity\":{\"principalId\":\"AZ9HQM5UC903F\"}," +
+            "\"arn\":\"arn:aws:s3:::org-sagebridge-upload-uat\"},\"object\":{\"key\":\"89b40dab-4982-4d5c-ae21-d74b072d02cd\"," +
+            "\"size\":1488,\"eTag\":\"e40df5cfa5874ab353947eb48ec0cfa4\",\"sequencer\":\"00578569FE6792370C\"}}}]}";
+    private static final String UPLOAD_ID = "89b40dab-4982-4d5c-ae21-d74b072d02cd";
+
     private WorkerClient mockWorkerClient;
     private S3EventNotificationCallback callback;
 
@@ -34,19 +50,23 @@ public class S3EventNotificationCallbackTest {
 
     @Test
     public void testCallback_StringMessage() throws Exception {
-        String message = "{\"Records\":[{\"eventVersion\":\"2.0\",\"eventSource\":\"aws:s3\",\"awsRegion\":\"us-east-1\"," +
-                "\"eventTime\":\"2016-07-12T22:06:54.454Z\",\"eventName\":\"ObjectCreated:Put\"," +
-                "\"userIdentity\":{\"principalId\":\"AWS:AIDAJCSQZ35H7B4BFOVAW\"},\"requestParameters\":{\"sourceIPAddress\":\"54.87.180" +
-                ".29\"},\"responseElements\":{\"x-amz-request-id\":\"006B5645F94646A3\"," +
-                "\"x-amz-id-2\":\"wk7j6of4ftpRy+lbjt4olcNqp8S2s9d7XUbdOv4UEDh7B+8myhMe45xBEZPUP4+5oxwY9r2z9Yw=\"}," +
-                "\"s3\":{\"s3SchemaVersion\":\"1.0\",\"configurationId\":\"Bridge Upload Complete Notification UAT\"," +
-                "\"bucket\":{\"name\":\"org-sagebridge-upload-uat\",\"ownerIdentity\":{\"principalId\":\"AZ9HQM5UC903F\"}," +
-                "\"arn\":\"arn:aws:s3:::org-sagebridge-upload-uat\"},\"object\":{\"key\":\"89b40dab-4982-4d5c-ae21-d74b072d02cd\"," +
-                "\"size\":1488,\"eTag\":\"e40df5cfa5874ab353947eb48ec0cfa4\",\"sequencer\":\"00578569FE6792370C\"}}}]}";
+        callback.callback(UPLOAD_COMPLETE_MESSAGE);
 
-        callback.callback(message);
+        verify(mockWorkerClient, times(1)).completeUpload(UPLOAD_ID);
+    }
 
-        verify(mockWorkerClient, times(1)).completeUpload("89b40dab-4982-4d5c-ae21-d74b072d02cd");
+    @Test
+    public void testCallback_ThrowsWorkerClientExceptions() throws Exception {
+        doThrow(IllegalStateException.class).when(mockWorkerClient).completeUpload(UPLOAD_ID);
+
+        boolean threwIllegalStateException = false;
+        try {
+            callback.callback(UPLOAD_COMPLETE_MESSAGE);
+        } catch (IllegalStateException e) {
+            threwIllegalStateException = true;
+        } finally{
+            assertTrue(threwIllegalStateException);
+        }
     }
 
     @Test
@@ -90,35 +110,35 @@ public class S3EventNotificationCallbackTest {
     public void testShouldProcessRecords_S3Put() {
         S3EventNotification.S3EventNotificationRecord s3Put = createMockRecord("aws:s3", "ObjectCreated:Put");
 
-        assert callback.shouldProcessRecord(s3Put);
+        assertTrue(callback.shouldProcessRecord(s3Put));
     }
 
     @Test
     public void testShouldProcessRecords_S3CompleteMultipartUpload() {
         S3EventNotification.S3EventNotificationRecord s3Put = createMockRecord("aws:s3", "ObjectCreated:CompleteMultipartUpload");
 
-        assert callback.shouldProcessRecord(s3Put);
+        assertTrue(callback.shouldProcessRecord(s3Put));
     }
 
     @Test
     public void testShouldProcessRecords_S3Post() {
         S3EventNotification.S3EventNotificationRecord s3Put = createMockRecord("aws:s3", "ObjectCreated:Post");
 
-        assert callback.shouldProcessRecord(s3Put);
+        assertTrue(callback.shouldProcessRecord(s3Put));
     }
 
     @Test
     public void testShouldProcessRecords_S3Delete() {
         S3EventNotification.S3EventNotificationRecord s3Delete = createMockRecord("aws:s3", "ObjectRemoved:Delete");
 
-        assert !callback.shouldProcessRecord(s3Delete);
+        assertFalse(callback.shouldProcessRecord(s3Delete));
     }
 
     @Test
     public void testShouldProcessRecords_NotS3() {
         S3EventNotification.S3EventNotificationRecord notS3 = createMockRecord("aws:dynamo", "ObjectRemoved:Delete");
 
-        assert !callback.shouldProcessRecord(notS3);
+        assertFalse(callback.shouldProcessRecord(notS3));
     }
 
     private S3EventNotification.S3EventNotificationRecord createMockRecord(String source, String name) {
