@@ -7,8 +7,10 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 import com.amazonaws.services.s3.event.S3EventNotification;
 
@@ -18,6 +20,8 @@ import org.testng.annotations.Test;
 import com.google.common.collect.Lists;
 
 import org.sagebionetworks.bridge.sdk.WorkerClient;
+import org.sagebionetworks.bridge.sdk.exceptions.BridgeSDKException;
+import org.sagebionetworks.bridge.sdk.exceptions.EntityNotFoundException;
 
 /**
  * Created by liujoshua on 7/12/16.
@@ -56,17 +60,24 @@ public class S3EventNotificationCallbackTest {
     }
 
     @Test
-    public void testCallback_ThrowsWorkerClientExceptions() throws Exception {
-        doThrow(IllegalStateException.class).when(mockWorkerClient).completeUpload(UPLOAD_ID);
+    public void testCallback_Throws500Exceptions() throws Exception {
+        doThrow(new BridgeSDKException("internal error", 500)).when(mockWorkerClient).completeUpload(UPLOAD_ID);
 
-        boolean threwIllegalStateException = false;
         try {
             callback.callback(UPLOAD_COMPLETE_MESSAGE);
-        } catch (IllegalStateException e) {
-            threwIllegalStateException = true;
-        } finally{
-            assertTrue(threwIllegalStateException);
+            fail("expected exception");
+        } catch (RuntimeException ex) {
+            BridgeSDKException innerEx = (BridgeSDKException) ex.getCause();
+            assertEquals(500, innerEx.getStatusCode());
         }
+    }
+
+    @Test
+    public void testCallback_Throws404Exceptions() throws Exception {
+        doThrow(new EntityNotFoundException("not found", "dummy endpoint")).when(mockWorkerClient)
+                .completeUpload(UPLOAD_ID);
+        callback.callback(UPLOAD_COMPLETE_MESSAGE);
+        verify(mockWorkerClient, times(1)).completeUpload(UPLOAD_ID);
     }
 
     @Test
