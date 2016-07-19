@@ -16,6 +16,7 @@ import com.jcabi.aspects.Cacheable;
 import org.sagebionetworks.bridge.sdk.ClientProvider;
 import org.sagebionetworks.bridge.sdk.Session;
 import org.sagebionetworks.bridge.sdk.WorkerClient;
+import org.sagebionetworks.bridge.sdk.exceptions.BridgeSDKException;
 import org.sagebionetworks.bridge.sdk.models.accounts.SignInCredentials;
 import org.sagebionetworks.bridge.sqs.PollSqsCallback;
 
@@ -63,8 +64,28 @@ public class S3EventNotificationCallback implements PollSqsCallback {
     void callback(S3EventNotification notification) {
         notification.getRecords().stream().filter(record -> shouldProcessRecord(record)).forEach(record -> {
             String uploadId = record.getS3().getObject().getKey();
-            LOG.info("Completing upload, id=" + uploadId);
-            getWorkerClient().completeUpload(uploadId);
+
+            try {
+                getWorkerClient().completeUpload(uploadId);
+                LOG.info("Completed upload, id=" + uploadId);
+            } catch (BridgeSDKException ex) {
+                String errorMsg = "Error completing upload id " + uploadId + ": " + ex.getMessage();
+                int status = ex.getStatusCode();
+                if (400 <= status && status <= 499) {
+                    // HTTP 4XX means bad request (such as 404 not found). This can happen for a variety of reasons and
+                    // is generally not developer actionable. Log a warning and swallow the exception. This way, the
+                    // SQS poll worker will succeed the callback and delete the message, preventing spurious retries.
+                    LOG.warn(errorMsg, ex);
+                } else {
+                    // A non-4XX error generally means a server error. We'll want to retry this. Log an error and
+                    // re-throw.
+                    LOG.error(errorMsg, ex);
+
+                    // Foreach handlers can't throw checked exceptions. It's not worth creating an unchecked exception
+                    // given that we're about to refactor error handling. For now, just throw a RuntimeException.
+                    throw new RuntimeException(errorMsg, ex);
+                }
+            }
         });
     }
 
