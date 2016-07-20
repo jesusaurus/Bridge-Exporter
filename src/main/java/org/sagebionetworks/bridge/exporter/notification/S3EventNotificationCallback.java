@@ -1,5 +1,6 @@
 package org.sagebionetworks.bridge.exporter.notification;
 
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import com.amazonaws.services.s3.event.S3EventNotification;
@@ -56,6 +57,12 @@ public class S3EventNotificationCallback implements PollSqsCallback {
     @Override
     public void callback(String messageBody) throws Exception {
         S3EventNotification notification = OBJECT_MAPPER.readValue(messageBody, S3EventNotification.class);
+        List<S3EventNotification.S3EventNotificationRecord> recordList = notification.getRecords();
+        if (recordList == null || recordList.isEmpty()) {
+            // Notification w/o record list is not actionable. Log a warning and squelch.
+            LOG.warn("S3 notification without record list: " + messageBody);
+            return;
+        }
 
         callback(notification);
     }
