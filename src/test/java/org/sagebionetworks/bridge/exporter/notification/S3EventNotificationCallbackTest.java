@@ -1,8 +1,10 @@
 package org.sagebionetworks.bridge.exporter.notification;
 
+import static org.mockito.Matchers.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -57,6 +59,18 @@ public class S3EventNotificationCallbackTest {
         callback.callback(UPLOAD_COMPLETE_MESSAGE);
 
         verify(mockWorkerClient, times(1)).completeUpload(UPLOAD_ID);
+    }
+
+    @Test
+    public void testCallback_NullList() throws Exception {
+        callback.callback("{}");
+        verify(mockWorkerClient, never()).completeUpload(anyString());
+    }
+
+    @Test
+    public void testCallback_EmptyList() throws Exception {
+        callback.callback("{\"Records\":[]}");
+        verify(mockWorkerClient, never()).completeUpload(anyString());
     }
 
     @Test
