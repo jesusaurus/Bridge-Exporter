@@ -19,18 +19,27 @@ import com.amazonaws.services.dynamodbv2.document.Table;
 import com.google.common.collect.ImmutableList;
 import org.joda.time.LocalDate;
 import org.mockito.ArgumentCaptor;
+import org.sagebionetworks.client.exceptions.SynapseClientException;
+import org.sagebionetworks.schema.adapter.JSONObjectAdapterException;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.config.Config;
+import org.sagebionetworks.bridge.exporter.exceptions.SynapseUnavailableException;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.metrics.MetricsHelper;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
+import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.exporter.worker.ExportTask;
 import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
 import org.sagebionetworks.bridge.file.InMemoryFileHelper;
 
+@SuppressWarnings("unchecked")
 public class BridgeExporterRecordProcessorTest {
+    private static final BridgeExporterRequest REQUEST = new BridgeExporterRequest.Builder()
+            .withDate(LocalDate.parse("2015-11-04")).withTag("unit-test-tag").build();
+
     @Test
     public void test() throws Exception {
         // 5 records:
@@ -39,10 +48,6 @@ public class BridgeExporterRecordProcessorTest {
         // * missing
         // * error
         // * success again
-
-        // make test request
-        BridgeExporterRequest request = new BridgeExporterRequest.Builder().withDate(LocalDate.parse("2015-11-04"))
-                .withTag("unit-test-tag").build();
 
         // mock Config - For branch coverage, make progress report period 2
         Config mockConfig = mock(Config.class);
@@ -75,7 +80,7 @@ public class BridgeExporterRecordProcessorTest {
         // Mockito.
         RecordFilterHelper mockRecordFilterHelper = mock(RecordFilterHelper.class);
         ArgumentCaptor<Metrics> recordFilterMetricsCaptor = ArgumentCaptor.forClass(Metrics.class);
-        when(mockRecordFilterHelper.shouldExcludeRecord(recordFilterMetricsCaptor.capture(), same(request),
+        when(mockRecordFilterHelper.shouldExcludeRecord(recordFilterMetricsCaptor.capture(), same(REQUEST),
                 same(dummyFilteredRecord))).thenReturn(true);
 
         // mock record ID factory
@@ -83,7 +88,11 @@ public class BridgeExporterRecordProcessorTest {
                 "error-record", "success-record-2");
 
         RecordIdSourceFactory mockRecordIdFactory = mock(RecordIdSourceFactory.class);
-        when(mockRecordIdFactory.getRecordSourceForRequest(request)).thenReturn(recordIdList);
+        when(mockRecordIdFactory.getRecordSourceForRequest(REQUEST)).thenReturn(recordIdList);
+
+        // mock Synapse Helper - For this test, Synapse is up and writable.
+        SynapseHelper mockSynapseHelper = mock(SynapseHelper.class);
+        when(mockSynapseHelper.isSynapseWritable()).thenReturn(true);
 
         // mock export worker manager - Only mock error record. The others will just no-op by default in Mockito.
         ExportWorkerManager mockManager = mock(ExportWorkerManager.class);
@@ -98,10 +107,11 @@ public class BridgeExporterRecordProcessorTest {
         recordProcessor.setMetricsHelper(mockMetricsHelper);
         recordProcessor.setRecordFilterHelper(mockRecordFilterHelper);
         recordProcessor.setRecordIdSourceFactory(mockRecordIdFactory);
+        recordProcessor.setSynapseHelper(mockSynapseHelper);
         recordProcessor.setWorkerManager(mockManager);
 
         // execute
-        recordProcessor.processRecordsForRequest(request);
+        recordProcessor.processRecordsForRequest(REQUEST);
 
         // validate metrics helper - Validate that we're passing the same set of metrics to it for each record, and
         // that we're calling publishMetrics() at the end with the same metrics object.
@@ -139,5 +149,43 @@ public class BridgeExporterRecordProcessorTest {
 
         // validate that we cleaned up all our files
         assertTrue(mockFileHelper.isEmpty());
+    }
+
+    @Test(expectedExceptions = SynapseUnavailableException.class, expectedExceptionsMessageRegExp =
+            "Synapse not in writable state")
+    public void synapseNotWritable() throws Exception {
+        // mock Synapse helper
+        SynapseHelper mockSynapseHelper = mock(SynapseHelper.class);
+        when(mockSynapseHelper.isSynapseWritable()).thenReturn(false);
+
+        // set up record processor
+        BridgeExporterRecordProcessor recordProcessor = new BridgeExporterRecordProcessor();
+        recordProcessor.setSynapseHelper(mockSynapseHelper);
+
+        // execute (should throw)
+        recordProcessor.processRecordsForRequest(REQUEST);
+    }
+
+    @DataProvider(name = "synapseWritableExceptionProvider")
+    public Object[][] synapseWritableExceptionProvider() {
+        return new Object[][] {
+                { JSONObjectAdapterException.class },
+                { SynapseClientException.class },
+        };
+    }
+
+    @Test(dataProvider = "synapseWritableExceptionProvider", expectedExceptions = SynapseUnavailableException.class,
+            expectedExceptionsMessageRegExp = "Error calling Synapse.*")
+    public void synapseWritableException(Class<? extends Throwable> exceptionClass) throws Exception {
+        // mock Synapse helper
+        SynapseHelper mockSynapseHelper = mock(SynapseHelper.class);
+        when(mockSynapseHelper.isSynapseWritable()).thenThrow(exceptionClass);
+
+        // set up record processor
+        BridgeExporterRecordProcessor recordProcessor = new BridgeExporterRecordProcessor();
+        recordProcessor.setSynapseHelper(mockSynapseHelper);
+
+        // execute (should throw)
+        recordProcessor.processRecordsForRequest(REQUEST);
     }
 }

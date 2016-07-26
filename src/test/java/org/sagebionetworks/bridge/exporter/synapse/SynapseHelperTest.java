@@ -24,6 +24,8 @@ import org.sagebionetworks.client.exceptions.SynapseResultNotReadyException;
 import org.sagebionetworks.repo.model.AccessControlList;
 import org.sagebionetworks.repo.model.ResourceAccess;
 import org.sagebionetworks.repo.model.file.FileHandle;
+import org.sagebionetworks.repo.model.status.StackStatus;
+import org.sagebionetworks.repo.model.status.StatusEnum;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.CsvTableDescriptor;
 import org.sagebionetworks.repo.model.table.RowSet;
@@ -225,6 +227,33 @@ public class SynapseHelperTest {
 
         // validate
         verify(mockSynapseClient).downloadFromFileHandleTemporaryUrl("file-handle-id", mockFile);
+    }
+
+    @DataProvider(name = "isSynapseWritableProvider")
+    public Object[][] isSynapseWritableProvider() {
+        // { status, expected }
+        return new Object[][] {
+                { StatusEnum.READ_WRITE, true },
+                { StatusEnum.READ_ONLY, false },
+                { StatusEnum.DOWN, false },
+        };
+    }
+
+    @Test(dataProvider = "isSynapseWritableProvider")
+    public void isSynapseWritable(StatusEnum status, boolean expected) throws Exception {
+        // mock synapse client
+        StackStatus stackStatus = new StackStatus();
+        stackStatus.setStatus(status);
+
+        SynapseClient mockSynapseClient = mock(SynapseClient.class);
+        when(mockSynapseClient.getCurrentStackStatus()).thenReturn(stackStatus);
+
+        SynapseHelper synapseHelper = new SynapseHelper();
+        synapseHelper.setSynapseClient(mockSynapseClient);
+
+        // execute and validate
+        boolean retVal = synapseHelper.isSynapseWritable();
+        assertEquals(retVal, expected);
     }
 
     @Test

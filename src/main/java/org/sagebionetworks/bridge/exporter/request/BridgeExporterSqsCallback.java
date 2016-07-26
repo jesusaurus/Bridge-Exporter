@@ -5,6 +5,7 @@ import java.io.IOException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import org.sagebionetworks.bridge.exporter.exceptions.SynapseUnavailableException;
 import org.sagebionetworks.bridge.exporter.record.BridgeExporterRecordProcessor;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
 import org.sagebionetworks.bridge.sqs.PollSqsCallback;
@@ -25,7 +26,7 @@ public class BridgeExporterSqsCallback implements PollSqsCallback {
 
     /** Parses the SQS message and passes it to the record processor. */
     @Override
-    public void callback(String messageBody) throws IOException {
+    public void callback(String messageBody) throws IOException, SynapseUnavailableException {
         BridgeExporterRequest request = DefaultObjectMapper.INSTANCE.readValue(messageBody,
                 BridgeExporterRequest.class);
         recordProcessor.processRecordsForRequest(request);
