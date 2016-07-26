@@ -72,7 +72,7 @@
         <dependency>
             <groupId>org.sagebionetworks</groupId>
             <artifactId>bridge-base</artifactId>
-            <version>2.2</version>
+            <version>2.6</version>
         </dependency>
         <dependency>
             <groupId>org.sagebionetworks.bridge</groupId>
@@ -82,7 +82,7 @@
         <dependency>
             <groupId>org.sagebionetworks</groupId>
             <artifactId>synapseJavaClient</artifactId>
-            <version>131.0</version>
+            <version>145.0</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
