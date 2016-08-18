@@ -1,6 +1,7 @@
 package org.sagebionetworks.bridge.exporter.request;
 
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -138,6 +139,33 @@ public class BridgeExporterRequest {
         return tag;
     }
 
+    @Override
+    public final boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || !(o instanceof BridgeExporterRequest)) {
+            return false;
+        }
+        BridgeExporterRequest that = (BridgeExporterRequest) o;
+        return Objects.equals(date, that.date) &&
+                Objects.equals(endDateTime, that.endDateTime) &&
+                Objects.equals(exporterDdbPrefixOverride, that.exporterDdbPrefixOverride) &&
+                Objects.equals(recordIdS3Override, that.recordIdS3Override) &&
+                sharingMode == that.sharingMode &&
+                Objects.equals(startDateTime, that.startDateTime) &&
+                Objects.equals(studyWhitelist, that.studyWhitelist) &&
+                Objects.equals(synapseProjectOverrideMap, that.synapseProjectOverrideMap) &&
+                Objects.equals(tableWhitelist, that.tableWhitelist) &&
+                Objects.equals(tag, that.tag);
+    }
+
+    @Override
+    public final int hashCode() {
+        return Objects.hash(date, endDateTime, exporterDdbPrefixOverride, recordIdS3Override, sharingMode,
+                startDateTime, studyWhitelist, synapseProjectOverrideMap, tableWhitelist, tag);
+    }
+
     /**
      * Converts the request to a string for use in log messages. Only contains the tag and a basic parameter to
      * identify the record source.
@@ -180,6 +208,22 @@ public class BridgeExporterRequest {
         private Map<String, String> synapseProjectOverrideMap;
         private Set<UploadSchemaKey> tableWhitelist;
         private String tag;
+
+        /** Sets the builder with a copy of the given request. */
+        public Builder copyOf(BridgeExporterRequest other) {
+            // Don't worry about copying collections here. This is handled by build().
+            date = other.date;
+            endDateTime = other.endDateTime;
+            exporterDdbPrefixOverride = other.exporterDdbPrefixOverride;
+            recordIdS3Override = other.recordIdS3Override;
+            sharingMode = other.sharingMode;
+            startDateTime = other.startDateTime;
+            studyWhitelist = other.studyWhitelist;
+            synapseProjectOverrideMap = other.synapseProjectOverrideMap;
+            tableWhitelist = other.tableWhitelist;
+            tag = other.tag;
+            return this;
+        }
 
         /** @see BridgeExporterRequest#getDate */
         @JsonDeserialize(using = LocalDateDeserializer.class)

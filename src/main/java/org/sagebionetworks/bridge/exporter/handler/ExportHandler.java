@@ -1,5 +1,11 @@
 package org.sagebionetworks.bridge.exporter.handler;
 
+import java.io.IOException;
+
+import org.sagebionetworks.client.exceptions.SynapseException;
+
+import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
+import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
 import org.sagebionetworks.bridge.exporter.worker.ExportSubtask;
 import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
 
@@ -45,5 +51,6 @@ public abstract class ExportHandler {
     }
 
     /** Handles the task. Whatever it might be. */
-    public abstract void handle(ExportSubtask subtask);
+    public abstract void handle(ExportSubtask subtask) throws BridgeExporterException, IOException,
+            SchemaNotFoundException, SynapseException;
 }

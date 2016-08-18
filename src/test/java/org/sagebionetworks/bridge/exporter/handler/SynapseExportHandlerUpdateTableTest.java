@@ -195,8 +195,8 @@ public class SynapseExportHandlerUpdateTableTest {
 
         // execute - First row triggers the error initializing TSV. Second row short-circuit fails.
         ExportSubtask subtask = SynapseExportHandlerTest.makeSubtask(task);
-        handler.handle(subtask);
-        handler.handle(subtask);
+        handleSubtaskWithInitError(handler, subtask);
+        handleSubtaskWithInitError(handler, subtask);
 
         // upload to Synapse should fail
         try {
@@ -220,6 +220,16 @@ public class SynapseExportHandlerUpdateTableTest {
         // validate tsvInfo
         TsvInfo tsvInfo = handler.getTsvInfoForTask(task);
         assertEquals(tsvInfo.getLineCount(), 0);
+    }
+
+    private static void handleSubtaskWithInitError(SynapseExportHandler handler, ExportSubtask subtask)
+            throws Exception {
+        try {
+            handler.handle(subtask);
+            fail("expected exception");
+        } catch (BridgeExporterException ex) {
+            assertEquals(ex.getMessage(), "TSV was not successfully initialized");
+        }
     }
 
     @Test

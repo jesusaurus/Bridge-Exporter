@@ -106,11 +106,11 @@ public abstract class SynapseExportHandler extends ExportHandler {
      * created for this handler for the parent task, this will also initialize that TSV.
      */
     @Override
-    public void handle(ExportSubtask subtask) {
+    public void handle(ExportSubtask subtask) throws BridgeExporterException, IOException, SynapseException {
         String tableKey = getDdbTableKeyValue();
         ExportTask task = subtask.getParentTask();
         Metrics metrics = task.getMetrics();
-        String recordId = subtask.getOriginalRecord().getString("id");
+        String recordId = subtask.getRecordId();
 
         try {
             // get TSV info (init if necessary)
@@ -126,8 +126,10 @@ public abstract class SynapseExportHandler extends ExportHandler {
             tsvInfo.writeRow(rowValueMap);
             metrics.incrementCounter(tableKey + ".lineCount");
         } catch (BridgeExporterException | IOException | RuntimeException | SynapseException ex) {
+            // Log metrics and rethrow.
             metrics.incrementCounter(tableKey + ".errorCount");
             LOG.error("Error processing record " + recordId + " for table " + tableKey + ": " + ex.getMessage(), ex);
+            throw ex;
         }
     }
 
@@ -292,7 +294,7 @@ public abstract class SynapseExportHandler extends ExportHandler {
     private Map<String, String> getCommonRowValueMap(ExportSubtask subtask) {
         ExportTask task = subtask.getParentTask();
         Item record = subtask.getOriginalRecord();
-        String recordId = record.getString("id");
+        String recordId = subtask.getRecordId();
 
         // get phone and app info
         PhoneAppVersionInfo phoneAppVersionInfo = PhoneAppVersionInfo.fromRecord(record);
@@ -384,5 +386,5 @@ public abstract class SynapseExportHandler extends ExportHandler {
     protected abstract void setTsvInfoForTask(ExportTask task, TsvInfo tsvInfo);
 
     /** Creates a row values for a single row from the given export task. */
-    protected abstract Map<String, String> getTsvRowValueMap(ExportSubtask subtask) throws IOException, SynapseException;
+    protected abstract Map<String, String> getTsvRowValueMap(ExportSubtask subtask) throws BridgeExporterException, IOException, SynapseException;
 }

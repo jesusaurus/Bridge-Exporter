@@ -17,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import org.sagebionetworks.bridge.config.Config;
+import org.sagebionetworks.bridge.exporter.exceptions.RestartBridgeExporterException;
 import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.metrics.MetricsHelper;
@@ -109,7 +110,8 @@ public class BridgeExporterRecordProcessor {
      * @throws IOException
      *         if we fail to get the record IDs from the record ID factory
      */
-    public void processRecordsForRequest(BridgeExporterRequest request) throws IOException {
+    public void processRecordsForRequest(BridgeExporterRequest request) throws IOException,
+            RestartBridgeExporterException {
         LOG.info("Received request " + request.toString());
 
         // make task

@@ -15,8 +15,8 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.config.Config;
-import org.sagebionetworks.bridge.exporter.config.SpringConfig;
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
+import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
 import org.sagebionetworks.bridge.s3.S3Helper;
 import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldDefinition;
@@ -287,7 +287,7 @@ public class ExportHelperConvertSurveyTest {
     private static ExportHelper setupHelperWithAnswers(String answersAttachmentText) throws Exception {
         // mock Config
         Config mockConfig = mock(Config.class);
-        when(mockConfig.get(SpringConfig.CONFIG_KEY_ATTACHMENT_S3_BUCKET)).thenReturn(DUMMY_ATTACHMENT_BUCKET);
+        when(mockConfig.get(BridgeExporterUtil.CONFIG_KEY_ATTACHMENT_S3_BUCKET)).thenReturn(DUMMY_ATTACHMENT_BUCKET);
 
         // mock S3 Helper
         S3Helper mockS3Helper = mock(S3Helper.class);

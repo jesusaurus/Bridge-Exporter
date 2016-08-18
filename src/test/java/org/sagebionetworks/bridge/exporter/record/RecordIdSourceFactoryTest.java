@@ -156,7 +156,7 @@ public class RecordIdSourceFactoryTest {
 
     private static Config mockConfig() {
         Config mockConfig = mock(Config.class);
-        when(mockConfig.get(RecordIdSourceFactory.CONFIG_KEY_RECORD_ID_OVERRIDE_BUCKET))
+        when(mockConfig.get(BridgeExporterUtil.CONFIG_KEY_RECORD_ID_OVERRIDE_BUCKET))
                 .thenReturn("dummy-override-bucket");
         when(mockConfig.get(BridgeExporterUtil.CONFIG_KEY_TIME_ZONE_NAME)).thenReturn("America/Los_Angeles");
         return mockConfig;

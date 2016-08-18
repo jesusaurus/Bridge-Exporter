@@ -9,7 +9,6 @@ import java.io.File;
 import java.io.PrintWriter;
 import java.util.Queue;
 import java.util.Set;
-import java.util.concurrent.Future;
 
 import com.google.common.collect.ImmutableList;
 import org.joda.time.LocalDate;
@@ -108,14 +107,14 @@ public class ExportTaskTest {
         ExportTask task = createTask();
 
         // add mock tasks to queue
-        Future<?> mockFooFuture = mock(Future.class);
-        task.addOutstandingTask(mockFooFuture);
+        ExportSubtaskFuture mockFooFuture = mock(ExportSubtaskFuture.class);
+        task.addSubtaskFuture(mockFooFuture);
 
-        Future<?> mockBarFuture = mock(Future.class);
-        task.addOutstandingTask(mockBarFuture);
+        ExportSubtaskFuture mockBarFuture = mock(ExportSubtaskFuture.class);
+        task.addSubtaskFuture(mockBarFuture);
 
         // get tasks back in order
-        Queue<Future<?>> taskQueue = task.getOutstandingTaskQueue();
+        Queue<ExportSubtaskFuture> taskQueue = task.getSubtaskFutureQueue();
         assertSame(taskQueue.remove(), mockFooFuture);
         assertSame(taskQueue.remove(), mockBarFuture);
         assertTrue(taskQueue.isEmpty());

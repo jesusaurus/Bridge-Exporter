@@ -15,7 +15,7 @@ import org.mockito.ArgumentCaptor;
 import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.config.Config;
-import org.sagebionetworks.bridge.exporter.config.SpringConfig;
+import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.s3.S3Helper;
 
 public class ExportHelperTest {
@@ -27,7 +27,7 @@ public class ExportHelperTest {
     public void uploadFreeformText() throws Exception {
         // mock Config
         Config mockConfig = mock(Config.class);
-        when(mockConfig.get(SpringConfig.CONFIG_KEY_ATTACHMENT_S3_BUCKET)).thenReturn(DUMMY_ATTACHMENT_BUCKET);
+        when(mockConfig.get(BridgeExporterUtil.CONFIG_KEY_ATTACHMENT_S3_BUCKET)).thenReturn(DUMMY_ATTACHMENT_BUCKET);
 
         // set up export helper with mocks
         Table mockAttachmentsTable = mock(Table.class);

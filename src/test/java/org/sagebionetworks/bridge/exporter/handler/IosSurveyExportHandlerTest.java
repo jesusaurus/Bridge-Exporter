@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verifyZeroInteractions;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertSame;
+import static org.testng.Assert.fail;
 
 import java.io.File;
 
@@ -21,6 +22,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
+import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.exporter.helper.BridgeHelper;
 import org.sagebionetworks.bridge.exporter.helper.BridgeHelperTest;
 import org.sagebionetworks.bridge.exporter.helper.ExportHelper;
@@ -75,27 +77,33 @@ public class IosSurveyExportHandlerTest {
 
     @DataProvider(name = "errorCaseJsonProvider")
     public Object[][] errorCaseJsonProvider() {
+        // { recordDataJsonText, expectedErrorMessage }
         return new Object[][] {
                 // no item
-                { "{}" },
+                { "{}", "No item field in survey data" },
 
                 // null item
-                { "{\"item\":null}" },
+                { "{\"item\":null}", "No item field in survey data" },
 
                 // item not string
-                { "{\"item\":42}" },
+                { "{\"item\":42}", "Null or empty item field in survey data" },
 
                 // item empty string
-                { "{\"item\":\"\"}" },
+                { "{\"item\":\"\"}", "Null or empty item field in survey data" },
         };
     }
 
     @Test(dataProvider = "errorCaseJsonProvider")
-    public void errorCase(String recordDataJsonText) throws Exception {
+    public void errorCase(String recordDataJsonText, String expectedErrorMessage) throws Exception {
         // set up and execute
         JsonNode recordDataJsonNode = DefaultObjectMapper.INSTANCE.readTree(recordDataJsonText);
         ExportSubtask subtask = subtaskBuilder.withRecordData(recordDataJsonNode).build();
-        handler.handle(subtask);
+        try {
+            handler.handle(subtask);
+            fail("expected exception");
+        } catch (BridgeExporterException ex) {
+            assertEquals(ex.getMessage(), expectedErrorMessage);
+        }
 
         // verify that the manager's mock helpers were not called
         ExportWorkerManager manager = handler.getManager();

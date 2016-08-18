@@ -24,6 +24,7 @@ import org.sagebionetworks.bridge.config.PropertiesConfig;
 import org.sagebionetworks.bridge.dynamodb.DynamoQueryHelper;
 import org.sagebionetworks.bridge.exporter.notification.S3EventNotificationCallback;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterSqsCallback;
+import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.file.FileHelper;
 import org.sagebionetworks.bridge.heartbeat.HeartbeatLogger;
 import org.sagebionetworks.bridge.s3.S3Helper;
@@ -42,8 +43,6 @@ import org.sagebionetworks.client.SynapseClient;
 @ComponentScan("org.sagebionetworks.bridge.exporter")
 @Configuration
 public class SpringConfig {
-    public static final String CONFIG_KEY_ATTACHMENT_S3_BUCKET = "attachment.bucket";
-
     private static final String CONFIG_FILE = "BridgeExporter.conf";
     private static final String DEFAULT_CONFIG_FILE = CONFIG_FILE;
     private static final String USER_CONFIG_FILE = System.getProperty("user.home") + "/" + CONFIG_FILE;
@@ -162,7 +161,7 @@ public class SpringConfig {
 
         PollSqsWorker sqsWorker = new PollSqsWorker();
         sqsWorker.setCallback(exporterSqsCallback);
-        sqsWorker.setQueueUrl(config.get("exporter.request.sqs.queue.url"));
+        sqsWorker.setQueueUrl(config.get(BridgeExporterUtil.CONFIG_KEY_SQS_QUEUE_URL));
         sqsWorker.setSleepTimeMillis(config.getInt("exporter.request.sqs.sleep.time.millis"));
         sqsWorker.setSqsHelper(sqsHelper());
         return sqsWorker;

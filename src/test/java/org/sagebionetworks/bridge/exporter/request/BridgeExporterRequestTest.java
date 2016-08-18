@@ -13,6 +13,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
+import nl.jqno.equalsverifier.EqualsVerifier;
 import org.joda.time.DateTime;
 import org.joda.time.LocalDate;
 import org.testng.annotations.Test;
@@ -45,6 +46,10 @@ public class BridgeExporterRequestTest {
         BridgeExporterRequest request = new BridgeExporterRequest.Builder().withDate(TEST_DATE).build();
         assertEquals(request.getDate(), TEST_DATE);
         assertEquals(request.getSharingMode(), BridgeExporterSharingMode.SHARED);
+
+        // test copy
+        BridgeExporterRequest copy = new BridgeExporterRequest.Builder().copyOf(request).build();
+        assertEquals(copy, request);
     }
 
     @Test
@@ -55,6 +60,10 @@ public class BridgeExporterRequestTest {
         assertEquals(request.getEndDateTime(), END_DATE_TIME);
         assertEquals(request.getSharingMode(), BridgeExporterSharingMode.SHARED);
         assertEquals(request.getStudyWhitelist(), STUDY_WHITELIST);
+
+        // test copy
+        BridgeExporterRequest copy = new BridgeExporterRequest.Builder().copyOf(request).build();
+        assertEquals(copy, request);
     }
 
     @Test
@@ -63,6 +72,10 @@ public class BridgeExporterRequestTest {
                 .withRecordIdS3Override(TEST_RECORD_OVERRIDE).build();
         assertEquals(request.getRecordIdS3Override(), TEST_RECORD_OVERRIDE);
         assertEquals(request.getSharingMode(), BridgeExporterSharingMode.SHARED);
+
+        // test copy
+        BridgeExporterRequest copy = new BridgeExporterRequest.Builder().copyOf(request).build();
+        assertEquals(copy, request);
     }
 
     @Test
@@ -107,6 +120,10 @@ public class BridgeExporterRequestTest {
 
         originalTableWhitelist.add(TEST_SCHEMA_KEY);
         assertFalse(request.getTableWhitelist().contains(TEST_SCHEMA_KEY));
+
+        // test copy
+        BridgeExporterRequest copy = new BridgeExporterRequest.Builder().copyOf(request).build();
+        assertEquals(copy, request);
     }
 
     @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp =
@@ -339,5 +356,10 @@ public class BridgeExporterRequestTest {
         assertEquals(tableWhitelistNode.get(0).get("studyId").textValue(), "test-study");
         assertEquals(tableWhitelistNode.get(0).get("schemaId").textValue(), "test-schema");
         assertEquals(tableWhitelistNode.get(0).get("revision").intValue(), 13);
+    }
+
+    @Test
+    public void equalsVerifier() {
+        EqualsVerifier.forClass(BridgeExporterRequest.class).allFieldsShouldBeUsed().verify();
     }
 }

@@ -33,7 +33,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import org.sagebionetworks.bridge.config.Config;
-import org.sagebionetworks.bridge.exporter.config.SpringConfig;
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.file.FileHelper;
 import org.sagebionetworks.bridge.s3.S3Helper;
@@ -127,7 +126,7 @@ public class SynapseHelper {
     public final void setConfig(Config config) {
         this.asyncIntervalMillis = config.getInt(CONFIG_KEY_SYNAPSE_ASYNC_INTERVAL_MILLIS);
         this.asyncTimeoutLoops = config.getInt(CONFIG_KEY_SYNAPSE_ASYNC_TIMEOUT_LOOPS);
-        this.attachmentBucket = config.get(SpringConfig.CONFIG_KEY_ATTACHMENT_S3_BUCKET);
+        this.attachmentBucket = config.get(BridgeExporterUtil.CONFIG_KEY_ATTACHMENT_S3_BUCKET);
     }
 
     /** File helper, used when we need to create a temporary file for downloads and uploads. */
@@ -453,7 +452,7 @@ public class SynapseHelper {
      * @throws SynapseException
      *         if the Synapse call fails
      */
-    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS,
+    @RetryOnFailure(attempts = 2, delay = 100, unit = TimeUnit.MILLISECONDS,
             types = { InterruptedException.class, SynapseException.class }, randomize = false)
     public void appendRowsToTableWithRetry(AppendableRowSet rowSet, String tableId) throws InterruptedException,
             SynapseException {
@@ -469,7 +468,7 @@ public class SynapseHelper {
      * @throws SynapseException
      *         if the call fails
      */
-    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
+    @RetryOnFailure(attempts = 2, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
             randomize = false)
     public AccessControlList createAclWithRetry(AccessControlList acl) throws SynapseException {
         return synapseClient.createACL(acl);
@@ -484,7 +483,7 @@ public class SynapseHelper {
      * @throws SynapseException
      *         if the call fails
      */
-    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
+    @RetryOnFailure(attempts = 2, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
             randomize = false)
     public List<ColumnModel> createColumnModelsWithRetry(List<ColumnModel> columnList) throws SynapseException {
         return synapseClient.createColumnModels(columnList);
@@ -505,7 +504,7 @@ public class SynapseHelper {
      * @throws SynapseException
      *         if the Synapse call fails
      */
-    @RetryOnFailure(attempts = 5, delay = 1, unit = TimeUnit.SECONDS,
+    @RetryOnFailure(attempts = 2, delay = 1, unit = TimeUnit.SECONDS,
             types = { AmazonClientException.class, SynapseException.class }, randomize = false)
     public FileHandle createFileHandleWithRetry(File file, String contentType, String projectId) throws IOException,
             SynapseException {
@@ -587,7 +586,7 @@ public class SynapseHelper {
      * @throws SynapseException
      *         if the Synapse call fails
      */
-    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
+    @RetryOnFailure(attempts = 2, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
             randomize = false)
     public TableEntity createTableWithRetry(TableEntity table) throws SynapseException {
         return synapseClient.createEntity(table);
@@ -603,7 +602,7 @@ public class SynapseHelper {
      * @throws SynapseException
      *         if the call fails
      */
-    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
+    @RetryOnFailure(attempts = 2, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
             randomize = false)
     public void downloadFileHandleWithRetry(String fileHandleId, File toFile) throws SynapseException {
         synapseClient.downloadFromFileHandleTemporaryUrl(fileHandleId, toFile);
@@ -618,7 +617,7 @@ public class SynapseHelper {
      * @throws SynapseException
      *         if the call fails
      */
-    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
+    @RetryOnFailure(attempts = 2, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
             randomize = false)
     public List<ColumnModel> getColumnModelsForTableWithRetry(String tableId) throws SynapseException {
         return synapseClient.getColumnModelsForTableEntity(tableId);
@@ -633,7 +632,7 @@ public class SynapseHelper {
      * @throws SynapseException
      *         if the Synapse call fails
      */
-    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
+    @RetryOnFailure(attempts = 2, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
             randomize = false)
     public TableEntity getTableWithRetry(String tableId) throws SynapseException {
         return synapseClient.getEntity(tableId, TableEntity.class);
@@ -648,7 +647,7 @@ public class SynapseHelper {
      * @throws SynapseException
      *         if the Synapse call fails
      */
-    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
+    @RetryOnFailure(attempts = 2, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
             randomize = false)
     public TableEntity updateTableWithRetry(TableEntity table) throws SynapseException {
         return synapseClient.putEntity(table);
@@ -667,7 +666,7 @@ public class SynapseHelper {
      * @throws SynapseException
      *         if the Synapse call fails
      */
-    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
+    @RetryOnFailure(attempts = 2, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
             randomize = false)
     public String uploadTsvStartWithRetry(String tableId, String fileHandleId, CsvTableDescriptor tableDescriptor)
             throws SynapseException {
@@ -687,7 +686,7 @@ public class SynapseHelper {
      * @throws SynapseException
      *         if the job fails
      */
-    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
+    @RetryOnFailure(attempts = 2, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
             randomize = false)
     public UploadToTableResult getUploadTsvStatus(String jobToken, String tableId) throws SynapseException {
         try {

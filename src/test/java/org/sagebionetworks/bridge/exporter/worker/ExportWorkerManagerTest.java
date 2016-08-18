@@ -1,14 +1,9 @@
 package org.sagebionetworks.bridge.exporter.worker;
 
 import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Matchers.notNull;
-import static org.mockito.Matchers.same;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -16,10 +11,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
 
-import java.io.File;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 
@@ -27,8 +19,9 @@ import com.amazonaws.services.dynamodbv2.document.DynamoDB;
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
 import com.google.common.collect.ImmutableMap;
-import org.joda.time.LocalDate;
 import org.mockito.ArgumentCaptor;
+import org.sagebionetworks.client.exceptions.SynapseClientException;
+import org.sagebionetworks.client.exceptions.SynapseServerException;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -40,15 +33,12 @@ import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.exporter.handler.AppVersionExportHandler;
 import org.sagebionetworks.bridge.exporter.handler.HealthDataExportHandler;
 import org.sagebionetworks.bridge.exporter.handler.IosSurveyExportHandler;
-import org.sagebionetworks.bridge.exporter.handler.SynapseExportHandler;
 import org.sagebionetworks.bridge.exporter.helper.BridgeHelper;
 import org.sagebionetworks.bridge.exporter.helper.BridgeHelperTest;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
-import org.sagebionetworks.bridge.exporter.synapse.SynapseStatusTableHelper;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
-@SuppressWarnings({ "unchecked", "rawtypes" })
 public class ExportWorkerManagerTest {
     private static final String DEFAULT_DDB_PREFIX = "default-prefix-";
     private static final String DUMMY_JSON_TEXT = "{\"key\":\"value\"}";
@@ -267,7 +257,7 @@ public class ExportWorkerManagerTest {
         assertEquals(handler.getStudyId(), TEST_STUDY_ID);
 
         // verify task queue
-        verify(mockTask, times(2)).addOutstandingTask(any());
+        verify(mockTask, times(2)).addSubtaskFuture(any());
     }
 
     @Test
@@ -337,112 +327,30 @@ public class ExportWorkerManagerTest {
         assertEquals(healthDataHandler.getStudyId(), TEST_STUDY_ID);
 
         // verify task queue
-        verify(mockTask, times(4)).addOutstandingTask(any());
+        verify(mockTask, times(4)).addSubtaskFuture(any());
 
         // verify only one call to DDB
         verify(mockBridgeHelper, times(1)).getSchema(any(), any());
     }
 
-    @Test
-    public void endOfStream() throws Exception {
-        // Test cases: 2 records, one for "fail-study", one for "success-study". This allows us to test failure and
-        // success cases
-        Item failRecord = new Item().withString("studyId", "fail-study").withString("schemaId", TEST_SCHEMA_ID)
-                .withInt("schemaRevision", TEST_SCHEMA_REV).withString("data", DUMMY_JSON_TEXT);
-        Item successRecord = new Item().withString("studyId", "success-study").withString("schemaId", TEST_SCHEMA_ID)
-                .withInt("schemaRevision", TEST_SCHEMA_REV).withString("data", DUMMY_JSON_TEXT);
+    @DataProvider(name = "isSynapseDownProvider")
+    public Object[][] isSynapseDownProvider() {
+        // { exception, expected }
+        return new Object[][] {
+                { new IllegalArgumentException(), false },
+                { new BridgeExporterException(), false },
+                { new SynapseClientException(), false },
+                { new SynapseServerException(404), false },
+                { new SynapseServerException(500), false },
+                { new SynapseServerException(503), true },
 
-        // mock executor - Don't need to validate the worker. This is done in a previous test.
-        ExecutorService mockExecutor = mock(ExecutorService.class);
-        List<Future<?>> mockFutureList = new ArrayList<>();
-        when(mockExecutor.submit(any(ExportWorker.class))).thenAnswer(invocation -> {
-            Future<?> mockFuture = mock(Future.class);
+                // branch coverage
+                { null, false },
+        };
+    }
 
-            ExportWorker worker = invocation.getArgumentAt(0, ExportWorker.class);
-            if ("fail-study".equals(worker.getSubtask().getSchemaKey().getStudyId())) {
-                when(mockFuture.get()).thenThrow(ExecutionException.class);
-            }
-
-            mockFutureList.add(mockFuture);
-            return mockFuture;
-        });
-
-        // Create task. We'll want to use a real task here, since it tracks state that we need to test.
-        BridgeExporterRequest request = new BridgeExporterRequest.Builder().withDate(LocalDate.parse("2015-12-08"))
-                .build();
-        ExportTask task = new ExportTask.Builder().withExporterDate(LocalDate.parse("2015-12-09"))
-                .withMetrics(new Metrics()).withRequest(request).withTmpDir(mock(File.class)).build();
-
-        // Mock config - Set progress report interval to 2 to test branch coverage
-        Config mockConfig = mock(Config.class);
-        when(mockConfig.getInt(ExportWorkerManager.CONFIG_KEY_WORKER_MANAGER_PROGRESS_REPORT_PERIOD)).thenReturn(2);
-
-        // mock Synapse status table helper
-        SynapseStatusTableHelper mockSynapseStatusTableHelper = mock(SynapseStatusTableHelper.class);
-        doAnswer(invocation -> {
-            String studyId = invocation.getArgumentAt(1, String.class);
-            if ("fail-study".equals(studyId)) {
-                throw new BridgeExporterException();
-            }
-
-            // Mockito requires a return value.
-            return null;
-        }).when(mockSynapseStatusTableHelper).initTableAndWriteStatus(same(task), anyString());
-
-        // set up worker manager
-        ExportWorkerManager manager = spy(new ExportWorkerManager());
-        manager.setConfig(mockConfig);
-        manager.setExecutor(mockExecutor);
-        manager.setSynapseStatusTableHelper(mockSynapseStatusTableHelper);
-
-        // Spy create*Handler() methods. This allows us to inject failures into the handlers to test handler code.
-        List<SynapseExportHandler> mockHandlerList = new ArrayList<>();
-
-        doAnswer(invocation -> {
-            AppVersionExportHandler mockHandler = mock(AppVersionExportHandler.class);
-
-            String studyId = invocation.getArgumentAt(0, String.class);
-            if ("fail-study".equals(studyId)) {
-                doThrow(BridgeExporterException.class).when(mockHandler).uploadToSynapseForTask(any());
-            }
-
-            mockHandlerList.add(mockHandler);
-            return mockHandler;
-        }).when(manager).createAppVersionHandler(any());
-
-        doAnswer(invocation -> {
-            HealthDataExportHandler mockHandler = mock(HealthDataExportHandler.class);
-
-            UploadSchemaKey schemaKey = invocation.getArgumentAt(1, UploadSchemaKey.class);
-            if ("fail-study".equals(schemaKey.getStudyId())) {
-                doThrow(BridgeExporterException.class).when(mockHandler).uploadToSynapseForTask(any());
-            }
-
-            mockHandlerList.add(mockHandler);
-            return mockHandler;
-        }).when(manager).createHealthDataHandler(any(), any());
-
-        // set up test
-        manager.addSubtaskForRecord(task, failRecord);
-        manager.addSubtaskForRecord(task, successRecord);
-
-        // end of stream
-        manager.endOfStream(task);
-
-        // verify futures processed
-        assertEquals(mockFutureList.size(), 4);
-        for (Future<?> oneMockFuture : mockFutureList) {
-            verify(oneMockFuture, times(1)).get();
-        }
-
-        // verify handlers called to uploaded TSVs
-        assertEquals(mockHandlerList.size(), 4);
-        for (SynapseExportHandler oneMockHandler : mockHandlerList) {
-            verify(oneMockHandler).uploadToSynapseForTask(task);
-        }
-
-        // verify status tables written for each study
-        verify(mockSynapseStatusTableHelper).initTableAndWriteStatus(task, "success-study");
-        verify(mockSynapseStatusTableHelper).initTableAndWriteStatus(task, "fail-study");
+    @Test(dataProvider = "isSynapseDownProvider")
+    public void isSynapseDown(Exception exception, boolean expected) {
+        assertEquals(ExportWorkerManager.isSynapseDown(exception), expected);
     }
 }
