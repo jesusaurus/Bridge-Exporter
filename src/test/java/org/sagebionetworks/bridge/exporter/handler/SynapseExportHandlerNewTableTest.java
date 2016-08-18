@@ -22,14 +22,17 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.config.Config;
+import org.sagebionetworks.bridge.exporter.helper.BridgeHelper;
 import org.sagebionetworks.bridge.exporter.helper.BridgeHelperTest;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
+import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.exporter.util.TestUtil;
 import org.sagebionetworks.bridge.exporter.worker.ExportSubtask;
 import org.sagebionetworks.bridge.exporter.worker.ExportTask;
 import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
 import org.sagebionetworks.bridge.file.InMemoryFileHelper;
+import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldDefinition;
 import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldType;
 import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
@@ -49,10 +52,19 @@ public class SynapseExportHandlerNewTableTest {
     }
 
     private void setup(SynapseExportHandler handler) throws Exception {
-        // set up handler
+        setupWithSchema(handler, null, null);
+    }
+
+    private void setupWithSchema(SynapseExportHandler handler, UploadSchemaKey schemaKey, UploadSchema schema)
+            throws Exception {
+        // This needs to be done first, because lots of stuff reference this, even while we're setting up mocks.
         handler.setStudyId(SynapseExportHandlerTest.TEST_STUDY_ID);
 
-        // This needs to be done first, because lots of stuff reference this, even while we're setting up mocks.
+        // mock BridgeHelper
+        BridgeHelper mockBridgeHelper = mock(BridgeHelper.class);
+        when(mockBridgeHelper.getSchema(any(), eq(schemaKey))).thenReturn(schema);
+
+        // mock config
         Config mockConfig = mock(Config.class);
         when(mockConfig.get(ExportWorkerManager.CONFIG_KEY_EXPORTER_DDB_PREFIX)).thenReturn(
                 SynapseExportHandlerTest.DUMMY_DDB_PREFIX);
@@ -64,13 +76,27 @@ public class SynapseExportHandlerNewTableTest {
         InMemoryFileHelper mockFileHelper = new InMemoryFileHelper();
         File tmpDir = mockFileHelper.createTempDir();
 
-        // mock Synapse Helper
+        // Mock Synapse Helper - We'll fill in the behavior later, because due to the way this test is constructed, we
+        // need to set up the Manager before we can properly mock the Synapse Helper.
         mockSynapseHelper = mock(SynapseHelper.class);
+
+        // setup manager - This is only used to get helper objects.
+        manager = spy(new ExportWorkerManager());
+        manager.setBridgeHelper(mockBridgeHelper);
+        manager.setConfig(mockConfig);
+        manager.setFileHelper(mockFileHelper);
+        manager.setSynapseHelper(mockSynapseHelper);
+        handler.setManager(manager);
+
+        // set up task
+        task = new ExportTask.Builder().withExporterDate(SynapseExportHandlerTest.DUMMY_REQUEST_DATE)
+                .withMetrics(new Metrics()).withRequest(SynapseExportHandlerTest.DUMMY_REQUEST).withTmpDir(tmpDir)
+                .build();
 
         // mock create columns - all we care about are column names and IDs
         List<ColumnModel> columnModelList = new ArrayList<>();
         columnModelList.addAll(SynapseExportHandler.COMMON_COLUMN_LIST);
-        columnModelList.addAll(handler.getSynapseTableColumnList());
+        columnModelList.addAll(handler.getSynapseTableColumnList(task));
 
         // mock create table with columns and ACLs
         when(mockSynapseHelper.createTableWithColumnsAndAcls(columnModelList,
@@ -92,18 +118,6 @@ public class SynapseExportHandlerNewTableTest {
             // we processed 1 rows
             return 1;
         });
-
-        // setup manager - This is only used to get helper objects.
-        manager = spy(new ExportWorkerManager());
-        manager.setConfig(mockConfig);
-        manager.setFileHelper(mockFileHelper);
-        manager.setSynapseHelper(mockSynapseHelper);
-        handler.setManager(manager);
-
-        // set up task
-        task = new ExportTask.Builder().withExporterDate(SynapseExportHandlerTest.DUMMY_REQUEST_DATE)
-                .withMetrics(new Metrics()).withRequest(SynapseExportHandlerTest.DUMMY_REQUEST).withTmpDir(tmpDir)
-                .build();
 
         // spy getSynapseProjectId and getDataAccessTeam
         // These calls through to a bunch of stuff (which we test in ExportWorkerManagerTest), so to simplify our test,
@@ -175,12 +189,13 @@ public class SynapseExportHandlerNewTableTest {
                 new UploadFieldDefinition.Builder().withName("foo").withType(UploadFieldType.STRING).build(),
                 new UploadFieldDefinition.Builder().withName("bar").withType(UploadFieldType.INT).build())
                 .build();
+        UploadSchemaKey testSchemaKey = BridgeExporterUtil.getSchemaKeyFromSchema(testSchema);
 
         // Set up handler and test. setSchema() needs to be called before setup, since a lot of the stuff in the
         // handler depends on it, even while we're mocking stuff.
         HealthDataExportHandler handler = new HealthDataExportHandler();
-        handler.setSchema(testSchema);
-        setup(handler);
+        handler.setSchemaKey(testSchemaKey);
+        setupWithSchema(handler, testSchemaKey, testSchema);
 
         // mock serializeToSynapseType() - We actually call through to the real method. Don't need to mock
         // uploadFromS3ToSynapseFileHandle() because we don't have file handles this time.
