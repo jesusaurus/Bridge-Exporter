@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.concurrent.TimeUnit;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.TextNode;
@@ -23,6 +22,8 @@ import org.sagebionetworks.repo.model.table.ColumnType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
+import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.worker.ExportSubtask;
 import org.sagebionetworks.bridge.exporter.worker.ExportTask;
 import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
@@ -45,21 +46,19 @@ public class HealthDataExportHandler extends SynapseExportHandler {
     private static final DateTimeFormatter TIME_ZONE_FORMATTER = DateTimeFormat.forPattern("Z");
     private static final String TIME_ZONE_UTC_STRING = "+0000";
 
-    private UploadSchema schema;
     private UploadSchemaKey schemaKey;
 
     /**
      * Schema that this handler represents. This is used for determining the table keys in DDB as well as determining
      * the Synapse table columns and corresponding TSV columns.
      */
-    public UploadSchema getSchema() {
-        return schema;
+    public UploadSchemaKey getSchemaKey() {
+        return schemaKey;
     }
 
-    /** @see #getSchema */
-    public final void setSchema(UploadSchema schema) {
-        this.schema = schema;
-        this.schemaKey = BridgeExporterUtil.getSchemaKeyFromSchema(schema);
+    /** @see #getSchemaKey */
+    public final void setSchemaKey(UploadSchemaKey schemaKey) {
+        this.schemaKey = schemaKey;
     }
 
     @Override
@@ -78,10 +77,17 @@ public class HealthDataExportHandler extends SynapseExportHandler {
     }
 
     @Override
-    @Cacheable(lifetime = 5, unit = TimeUnit.MINUTES)
-    protected List<ColumnModel> getSynapseTableColumnList() {
+    protected List<ColumnModel> getSynapseTableColumnList(ExportTask task) throws SchemaNotFoundException {
+        List<UploadFieldDefinition> schemaFieldDefList = getSchemaFieldDefList(task.getMetrics());
+        return getSynapseTableColumnListCached(schemaFieldDefList);
+    }
+
+    // Helper method to compute the Synapse column list from the schema field def list. Since this is a non-trivial
+    // amount of computation, we also wrap this in a cacheable annotation.
+    @Cacheable(forever = true)
+    private List<ColumnModel> getSynapseTableColumnListCached(List<UploadFieldDefinition> schemaFieldDefList) {
         List<ColumnModel> columnList = new ArrayList<>();
-        for (UploadFieldDefinition oneFieldDef : schema.getFieldDefinitions()) {
+        for (UploadFieldDefinition oneFieldDef : schemaFieldDefList) {
             String oneFieldName = oneFieldDef.getName();
             UploadFieldType bridgeType = oneFieldDef.getType();
 
@@ -161,7 +167,8 @@ public class HealthDataExportHandler extends SynapseExportHandler {
     }
 
     @Override
-    protected Map<String, String> getTsvRowValueMap(ExportSubtask subtask) throws IOException, SynapseException {
+    protected Map<String, String> getTsvRowValueMap(ExportSubtask subtask) throws IOException, SchemaNotFoundException,
+            SynapseException {
         ExportTask task = subtask.getParentTask();
         JsonNode dataJson = subtask.getRecordData();
         ExportWorkerManager manager = getManager();
@@ -170,7 +177,8 @@ public class HealthDataExportHandler extends SynapseExportHandler {
 
         // schema-specific columns
         Map<String, String> rowValueMap = new HashMap<>();
-        for (UploadFieldDefinition oneFieldDef : schema.getFieldDefinitions()) {
+        List<UploadFieldDefinition> fieldDefList = getSchemaFieldDefList(task.getMetrics());
+        for (UploadFieldDefinition oneFieldDef : fieldDefList) {
             String oneFieldName = oneFieldDef.getName();
             UploadFieldType bridgeType = oneFieldDef.getType();
             JsonNode valueNode = dataJson.get(oneFieldName);
@@ -207,6 +215,13 @@ public class HealthDataExportHandler extends SynapseExportHandler {
         }
 
         return rowValueMap;
+    }
+
+    // Helper method for getting the field definition list from the schema. This calls through to Bridge using the
+    // BridgeHelper, which may cache the schema for a few minutes.
+    private List<UploadFieldDefinition> getSchemaFieldDefList(Metrics metrics) throws SchemaNotFoundException {
+        UploadSchema schema = getManager().getBridgeHelper().getSchema(metrics, schemaKey);
+        return schema.getFieldDefinitions();
     }
 
     /**

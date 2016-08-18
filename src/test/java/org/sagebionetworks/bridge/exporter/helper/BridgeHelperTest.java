@@ -11,6 +11,8 @@ import static org.testng.Assert.fail;
 import java.util.SortedSet;
 
 import com.google.common.collect.SortedSetMultimap;
+import org.sagebionetworks.repo.model.table.ColumnModel;
+import org.sagebionetworks.repo.model.table.ColumnType;
 import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
@@ -23,11 +25,20 @@ import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
 import org.sagebionetworks.bridge.sdk.models.upload.UploadSchemaType;
 
 public class BridgeHelperTest {
-    public static final UploadFieldDefinition TEST_FIELD_DEF = new UploadFieldDefinition.Builder().withName("my-field")
-            .withType(UploadFieldType.STRING).build();
     public static final String TEST_SCHEMA_ID = "my-schema";
     public static final int TEST_SCHEMA_REV = 2;
     public static final String TEST_STUDY_ID = "test-study";
+
+    public static final String TEST_FIELD_NAME = "my-field";
+    public static final UploadFieldDefinition TEST_FIELD_DEF = new UploadFieldDefinition.Builder()
+            .withName(TEST_FIELD_NAME).withType(UploadFieldType.STRING).withUnboundedText(true).build();
+
+    public static final ColumnModel TEST_SYNAPSE_COLUMN;
+    static {
+        TEST_SYNAPSE_COLUMN = new ColumnModel();
+        TEST_SYNAPSE_COLUMN.setName(TEST_FIELD_NAME);
+        TEST_SYNAPSE_COLUMN.setColumnType(ColumnType.LARGETEXT);
+    }
 
     public static final UploadSchema TEST_SCHEMA = simpleSchemaBuilder().withFieldDefinitions(TEST_FIELD_DEF).build();
     public static final UploadSchemaKey TEST_SCHEMA_KEY = new UploadSchemaKey.Builder().withStudyId(TEST_STUDY_ID)

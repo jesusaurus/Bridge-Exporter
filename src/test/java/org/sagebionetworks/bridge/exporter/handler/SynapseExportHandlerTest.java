@@ -33,11 +33,13 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.config.Config;
+import org.sagebionetworks.bridge.exporter.helper.BridgeHelper;
 import org.sagebionetworks.bridge.exporter.helper.BridgeHelperTest;
 import org.sagebionetworks.bridge.exporter.helper.ExportHelper;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
 import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
+import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.exporter.util.TestUtil;
 import org.sagebionetworks.bridge.exporter.worker.ExportSubtask;
 import org.sagebionetworks.bridge.exporter.worker.ExportTask;
@@ -65,7 +67,7 @@ public class SynapseExportHandlerTest {
     private static final String DUMMY_DATA_GROUPS_FLATTENED = "bar,baz,foo";
     private static final String DUMMY_HEALTH_CODE = "dummy-health-code";
     private static final String DUMMY_RECORD_ID = "dummy-record-id";
-    private static final Item DUMMY_RECORD = new Item().withLong("createdOn", DUMMY_CREATED_ON)
+    public static final Item DUMMY_RECORD = new Item().withLong("createdOn", DUMMY_CREATED_ON)
             .withString("healthCode", DUMMY_HEALTH_CODE).withString("id", DUMMY_RECORD_ID)
             .withString("metadata", DUMMY_METADATA_JSON_TEXT).withStringSet("userDataGroups", DUMMY_DATA_GROUPS)
             .withString("userExternalId", "unsanitized\t\texternal\t\tid");
@@ -108,8 +110,17 @@ public class SynapseExportHandlerTest {
     }
 
     private void setup(SynapseExportHandler handler) throws Exception {
+        setupWithSchema(handler, null, null);
+    }
+
+    private void setupWithSchema(SynapseExportHandler handler, UploadSchemaKey schemaKey, UploadSchema schema)
+    throws Exception {
         // This needs to be done first, because lots of stuff reference this, even while we're setting up mocks.
         handler.setStudyId(TEST_STUDY_ID);
+
+        // mock BridgeHelper
+        BridgeHelper mockBridgeHelper = mock(BridgeHelper.class);
+        when(mockBridgeHelper.getSchema(any(), eq(schemaKey))).thenReturn(schema);
 
         // mock config
         Config mockConfig = mock(Config.class);
@@ -122,15 +133,13 @@ public class SynapseExportHandlerTest {
         mockFileHelper = new InMemoryFileHelper();
         File tmpDir = mockFileHelper.createTempDir();
 
-        // mock Synapse helper
-        List<ColumnModel> columnModelList = new ArrayList<>();
-        columnModelList.addAll(SynapseExportHandler.COMMON_COLUMN_LIST);
-        columnModelList.addAll(handler.getSynapseTableColumnList());
+        // Mock Synapse Helper - We'll fill in the behavior later, because due to the way this test is constructed, we
+        // need to set up the Manager before we can properly mock the Synapse Helper.
         mockSynapseHelper = mock(SynapseHelper.class);
-        when(mockSynapseHelper.getColumnModelsForTableWithRetry(TEST_SYNAPSE_TABLE_ID)).thenReturn(columnModelList);
 
         // setup manager - This is mostly used to get helper objects.
         ExportWorkerManager manager = spy(new ExportWorkerManager());
+        manager.setBridgeHelper(mockBridgeHelper);
         manager.setConfig(mockConfig);
         manager.setFileHelper(mockFileHelper);
         manager.setSynapseHelper(mockSynapseHelper);
@@ -139,6 +148,12 @@ public class SynapseExportHandlerTest {
         // set up task
         task = new ExportTask.Builder().withExporterDate(DUMMY_REQUEST_DATE).withMetrics(new Metrics())
                 .withRequest(DUMMY_REQUEST).withTmpDir(tmpDir).build();
+
+        // mock Synapse helper
+        List<ColumnModel> columnModelList = new ArrayList<>();
+        columnModelList.addAll(SynapseExportHandler.COMMON_COLUMN_LIST);
+        columnModelList.addAll(handler.getSynapseTableColumnList(task));
+        when(mockSynapseHelper.getColumnModelsForTableWithRetry(TEST_SYNAPSE_TABLE_ID)).thenReturn(columnModelList);
 
         // spy getSynapseProjectId and getDataAccessTeam
         // These calls through to a bunch of stuff (which we test in ExportWorkerManagerTest), so to simplify our test,
@@ -324,12 +339,13 @@ public class SynapseExportHandlerTest {
                         new UploadFieldDefinition.Builder().withName(FREEFORM_FIELD_NAME)
                                 .withType(UploadFieldType.STRING).build())
                 .build();
+        UploadSchemaKey testSchemaKey = BridgeExporterUtil.getSchemaKeyFromSchema(testSchema);
 
         // Set up handler and test. setSchema() needs to be called before setup, since a lot of the stuff in the
         // handler depends on it, even while we're mocking stuff.
         HealthDataExportHandler handler = new HealthDataExportHandler();
-        handler.setSchema(testSchema);
-        setup(handler);
+        handler.setSchemaKey(testSchemaKey);
+        setupWithSchema(handler, testSchemaKey, testSchema);
         mockSynapseHelperUploadTsv(1);
 
         // mock export helper

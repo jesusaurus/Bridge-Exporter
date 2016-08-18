@@ -323,7 +323,7 @@ public class ExportWorkerManagerTest {
         assertEquals(appVersionHandler.getStudyId(), TEST_STUDY_ID);
 
         assertSame(healthDataHandler.getManager(), manager);
-        assertSame(healthDataHandler.getSchema(), BridgeHelperTest.TEST_SCHEMA);
+        assertEquals(healthDataHandler.getSchemaKey(), testSchemaKey);
         assertEquals(healthDataHandler.getStudyId(), TEST_STUDY_ID);
 
         // verify task queue

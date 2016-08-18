@@ -21,12 +21,15 @@ import org.sagebionetworks.repo.model.ACCESS_TYPE;
 import org.sagebionetworks.repo.model.AccessControlList;
 import org.sagebionetworks.repo.model.ResourceAccess;
 import org.sagebionetworks.repo.model.file.FileHandle;
+import org.sagebionetworks.repo.model.status.StackStatus;
+import org.sagebionetworks.repo.model.status.StatusEnum;
 import org.sagebionetworks.repo.model.table.AppendableRowSet;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 import org.sagebionetworks.repo.model.table.CsvTableDescriptor;
 import org.sagebionetworks.repo.model.table.TableEntity;
 import org.sagebionetworks.repo.model.table.UploadToTableResult;
+import org.sagebionetworks.schema.adapter.JSONObjectAdapterException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -606,6 +609,22 @@ public class SynapseHelper {
             randomize = false)
     public void downloadFileHandleWithRetry(String fileHandleId, File toFile) throws SynapseException {
         synapseClient.downloadFromFileHandleTemporaryUrl(fileHandleId, toFile);
+    }
+
+    /**
+     * Gets the Synapse stack status and returns true if Synapse is up and in read/write state. Also includes retries.
+     *
+     * @return true if Synapse is up and in read/write state
+     * @throws JSONObjectAdapterException
+     *         if the call fails
+     * @throws SynapseException
+     *         if the call fails
+     */
+    @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
+            randomize = false)
+    public boolean isSynapseWritable() throws JSONObjectAdapterException, SynapseException {
+        StackStatus status = synapseClient.getCurrentStackStatus();
+        return status.getStatus() == StatusEnum.READ_WRITE;
     }
 
     /**

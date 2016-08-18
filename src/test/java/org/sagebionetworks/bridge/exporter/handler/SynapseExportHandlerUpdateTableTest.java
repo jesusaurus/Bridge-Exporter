@@ -73,6 +73,11 @@ public class SynapseExportHandlerUpdateTableTest {
         InMemoryFileHelper mockFileHelper = new InMemoryFileHelper();
         File tmpDir = mockFileHelper.createTempDir();
 
+        // set up task
+        task = new ExportTask.Builder().withExporterDate(SynapseExportHandlerTest.DUMMY_REQUEST_DATE)
+                .withMetrics(new Metrics()).withRequest(SynapseExportHandlerTest.DUMMY_REQUEST).withTmpDir(tmpDir)
+                .build();
+
         // mock Synapse helper
         mockSynapseHelper = mock(SynapseHelper.class);
 
@@ -83,7 +88,7 @@ public class SynapseExportHandlerUpdateTableTest {
         // mock create column model list - We only care about the names and IDs for the created columns.
         expectedColDefList = new ArrayList<>();
         expectedColDefList.addAll(SynapseExportHandler.COMMON_COLUMN_LIST);
-        expectedColDefList.addAll(handler.getSynapseTableColumnList());
+        expectedColDefList.addAll(handler.getSynapseTableColumnList(task));
 
         List<ColumnModel> createdColumnList = new ArrayList<>();
         expectedColIdList = new ArrayList<>();
@@ -123,11 +128,6 @@ public class SynapseExportHandlerUpdateTableTest {
         manager.setSynapseHelper(mockSynapseHelper);
         handler.setManager(manager);
 
-        // set up task
-        task = new ExportTask.Builder().withExporterDate(SynapseExportHandlerTest.DUMMY_REQUEST_DATE)
-                .withMetrics(new Metrics()).withRequest(SynapseExportHandlerTest.DUMMY_REQUEST).withTmpDir(tmpDir)
-                .build();
-
         // spy getSynapseProjectId and getDataAccessTeam
         // These calls through to a bunch of stuff (which we test in ExportWorkerManagerTest), so to simplify our test,
         // we just use a spy here.
@@ -146,7 +146,7 @@ public class SynapseExportHandlerUpdateTableTest {
     // Subclass TestSynapseHandler and add a few more fields.
     private static class UpdateTestSynapseHandler extends TestSynapseHandler {
         @Override
-        protected List<ColumnModel> getSynapseTableColumnList() {
+        protected List<ColumnModel> getSynapseTableColumnList(ExportTask task) {
             return ImmutableList.of(makeColumn("modify-this"), makeColumn("add-this"), makeColumn("swap-this-A"),
                     makeColumn("swap-this-B"));
         }
