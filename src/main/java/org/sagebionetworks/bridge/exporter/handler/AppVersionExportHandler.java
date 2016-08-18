@@ -49,7 +49,7 @@ public class AppVersionExportHandler extends SynapseExportHandler {
     }
 
     @Override
-    protected List<ColumnModel> getSynapseTableColumnList() {
+    protected List<ColumnModel> getSynapseTableColumnList(ExportTask task) {
         return APPVERSION_COLUMN_LIST;
     }
 

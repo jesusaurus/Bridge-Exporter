@@ -26,6 +26,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
+import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.exporter.worker.ExportSubtask;
@@ -125,7 +126,8 @@ public abstract class SynapseExportHandler extends ExportHandler {
             // write to TSV
             tsvInfo.writeRow(rowValueMap);
             metrics.incrementCounter(tableKey + ".lineCount");
-        } catch (BridgeExporterException | IOException | RuntimeException | SynapseException ex) {
+        } catch (BridgeExporterException | IOException | RuntimeException | SchemaNotFoundException |
+                SynapseException ex) {
             metrics.incrementCounter(tableKey + ".errorCount");
             LOG.error("Error processing record " + recordId + " for table " + tableKey + ": " + ex.getMessage(), ex);
         }
@@ -152,7 +154,7 @@ public abstract class SynapseExportHandler extends ExportHandler {
 
             // create TSV info
             tsvInfo = new TsvInfo(columnNameList, tsvFile, tsvWriter);
-        } catch (BridgeExporterException | FileNotFoundException | SynapseException ex) {
+        } catch (BridgeExporterException | FileNotFoundException | SchemaNotFoundException | SynapseException ex) {
             LOG.error("Error initializing TSV for table " + getDdbTableKeyValue() + ": " + ex.getMessage(), ex);
             tsvInfo = TsvInfo.INIT_ERROR_TSV_INFO;
         }
@@ -163,11 +165,12 @@ public abstract class SynapseExportHandler extends ExportHandler {
 
     // Gets the column name list from Synapse. If the Synapse table doesn't exist, this will create it. This is called
     // when initializing the TSV for a task.
-    private List<String> getColumnNameList(ExportTask task) throws BridgeExporterException, SynapseException {
+    private List<String> getColumnNameList(ExportTask task) throws BridgeExporterException, SchemaNotFoundException,
+            SynapseException {
         // Construct column definition list. Merge COMMON_COLUMN_LIST with getSynapseTableColumnList.
         List<ColumnModel> columnDefList = new ArrayList<>();
         columnDefList.addAll(COMMON_COLUMN_LIST);
-        columnDefList.addAll(getSynapseTableColumnList());
+        columnDefList.addAll(getSynapseTableColumnList(task));
 
         // Create or update table if necessary.
         String synapseTableId = getManager().getSynapseTableIdFromDdb(task, getDdbTableName(), getDdbTableKeyName(),
@@ -375,7 +378,7 @@ public abstract class SynapseExportHandler extends ExportHandler {
      * List of Synapse table column model objects, to be used to create both the column models and the Synapse table.
      * This excludes columns common to all Bridge tables defined in COMMON_COLUMN_LIST.
      */
-    protected abstract List<ColumnModel> getSynapseTableColumnList();
+    protected abstract List<ColumnModel> getSynapseTableColumnList(ExportTask task) throws SchemaNotFoundException;
 
     /** Get the TSV saved in the task for this handler. */
     protected abstract TsvInfo getTsvInfoForTask(ExportTask task);
@@ -384,5 +387,6 @@ public abstract class SynapseExportHandler extends ExportHandler {
     protected abstract void setTsvInfoForTask(ExportTask task, TsvInfo tsvInfo);
 
     /** Creates a row values for a single row from the given export task. */
-    protected abstract Map<String, String> getTsvRowValueMap(ExportSubtask subtask) throws IOException, SynapseException;
+    protected abstract Map<String, String> getTsvRowValueMap(ExportSubtask subtask) throws IOException,
+            SchemaNotFoundException, SynapseException;
 }

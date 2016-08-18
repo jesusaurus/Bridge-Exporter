@@ -42,7 +42,6 @@ import org.sagebionetworks.bridge.file.FileHelper;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
 
 /**
  * This class manages export handlers and workers. This includes holding the config and helper objects that the
@@ -414,14 +413,15 @@ public class ExportWorkerManager {
     // Factory method for creating a new health data handler. This exists and is package-scoped to enable unit tests.
     HealthDataExportHandler createHealthDataHandler(Metrics metrics, UploadSchemaKey schemaKey)
             throws IOException, SchemaNotFoundException {
+        // Validate schema exists. This throws if schema doesn't exist. It's also cached, so we don't need to worry
+        // about excessive calls to Bridge.
+        bridgeHelper.getSchema(metrics, schemaKey);
+
+        // create and return handler
         HealthDataExportHandler handler = new HealthDataExportHandler();
         handler.setManager(this);
+        handler.setSchemaKey(schemaKey);
         handler.setStudyId(schemaKey.getStudyId());
-
-        // set schema
-        UploadSchema schema = bridgeHelper.getSchema(metrics, schemaKey);
-        handler.setSchema(schema);
-
         return handler;
     }
 
