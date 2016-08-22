@@ -190,7 +190,7 @@ public class ExportWorkerManager {
     private SynapseStatusTableHelper synapseStatusTableHelper;
 
     /** BridgeHelper, calls Bridge to get schemas and other data the exporter needs. */
-    public BridgeHelper getBridgeHelper() {
+    public final BridgeHelper getBridgeHelper() {
         return bridgeHelper;
     }
 
@@ -236,7 +236,7 @@ public class ExportWorkerManager {
 
     /** S3 Helper, used to upload list of record IDs to redrive. */
     @Autowired
-    public void setS3Helper(S3Helper s3Helper) {
+    public final void setS3Helper(S3Helper s3Helper) {
         this.s3Helper = s3Helper;
     }
 
@@ -390,7 +390,7 @@ public class ExportWorkerManager {
      */
     private void queueWorker(ExportHandler handler, ExportTask parentTask, ExportSubtask subtask) {
         ExportWorker worker = new ExportWorker(handler, subtask);
-        Future<?> future = executor.submit(worker);
+        Future<Void> future = executor.submit(worker);
         parentTask.addSubtaskFuture(new ExportSubtaskFuture.Builder().withSubtask(subtask).withFuture(future).build());
     }
 

@@ -7,17 +7,17 @@ import java.util.concurrent.Future;
  * remaining subtask executions and to tie Futures back to the subtask.
  */
 public class ExportSubtaskFuture {
-    private final Future<?> future;
+    private final Future<Void> future;
     private final ExportSubtask subtask;
 
     /** Private constructor. To construct, use builder. */
-    private ExportSubtaskFuture(Future<?> future, ExportSubtask subtask) {
+    private ExportSubtaskFuture(Future<Void> future, ExportSubtask subtask) {
         this.future = future;
         this.subtask = subtask;
     }
 
     /** Future holding the asynchronous execution of the subtask. */
-    public Future<?> getFuture() {
+    public Future<Void> getFuture() {
         return future;
     }
 
@@ -28,11 +28,11 @@ public class ExportSubtaskFuture {
 
     /** Builder. */
     public static class Builder {
-        private Future<?> future;
+        private Future<Void> future;
         private ExportSubtask subtask;
 
         /** @see #getFuture */
-        public Builder withFuture(Future<?> future) {
+        public Builder withFuture(Future<Void> future) {
             this.future = future;
             return this;
         }

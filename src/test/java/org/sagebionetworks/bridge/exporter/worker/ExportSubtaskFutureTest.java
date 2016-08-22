@@ -7,9 +7,10 @@ import java.util.concurrent.Future;
 
 import org.testng.annotations.Test;
 
+@SuppressWarnings("unchecked")
 public class ExportSubtaskFutureTest {
     // use mocks to avoid building complex objects just for a simple builder test
-    private static final Future<?> MOCK_FUTURE = mock(Future.class);
+    private static final Future<Void> MOCK_FUTURE = mock(Future.class);
     private static final ExportSubtask MOCK_SUBTASK = mock(ExportSubtask.class);
 
     @Test
