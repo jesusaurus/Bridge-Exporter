@@ -5,10 +5,12 @@ import java.io.IOException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import org.sagebionetworks.bridge.exporter.exceptions.RestartBridgeExporterException;
 import org.sagebionetworks.bridge.exporter.exceptions.SynapseUnavailableException;
 import org.sagebionetworks.bridge.exporter.record.BridgeExporterRecordProcessor;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
 import org.sagebionetworks.bridge.sqs.PollSqsCallback;
+import org.sagebionetworks.bridge.sqs.PollSqsWorkerBadRequestException;
 
 /**
  * Responds to SQS messages. This is a pass-through to the BridgeExporterRecordProcessor and only does JSON parsing.
@@ -26,9 +28,15 @@ public class BridgeExporterSqsCallback implements PollSqsCallback {
 
     /** Parses the SQS message and passes it to the record processor. */
     @Override
-    public void callback(String messageBody) throws IOException, SynapseUnavailableException {
-        BridgeExporterRequest request = DefaultObjectMapper.INSTANCE.readValue(messageBody,
-                BridgeExporterRequest.class);
+    public void callback(String messageBody) throws IOException, PollSqsWorkerBadRequestException,
+            RestartBridgeExporterException, SynapseUnavailableException {
+        BridgeExporterRequest request;
+        try {
+            request = DefaultObjectMapper.INSTANCE.readValue(messageBody, BridgeExporterRequest.class);
+        } catch (IOException ex) {
+            throw new PollSqsWorkerBadRequestException("Error parsing request: " + ex.getMessage(), ex);
+        }
+
         recordProcessor.processRecordsForRequest(request);
     }
 }

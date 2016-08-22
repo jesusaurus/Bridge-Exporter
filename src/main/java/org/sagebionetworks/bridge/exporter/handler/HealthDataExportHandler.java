@@ -8,7 +8,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
-import com.amazonaws.services.dynamodbv2.document.Item;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import com.google.common.collect.ImmutableMap;
@@ -174,8 +173,7 @@ public class HealthDataExportHandler extends SynapseExportHandler {
         JsonNode dataJson = subtask.getRecordData();
         ExportWorkerManager manager = getManager();
         String synapseProjectId = manager.getSynapseProjectIdForStudyAndTask(getStudyId(), task);
-        Item record = subtask.getOriginalRecord();
-        String recordId = record.getString("id");
+        String recordId = subtask.getRecordId();
 
         // schema-specific columns
         Map<String, String> rowValueMap = new HashMap<>();

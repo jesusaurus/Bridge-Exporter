@@ -10,13 +10,13 @@ import org.sagebionetworks.bridge.exporter.handler.ExportHandler;
 // ExportWorker is a fairly trivial class. This class exists mainly for unit test coverage.
 public class ExportWorkerTest {
     @Test
-    public void test() {
+    public void test() throws Exception {
         // mock handler and subtask to simplify testing
         ExportHandler mockHandler = mock(ExportHandler.class);
         ExportSubtask mockSubtask = mock(ExportSubtask.class);
 
         // execute and verify call-through
-        new ExportWorker(mockHandler, mockSubtask).run();
+        new ExportWorker(mockHandler, mockSubtask).call();
         verify(mockHandler).handle(mockSubtask);
     }
 }

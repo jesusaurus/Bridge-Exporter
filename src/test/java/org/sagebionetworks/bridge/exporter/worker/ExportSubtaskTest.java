@@ -58,7 +58,7 @@ public class ExportSubtaskTest {
     @Test
     public void happyCase() {
         // build
-        Item originalRecord = new Item();
+        Item originalRecord = new Item().withString(ExportSubtask.KEY_RECORD_ID, "dummy-id");
         ExportSubtask subtask = new ExportSubtask.Builder().withOriginalRecord(originalRecord)
                 .withParentTask(DUMMY_PARENT_TASK).withRecordData(DUMMY_RECORD_DATA).withSchemaKey(DUMMY_SCHEMA_KEY)
                 .build();
@@ -67,6 +67,7 @@ public class ExportSubtaskTest {
         assertSame(subtask.getOriginalRecord(), originalRecord);
         assertSame(subtask.getParentTask(), DUMMY_PARENT_TASK);
         assertSame(subtask.getRecordData(), DUMMY_RECORD_DATA);
+        assertEquals(subtask.getRecordId(), "dummy-id");
         assertEquals(subtask.getSchemaKey(), DUMMY_SCHEMA_KEY);
     }
 }

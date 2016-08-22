@@ -10,6 +10,9 @@ import org.sagebionetworks.bridge.schema.UploadSchemaKey;
  * record. Subtasks are immutable, so it's safe to re-use the same subtask for multiple handlers.
  */
 public class ExportSubtask {
+    /* package-scoped for unit tests */
+    static final String KEY_RECORD_ID = "id";
+
     private final Item originalRecord;
     private final ExportTask parentTask;
     private final JsonNode recordData;
@@ -40,6 +43,11 @@ public class ExportSubtask {
      */
     public JsonNode getRecordData() {
         return recordData;
+    }
+
+    /** Shortcut method for getting the record ID, which is obtained from the original Dynamo DB record. */
+    public String getRecordId() {
+        return originalRecord.getString(KEY_RECORD_ID);
     }
 
     /**

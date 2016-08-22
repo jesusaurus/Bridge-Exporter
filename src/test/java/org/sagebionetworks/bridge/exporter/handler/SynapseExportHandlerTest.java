@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 import java.io.File;
 import java.io.IOException;
@@ -184,7 +185,12 @@ public class SynapseExportHandlerTest {
 
         // execute
         handler.handle(subtask1);
-        handler.handle(subtask2);
+        try {
+            handler.handle(subtask2);
+            fail("expected exception");
+        } catch (IOException ex) {
+            assertEquals(ex.getMessage(), "error second record");
+        }
         handler.handle(subtask3);
         handler.uploadToSynapseForTask(task);
 
@@ -239,8 +245,20 @@ public class SynapseExportHandlerTest {
         ExportSubtask subtask2 = makeSubtask(task, "error", "second error");
 
         // execute
-        handler.handle(subtask1);
-        handler.handle(subtask2);
+        try {
+            handler.handle(subtask1);
+            fail("expected exception");
+        } catch (IOException ex) {
+            assertEquals(ex.getMessage(), "first error");
+        }
+
+        try {
+            handler.handle(subtask2);
+            fail("expected exception");
+        } catch (IOException ex) {
+            assertEquals(ex.getMessage(), "second error");
+        }
+
         handler.uploadToSynapseForTask(task);
 
         // verify we don't upload the TSV to Synapse

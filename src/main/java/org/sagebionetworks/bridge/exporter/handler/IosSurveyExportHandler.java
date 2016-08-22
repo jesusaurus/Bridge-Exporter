@@ -26,19 +26,20 @@ public class IosSurveyExportHandler extends ExportHandler {
     private static final Logger LOG = LoggerFactory.getLogger(IosSurveyExportHandler.class);
 
     @Override
-    public void handle(ExportSubtask subtask) {
+    public void handle(ExportSubtask subtask) throws BridgeExporterException, IOException, SchemaNotFoundException {
         Metrics metrics = subtask.getParentTask().getMetrics();
-        Item record = subtask.getOriginalRecord();
-        String recordId = record.getString("id");
+        String recordId = subtask.getRecordId();
         String studyId = getStudyId();
 
         try {
             processRecordAsSurvey(subtask);
             metrics.incrementCounter("surveyWorker[" + studyId + "].surveyCount");
         } catch (BridgeExporterException | IOException | RuntimeException | SchemaNotFoundException ex) {
+            // Log metrics and rethrow.
             metrics.incrementCounter("surveyWorker[" + studyId + "].errorCount");
             LOG.error("Error processing survey record " + recordId + " for study " + studyId + ": " + ex.getMessage(),
                     ex);
+            throw ex;
         }
     }
 

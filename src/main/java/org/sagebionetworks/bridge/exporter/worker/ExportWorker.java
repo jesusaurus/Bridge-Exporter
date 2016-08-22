@@ -1,13 +1,27 @@
 package org.sagebionetworks.bridge.exporter.worker;
 
+import java.io.IOException;
+import java.util.concurrent.Callable;
+
+import org.sagebionetworks.client.exceptions.SynapseException;
+
+import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
+import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
 import org.sagebionetworks.bridge.exporter.handler.ExportHandler;
 
 /**
+ * <p>
  * A runnable representing the asynchronous execution of an ExportSubtask. This exists separately of ExportSubtask so
  * as to separate state (ExportSubtask) from execution (ExportWorker), and separate from ExportHandlers so that we can
  * define a single ExportHandler to be re-used across all requests.
+ * </p>
+ * <p>
+ * We use a callable instead of a runnable, because we want to be able to throw and catch checked exceptions.
+ * Otherwise, we'd have to wrap these in a RuntimeException, which then get wrapped in an ExecutionException, and
+ * things get messy.
+ * </p>
  */
-public class ExportWorker implements Runnable {
+public class ExportWorker implements Callable<Void> {
     private final ExportHandler handler;
     private final ExportSubtask subtask;
 
@@ -39,7 +53,10 @@ public class ExportWorker implements Runnable {
      * ExecutorService.
      */
     @Override
-    public void run() {
+    public Void call() throws BridgeExporterException, IOException, SchemaNotFoundException, SynapseException {
         handler.handle(subtask);
+
+        // Callables have to have a return value. We don't have a return value, so return null.
+        return null;
     }
 }

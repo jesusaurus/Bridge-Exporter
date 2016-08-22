@@ -2,8 +2,10 @@ package org.sagebionetworks.bridge.exporter.worker;
 
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -14,10 +16,14 @@ import javax.annotation.Resource;
 import com.amazonaws.services.dynamodbv2.document.DynamoDB;
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Stopwatch;
 import org.apache.commons.lang.StringUtils;
+import org.joda.time.DateTime;
+import org.joda.time.DateTimeZone;
 import org.sagebionetworks.client.exceptions.SynapseException;
+import org.sagebionetworks.client.exceptions.SynapseServerException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,6 +31,7 @@ import org.springframework.stereotype.Component;
 
 import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.exporter.dynamo.DynamoHelper;
+import org.sagebionetworks.bridge.exporter.exceptions.RestartBridgeExporterException;
 import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
 import org.sagebionetworks.bridge.exporter.handler.AppVersionExportHandler;
 import org.sagebionetworks.bridge.exporter.handler.ExportHandler;
@@ -40,8 +47,10 @@ import org.sagebionetworks.bridge.exporter.synapse.SynapseStatusTableHelper;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.file.FileHelper;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
+import org.sagebionetworks.bridge.s3.S3Helper;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
+import org.sagebionetworks.bridge.sqs.SqsHelper;
 
 /**
  * This class manages export handlers and workers. This includes holding the config and helper objects that the
@@ -61,17 +70,25 @@ public class ExportWorkerManager {
     static final String DDB_KEY_TABLE_ID = "tableId";
     static final String SCHEMA_IOS_SURVEY = "ios-survey";
 
+    // We need to delay our redrives. Otherwise, if we have a deterministic error, this may cause the Exporter to spin
+    // as fast as possible retrying the request.
+    static final int REDRIVE_DELAY_SECONDS = 3600;
+
     // CONFIG
 
     private String exporterDdbPrefix;
     private int progressReportPeriod;
+    private String recordIdOverrideBucket;
     private long synapsePrincipalId;
+    private String sqsQueueUrl;
 
     /** Bridge config. */
     @Autowired
     public final void setConfig(Config config) {
         this.exporterDdbPrefix = config.get(CONFIG_KEY_EXPORTER_DDB_PREFIX);
+        this.recordIdOverrideBucket = config.get(BridgeExporterUtil.CONFIG_KEY_RECORD_ID_OVERRIDE_BUCKET);
         this.synapsePrincipalId = config.getInt(CONFIG_KEY_SYNAPSE_PRINCIPAL_ID);
+        this.sqsQueueUrl = config.get(BridgeExporterUtil.CONFIG_KEY_SQS_QUEUE_URL);
 
         this.progressReportPeriod = config.getInt(CONFIG_KEY_WORKER_MANAGER_PROGRESS_REPORT_PERIOD);
         if (progressReportPeriod == 0) {
@@ -167,11 +184,13 @@ public class ExportWorkerManager {
     private DynamoHelper dynamoHelper;
     private ExportHelper exportHelper;
     private FileHelper fileHelper;
+    private S3Helper s3Helper;
+    private SqsHelper sqsHelper;
     private SynapseHelper synapseHelper;
     private SynapseStatusTableHelper synapseStatusTableHelper;
 
     /** BridgeHelper, calls Bridge to get schemas and other data the exporter needs. */
-    public BridgeHelper getBridgeHelper() {
+    public final BridgeHelper getBridgeHelper() {
         return bridgeHelper;
     }
 
@@ -189,7 +208,7 @@ public class ExportWorkerManager {
 
     /** DynamoHelper, used to get study info. */
     @Autowired
-    public void setDynamoHelper(DynamoHelper dynamoHelper) {
+    public final void setDynamoHelper(DynamoHelper dynamoHelper) {
         this.dynamoHelper = dynamoHelper;
     }
 
@@ -215,6 +234,12 @@ public class ExportWorkerManager {
         this.fileHelper = fileHelper;
     }
 
+    /** S3 Helper, used to upload list of record IDs to redrive. */
+    @Autowired
+    public final void setS3Helper(S3Helper s3Helper) {
+        this.s3Helper = s3Helper;
+    }
+
     /** Synapse Helper, used for creating Synapse tables and uploading data to Synapse tables. */
     public final SynapseHelper getSynapseHelper() {
         return synapseHelper;
@@ -230,6 +255,12 @@ public class ExportWorkerManager {
     @Autowired
     final void setSynapseStatusTableHelper(SynapseStatusTableHelper synapseStatusTableHelper) {
         this.synapseStatusTableHelper = synapseStatusTableHelper;
+    }
+
+    /** SQS Helper, used for sending redrives back to the SQS queue. */
+    @Autowired
+    public final void setSqsHelper(SqsHelper sqsHelper) {
+        this.sqsHelper = sqsHelper;
     }
 
     // STUDY INFO AND OVERRIDES
@@ -359,8 +390,8 @@ public class ExportWorkerManager {
      */
     private void queueWorker(ExportHandler handler, ExportTask parentTask, ExportSubtask subtask) {
         ExportWorker worker = new ExportWorker(handler, subtask);
-        Future<?> future = executor.submit(worker);
-        parentTask.addOutstandingTask(future);
+        Future<Void> future = executor.submit(worker);
+        parentTask.addSubtaskFuture(new ExportSubtaskFuture.Builder().withSubtask(subtask).withFuture(future).build());
     }
 
     /**
@@ -450,32 +481,76 @@ public class ExportWorkerManager {
      * @param task
      *         export task to be finished
      */
-    public void endOfStream(ExportTask task) {
+    public void endOfStream(ExportTask task) throws RestartBridgeExporterException {
         BridgeExporterRequest request = task.getRequest();
         LOG.info("End of stream signaled for request " + request.toString());
 
         // Wait for all outstanding tasks to complete
         Stopwatch stopwatch = Stopwatch.createStarted();
-        Queue<Future<?>> outstandingTaskQueue = task.getOutstandingTaskQueue();
-        while (!outstandingTaskQueue.isEmpty()) {
-            int numOutstanding = outstandingTaskQueue.size();
+        Queue<ExportSubtaskFuture> subtaskFutureQueue = task.getSubtaskFutureQueue();
+        Set<String> redriveRecordIdSet = new HashSet<>();
+        while (!subtaskFutureQueue.isEmpty()) {
+            int numOutstanding = subtaskFutureQueue.size();
             if (numOutstanding % progressReportPeriod == 0) {
                 LOG.info("Num outstanding tasks: " + numOutstanding + " after " + stopwatch.elapsed(TimeUnit.SECONDS) +
                         " seconds");
             }
 
             // ExportWorkers have no return value. If Future.get() returns normally, then the task is done.
-            Future<?> oneFuture = outstandingTaskQueue.remove();
+            ExportSubtaskFuture subtaskFuture = subtaskFutureQueue.remove();
             try {
-                oneFuture.get();
+                subtaskFuture.getFuture().get();
             } catch (ExecutionException | InterruptedException ex) {
-                LOG.error("Error completing subtask: " + ex.getMessage(), ex);
+                // The real exception is in the inner exception (if it's an ExecutionException).
+                Throwable originalEx = ex.getCause();
+
+                String recordId = subtaskFuture.getSubtask().getRecordId();
+                if (isSynapseDown(originalEx)) {
+                    // If Synapse is down, we should restart the BridgeEX request. Note that since BridgeEX is
+                    // multi-threaded, there may be other subtasks scheduled that will run to completion. Nothing will
+                    // get written to the Synapse tables, however, since (a) we never call upload to Synapse and
+                    // (b) Synapse is down anyway.
+                    throw new RestartBridgeExporterException("Restarting Bridge Exporter; last recordId=" + recordId +
+                            ": " + originalEx.getMessage(), originalEx);
+                } else {
+                    // This failure is recoverable. Track which record IDs need to be redriven, so we can redrive it
+                    // later.
+                    LOG.error("Error completing subtask for recordId=" + recordId + ": " + ex.getMessage(), ex);
+                    redriveRecordIdSet.add(recordId);
+                }
+            }
+        }
+        if (!redriveRecordIdSet.isEmpty()) {
+            // Upload the list of record IDs that need to be redriven to S3. The filename *should* be unique, since we
+            // use the timestamp for the filename, and we currently only run one Export job at a time.
+            // Use UTC timezone so we can easily sort and search for files. Redrives should be relatively rare, so
+            // performance considerations on S3 buckets aren't an issue.
+            String filename = "redrive-record-ids." + DateTime.now().withZone(DateTimeZone.UTC).toString();
+
+            // Create a copy of the original request, except add the record override and update the tag. Also, clear
+            // date, startDateTime, and endDateTime as these conflict with record override.
+            String redriveTag = "redrive records (original: " + request.getTag() + ")";
+            BridgeExporterRequest redriveRequest = new BridgeExporterRequest.Builder().copyOf(request).withDate(null)
+                    .withStartDateTime(null).withEndDateTime(null).withRecordIdS3Override(filename).withTag(redriveTag)
+                    .build();
+            LOG.info("Redriving records using S3 file " + filename);
+
+            try {
+                // upload to S3
+                s3Helper.writeLinesToS3(recordIdOverrideBucket, filename, redriveRecordIdSet);
+
+                // send request to SQS
+                sqsHelper.sendMessageAsJson(sqsQueueUrl, redriveRequest, REDRIVE_DELAY_SECONDS);
+            } catch (IOException ex) {
+                // log error, but move on
+                LOG.error("Error redriving records: " + ex.getMessage(), ex);
             }
         }
 
         LOG.info("All subtasks done for request " + request.toString());
 
-        // Tell each handler to upload their TSVs to Synapse.
+        // Tell each health data handler to upload their TSVs to Synapse.
+        Set<UploadSchemaKey> redriveTableWhitelist = new HashSet<>();
         for (Map.Entry<UploadSchemaKey, HealthDataExportHandler> healthDataHandlerEntry
                 : healthDataHandlersBySchema.entrySet()) {
             UploadSchemaKey schemaKey = healthDataHandlerEntry.getKey();
@@ -483,10 +558,35 @@ public class ExportWorkerManager {
             try {
                 handler.uploadToSynapseForTask(task);
             } catch (BridgeExporterException | IOException | RuntimeException | SynapseException ex) {
-                LOG.error("Error uploading health data to Synapse for schema=" + schemaKey + ": " + ex.getMessage(),
-                        ex);
+                if (isSynapseDown(ex)) {
+                    // Similarly, if Synapse is down, restart BridgeEX.
+                    throw new RestartBridgeExporterException("Restarting Bridge Exporter; last schema=" + schemaKey +
+                            ": " + ex.getMessage(), ex);
+                } else {
+                    // Similarly, track which tables (schemas) to redrive.
+                    LOG.error("Error uploading health data to Synapse for schema=" + schemaKey + ": " + ex.getMessage(),
+                            ex);
+                    redriveTableWhitelist.add(schemaKey);
+                }
             }
         }
+        if (!redriveTableWhitelist.isEmpty()) {
+            // Create a copy of the original request, except add the table whitelist and update the tag. This will be
+            // used to trigger the redrive.
+            String redriveTag = "redrive tables (original: " + request.getTag() + ")";
+            BridgeExporterRequest redriveRequest = new BridgeExporterRequest.Builder().copyOf(request)
+                    .withTableWhitelist(redriveTableWhitelist).withTag(redriveTag).build();
+            LOG.info("Redriving tables: " + BridgeExporterUtil.COMMA_SPACE_JOINER.join(redriveTableWhitelist));
+
+            try {
+                sqsHelper.sendMessageAsJson(sqsQueueUrl, redriveRequest, REDRIVE_DELAY_SECONDS);
+            } catch (JsonProcessingException ex) {
+                // log error, but move on
+                LOG.error("Error redriving tables: " + ex.getMessage(), ex);
+            }
+        }
+
+        // Also, the app version handlers.
         for (Map.Entry<String, AppVersionExportHandler> appVersionHandlerEntry
                 : appVersionHandlersByStudy.entrySet()) {
             String studyId = appVersionHandlerEntry.getKey();
@@ -494,6 +594,11 @@ public class ExportWorkerManager {
             try {
                 handler.uploadToSynapseForTask(task);
             } catch (BridgeExporterException | IOException | RuntimeException | SynapseException ex) {
+                // TODO: Improved error handling
+                // If uploading Bridge data succeeds and somehow the appVersion (index) table fails (including
+                // retries), we don't really have a mechanism for redriving this specific table update. Fortunately,
+                // the appVersion table is used for diagnostics and is not critical (at the moment), so we can work
+                // around it. However, we should think about how to improve this.
                 LOG.error("Error uploading app version table to Synapse for study=" + studyId + ": " + ex.getMessage(),
                         ex);
             }
@@ -504,10 +609,20 @@ public class ExportWorkerManager {
             try {
                 synapseStatusTableHelper.initTableAndWriteStatus(task, oneStudyId);
             } catch (BridgeExporterException | InterruptedException | SynapseException ex) {
+                // TODO: Improved error handling
+                // Similarly, status table is also not critical, but we should think about how to improve this.
                 LOG.error("Error writing to status table for study=" + oneStudyId + ": " + ex.getMessage(), ex);
             }
         }
 
         LOG.info("Done uploading to Synapse for request " + request.toString());
+    }
+
+    // Advice from Synapse team is that 503 means Synapse is down (either for maintenance or otherwise). In this case,
+    // instead of continuing, we should abort the request and restart BridgeEX immediately.
+    //
+    // Package-scoped for unit tests.
+    static boolean isSynapseDown(Throwable t) {
+        return (t instanceof SynapseServerException && ((SynapseServerException)t).getStatusCode() == 503);
     }
 }

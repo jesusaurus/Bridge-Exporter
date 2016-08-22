@@ -19,6 +19,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import org.sagebionetworks.bridge.config.Config;
+import org.sagebionetworks.bridge.exporter.exceptions.RestartBridgeExporterException;
 import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
 import org.sagebionetworks.bridge.exporter.exceptions.SynapseUnavailableException;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
@@ -123,7 +124,7 @@ public class BridgeExporterRecordProcessor {
      *         if Synapse is not available in read/write mode
      */
     public void processRecordsForRequest(BridgeExporterRequest request) throws IOException,
-            SynapseUnavailableException {
+            RestartBridgeExporterException, SynapseUnavailableException {
         LOG.info("Received request " + request.toString());
 
         // Check to see that Synapse is up and availabe for read/write. If it isn't, throw an exception, so the

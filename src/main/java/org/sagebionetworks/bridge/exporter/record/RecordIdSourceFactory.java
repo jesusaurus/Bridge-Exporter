@@ -29,9 +29,6 @@ import org.sagebionetworks.bridge.s3.S3Helper;
  */
 @Component
 public class RecordIdSourceFactory {
-    // package-scoped to be visible to unit tests
-    static final String CONFIG_KEY_RECORD_ID_OVERRIDE_BUCKET = "record.id.override.bucket";
-
     private static final RecordIdSource.Converter<Item> DYNAMO_ITEM_CONVERTER = from -> from.getString("id");
     private static final RecordIdSource.Converter<String> NOOP_CONVERTER = from -> from;
 
@@ -48,7 +45,7 @@ public class RecordIdSourceFactory {
     /** Config, used to get S3 bucket for record ID override files. */
     @Autowired
     final void setConfig(Config config) {
-        overrideBucket = config.get(CONFIG_KEY_RECORD_ID_OVERRIDE_BUCKET);
+        overrideBucket = config.get(BridgeExporterUtil.CONFIG_KEY_RECORD_ID_OVERRIDE_BUCKET);
         timeZone = DateTimeZone.forID(config.get(BridgeExporterUtil.CONFIG_KEY_TIME_ZONE_NAME));
     }
 
