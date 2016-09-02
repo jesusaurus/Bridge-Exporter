@@ -3,6 +3,8 @@ package org.sagebionetworks.bridge.exporter.helper;
 import java.util.concurrent.TimeUnit;
 
 import com.jcabi.aspects.Cacheable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -11,7 +13,7 @@ import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 import org.sagebionetworks.bridge.sdk.ClientProvider;
 import org.sagebionetworks.bridge.sdk.Session;
-import org.sagebionetworks.bridge.sdk.UploadSchemaClient;
+import org.sagebionetworks.bridge.sdk.exceptions.NotAuthenticatedException;
 import org.sagebionetworks.bridge.sdk.models.accounts.SignInCredentials;
 import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
 
@@ -20,21 +22,15 @@ import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
  */
 @Component
 public class BridgeHelper {
-    private SignInCredentials credentials;
+    private static final Logger LOG = LoggerFactory.getLogger(BridgeHelper.class);
 
+    private SignInCredentials credentials;
+    private Session session = null;
+
+    /** Bridge credentials for the Exporter account. This needs to be saved in memory so we can refresh the session. */
     @Autowired
     final void setCredentials(SignInCredentials credentials) {
         this.credentials = credentials;
-    }
-
-    /**
-     * Helper method to encapsulate refreshing the Bridge session. This uses a cache to cache the session for 5
-     * minutes. Package-scoped to enable unit tests to mock this out.
-     */
-    @Cacheable(lifetime = 5, unit = TimeUnit.MINUTES)
-    UploadSchemaClient getSchemaClient() {
-        Session session = ClientProvider.signIn(credentials);
-        return session.getUploadSchemaClient();
     }
 
     /**
@@ -60,6 +56,41 @@ public class BridgeHelper {
     // Helper method that encapsulates just the service call, cached with annotation.
     @Cacheable(lifetime = 5, unit = TimeUnit.MINUTES)
     private UploadSchema getSchemaCached(UploadSchemaKey schemaKey) {
-        return getSchemaClient().getSchema(schemaKey.getStudyId(), schemaKey.getSchemaId(), schemaKey.getRevision());
+        return sessionHelper(() -> session.getUploadSchemaClient().getSchema(schemaKey.getStudyId(),
+                schemaKey.getSchemaId(), schemaKey.getRevision()));
+    }
+
+    // Helper method, which wraps a Bridge Server call with logic for initializing and refreshing a session.
+    private <T> T sessionHelper(BridgeCallable<T> callable) {
+        // Init session if necessary.
+        if (session == null) {
+            session = signIn();
+        }
+
+        // First attempt. This should be enough for most cases.
+        try {
+            return callable.call();
+        } catch (NotAuthenticatedException ex) {
+            // Code readability reasons, the error handling will be done after the catch block instead of inside the
+            // catch block.
+        }
+
+        // Refresh session and try again. This time, if the call fails, just let the exception bubble up.
+        LOG.info("Bridge server session expired. Refreshing session...");
+        session = signIn();
+        return callable.call();
+    }
+
+    // Helper method to sign in to Bridge Server and get a session. This needs to be wrapped because the sign-in call
+    // is static and therefore not mockable.
+    // Package-scoped to facilitate unit tests.
+    Session signIn() {
+        return ClientProvider.signIn(credentials);
+    }
+
+    // Functional interface used to make lambdas for the session helper.
+    @FunctionalInterface
+    interface BridgeCallable<T> {
+        T call();
     }
 }

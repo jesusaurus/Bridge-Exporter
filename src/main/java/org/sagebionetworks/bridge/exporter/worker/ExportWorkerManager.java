@@ -13,6 +13,7 @@ import java.util.concurrent.TimeUnit;
 
 import javax.annotation.Resource;
 
+import com.amazonaws.AmazonClientException;
 import com.amazonaws.services.dynamodbv2.document.DynamoDB;
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
@@ -72,7 +73,8 @@ public class ExportWorkerManager {
 
     // We need to delay our redrives. Otherwise, if we have a deterministic error, this may cause the Exporter to spin
     // as fast as possible retrying the request.
-    static final int REDRIVE_DELAY_SECONDS = 3600;
+    // NOTE: This maxes out at 900 seconds (15 min) before SQS throws an error.
+    static final int REDRIVE_DELAY_SECONDS = 900;
 
     // CONFIG
 
@@ -541,7 +543,7 @@ public class ExportWorkerManager {
 
                 // send request to SQS
                 sqsHelper.sendMessageAsJson(sqsQueueUrl, redriveRequest, REDRIVE_DELAY_SECONDS);
-            } catch (IOException ex) {
+            } catch (AmazonClientException | IOException ex) {
                 // log error, but move on
                 LOG.error("Error redriving records: " + ex.getMessage(), ex);
             }
@@ -580,7 +582,7 @@ public class ExportWorkerManager {
 
             try {
                 sqsHelper.sendMessageAsJson(sqsQueueUrl, redriveRequest, REDRIVE_DELAY_SECONDS);
-            } catch (JsonProcessingException ex) {
+            } catch (AmazonClientException | JsonProcessingException ex) {
                 // log error, but move on
                 LOG.error("Error redriving tables: " + ex.getMessage(), ex);
             }
