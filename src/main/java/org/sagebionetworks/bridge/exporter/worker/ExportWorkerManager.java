@@ -13,6 +13,7 @@ import java.util.concurrent.TimeUnit;
 
 import javax.annotation.Resource;
 
+import com.amazonaws.AmazonClientException;
 import com.amazonaws.services.dynamodbv2.document.DynamoDB;
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
@@ -541,7 +542,7 @@ public class ExportWorkerManager {
 
                 // send request to SQS
                 sqsHelper.sendMessageAsJson(sqsQueueUrl, redriveRequest, REDRIVE_DELAY_SECONDS);
-            } catch (IOException ex) {
+            } catch (AmazonClientException | IOException ex) {
                 // log error, but move on
                 LOG.error("Error redriving records: " + ex.getMessage(), ex);
             }
