@@ -73,7 +73,8 @@ public class ExportWorkerManager {
 
     // We need to delay our redrives. Otherwise, if we have a deterministic error, this may cause the Exporter to spin
     // as fast as possible retrying the request.
-    static final int REDRIVE_DELAY_SECONDS = 3600;
+    // NOTE: This maxes out at 900 seconds (15 min) before SQS throws an error.
+    static final int REDRIVE_DELAY_SECONDS = 900;
 
     // CONFIG
 
