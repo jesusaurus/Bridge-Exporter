@@ -581,7 +581,7 @@ public class ExportWorkerManager {
 
             try {
                 sqsHelper.sendMessageAsJson(sqsQueueUrl, redriveRequest, REDRIVE_DELAY_SECONDS);
-            } catch (JsonProcessingException ex) {
+            } catch (AmazonClientException | JsonProcessingException ex) {
                 // log error, but move on
                 LOG.error("Error redriving tables: " + ex.getMessage(), ex);
             }
