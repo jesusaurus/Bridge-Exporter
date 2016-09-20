@@ -1,7 +1,6 @@
 package org.sagebionetworks.bridge.exporter.notification;
 
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 import com.amazonaws.services.s3.event.S3EventNotification;
 
@@ -12,18 +11,11 @@ import org.springframework.stereotype.Component;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.jcabi.aspects.Cacheable;
 
-import org.sagebionetworks.bridge.sdk.ClientProvider;
-import org.sagebionetworks.bridge.sdk.Session;
-import org.sagebionetworks.bridge.sdk.WorkerClient;
+import org.sagebionetworks.bridge.exporter.helper.BridgeHelper;
 import org.sagebionetworks.bridge.sdk.exceptions.BridgeSDKException;
-import org.sagebionetworks.bridge.sdk.models.accounts.SignInCredentials;
 import org.sagebionetworks.bridge.sqs.PollSqsCallback;
 
-/**
- * Created by liujoshua on 7/12/16.
- */
 @Component
 public class S3EventNotificationCallback implements PollSqsCallback {
     private static final Logger LOG = LoggerFactory.getLogger(S3EventNotificationCallback.class);
@@ -37,21 +29,12 @@ public class S3EventNotificationCallback implements PollSqsCallback {
         OBJECT_MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
 
-    private SignInCredentials credentials;
+    private BridgeHelper bridgeHelper;
 
+    /** Bridge helper, used to call Bridge Server to complete the upload. */
     @Autowired
-    final void setCredentials(SignInCredentials credentials) {
-        this.credentials = credentials;
-    }
-
-    /**
-     * Helper method to encapsulate refreshing the Bridge session. This uses a cache to cache the session for 5
-     * minutes. Package-scoped to enable unit tests to mock this out.
-     */
-    @Cacheable(lifetime = 5, unit = TimeUnit.MINUTES)
-    WorkerClient getWorkerClient() {
-        Session session = ClientProvider.signIn(credentials);
-        return session.getWorkerClient();
+    public final void setBridgeHelper(BridgeHelper bridgeHelper) {
+        this.bridgeHelper = bridgeHelper;
     }
 
     @Override
@@ -69,19 +52,22 @@ public class S3EventNotificationCallback implements PollSqsCallback {
 
     // package-scoped to enable mocking/testing
     void callback(S3EventNotification notification) {
-        notification.getRecords().stream().filter(record -> shouldProcessRecord(record)).forEach(record -> {
+        notification.getRecords().stream().filter(this::shouldProcessRecord).forEach(record -> {
             String uploadId = record.getS3().getObject().getKey();
 
             try {
-                getWorkerClient().completeUpload(uploadId);
+                bridgeHelper.completeUpload(uploadId);
                 LOG.info("Completed upload, id=" + uploadId);
             } catch (BridgeSDKException ex) {
                 String errorMsg = "Error completing upload id " + uploadId + ": " + ex.getMessage();
                 int status = ex.getStatusCode();
-                if (400 <= status && status <= 499) {
+                if (status == 400 || 404 <= status && status <= 499) {
                     // HTTP 4XX means bad request (such as 404 not found). This can happen for a variety of reasons and
                     // is generally not developer actionable. Log a warning and swallow the exception. This way, the
                     // SQS poll worker will succeed the callback and delete the message, preventing spurious retries.
+                    //
+                    // We should still retry 401s and 403s because these indicate problems with our client and not
+                    // problems with the session.
                     LOG.warn(errorMsg, ex);
                 } else {
                     // A non-4XX error generally means a server error. We'll want to retry this. Log an error and

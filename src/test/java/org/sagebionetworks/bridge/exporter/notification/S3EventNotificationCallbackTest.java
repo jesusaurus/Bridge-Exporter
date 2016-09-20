@@ -17,17 +17,14 @@ import static org.testng.Assert.fail;
 import com.amazonaws.services.s3.event.S3EventNotification;
 
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import com.google.common.collect.Lists;
 
-import org.sagebionetworks.bridge.sdk.WorkerClient;
+import org.sagebionetworks.bridge.exporter.helper.BridgeHelper;
 import org.sagebionetworks.bridge.sdk.exceptions.BridgeSDKException;
-import org.sagebionetworks.bridge.sdk.exceptions.EntityNotFoundException;
 
-/**
- * Created by liujoshua on 7/12/16.
- */
 public class S3EventNotificationCallbackTest {
 
     private static final String UPLOAD_COMPLETE_MESSAGE="{\"Records\":[{\"eventVersion\":\"2.0\",\"eventSource\":\"aws:s3\"," +
@@ -42,56 +39,75 @@ public class S3EventNotificationCallbackTest {
             "\"size\":1488,\"eTag\":\"e40df5cfa5874ab353947eb48ec0cfa4\",\"sequencer\":\"00578569FE6792370C\"}}}]}";
     private static final String UPLOAD_ID = "89b40dab-4982-4d5c-ae21-d74b072d02cd";
 
-    private WorkerClient mockWorkerClient;
+    private BridgeHelper mockBridgeHelper;
     private S3EventNotificationCallback callback;
 
 
     @BeforeMethod
     public void before() {
-        mockWorkerClient = mock(WorkerClient.class);
+        mockBridgeHelper = mock(BridgeHelper.class);
 
         callback = spy(new S3EventNotificationCallback());
-        doReturn(mockWorkerClient).when(callback).getWorkerClient();
+        callback.setBridgeHelper(mockBridgeHelper);
     }
 
     @Test
     public void testCallback_StringMessage() throws Exception {
         callback.callback(UPLOAD_COMPLETE_MESSAGE);
 
-        verify(mockWorkerClient, times(1)).completeUpload(UPLOAD_ID);
+        verify(mockBridgeHelper, times(1)).completeUpload(UPLOAD_ID);
     }
 
     @Test
     public void testCallback_NullList() throws Exception {
         callback.callback("{}");
-        verify(mockWorkerClient, never()).completeUpload(anyString());
+        verify(mockBridgeHelper, never()).completeUpload(anyString());
     }
 
     @Test
     public void testCallback_EmptyList() throws Exception {
         callback.callback("{\"Records\":[]}");
-        verify(mockWorkerClient, never()).completeUpload(anyString());
+        verify(mockBridgeHelper, never()).completeUpload(anyString());
     }
 
-    @Test
-    public void testCallback_Throws500Exceptions() throws Exception {
-        doThrow(new BridgeSDKException("internal error", 500)).when(mockWorkerClient).completeUpload(UPLOAD_ID);
+    // Exceptions that Upload Autocomplete should propagate (and retry)
+    @DataProvider(name = "propagatedExceptionDataProvider")
+    public Object[][] propagatedExceptionDataProvider() {
+        return new Object[][] {
+                { 401 },
+                { 403 },
+                { 500 },
+        };
+    }
+
+    @Test(dataProvider = "propagatedExceptionDataProvider")
+    public void testCallback_PropagatesExceptions(int status) throws Exception {
+        doThrow(new BridgeSDKException("test exception", status)).when(mockBridgeHelper).completeUpload(UPLOAD_ID);
 
         try {
             callback.callback(UPLOAD_COMPLETE_MESSAGE);
             fail("expected exception");
         } catch (RuntimeException ex) {
             BridgeSDKException innerEx = (BridgeSDKException) ex.getCause();
-            assertEquals(500, innerEx.getStatusCode());
+            assertEquals(status, innerEx.getStatusCode());
         }
     }
 
-    @Test
-    public void testCallback_Throws404Exceptions() throws Exception {
-        doThrow(new EntityNotFoundException("not found", "dummy endpoint")).when(mockWorkerClient)
-                .completeUpload(UPLOAD_ID);
+    // Exceptions that Upload Autocomplete should suppress (deterministic errors that shouldn't be retried)
+    @DataProvider(name = "suppressedExceptionDataProvider")
+    public Object[][] suppressedExceptionDataProvider() {
+        return new Object[][] {
+                { 400 },
+                { 404 },
+                { 412 },
+        };
+    }
+
+    @Test(dataProvider = "suppressedExceptionDataProvider")
+    public void testCallback_SuppressesExceptions(int status) throws Exception {
+        doThrow(new BridgeSDKException("test exception", status)).when(mockBridgeHelper).completeUpload(UPLOAD_ID);
         callback.callback(UPLOAD_COMPLETE_MESSAGE);
-        verify(mockWorkerClient, times(1)).completeUpload(UPLOAD_ID);
+        verify(mockBridgeHelper, times(1)).completeUpload(UPLOAD_ID);
     }
 
     @Test
@@ -114,8 +130,8 @@ public class S3EventNotificationCallbackTest {
 
         callback.callback(notification);
 
-        verify(mockWorkerClient, times(1)).completeUpload(key1);
-        verify(mockWorkerClient, times(1)).completeUpload(key3);
+        verify(mockBridgeHelper, times(1)).completeUpload(key1);
+        verify(mockBridgeHelper, times(1)).completeUpload(key3);
     }
 
     private S3EventNotification.S3EventNotificationRecord createMockRecordWithKey(String key) {
