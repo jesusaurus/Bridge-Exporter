@@ -24,6 +24,7 @@ import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 import org.sagebionetworks.bridge.sdk.Session;
 import org.sagebionetworks.bridge.sdk.UploadSchemaClient;
+import org.sagebionetworks.bridge.sdk.WorkerClient;
 import org.sagebionetworks.bridge.sdk.exceptions.NotAuthenticatedException;
 import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldDefinition;
 import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldType;
@@ -54,6 +55,26 @@ public class BridgeHelperTest {
     public static UploadSchema.Builder simpleSchemaBuilder() {
         return new UploadSchema.Builder().withName("My Schema").withRevision(TEST_SCHEMA_REV)
                 .withSchemaId(TEST_SCHEMA_ID).withSchemaType(UploadSchemaType.IOS_DATA).withStudyId(TEST_STUDY_ID);
+    }
+
+    private static BridgeHelper setupBridgeHelperWithSession(Session session) {
+        // Spy bridge helper, because signIn() statically calls ClientProvider.signIn()
+        BridgeHelper bridgeHelper = spy(new BridgeHelper());
+        doReturn(session).when(bridgeHelper).signIn();
+        return bridgeHelper;
+    }
+
+    @Test
+    public void completeUpload() {
+        // mock worker client, session, and setup bridge helper
+        WorkerClient mockWorkerClient = mock(WorkerClient.class);
+        Session mockSession = mock(Session.class);
+        when(mockSession.getWorkerClient()).thenReturn(mockWorkerClient);
+        BridgeHelper bridgeHelper = setupBridgeHelperWithSession(mockSession);
+
+        // execute and verify
+        bridgeHelper.completeUpload("test-upload");
+        verify(mockWorkerClient).completeUpload("test-upload");
     }
 
     @Test
@@ -96,10 +117,8 @@ public class BridgeHelperTest {
         Session mockSession = mock(Session.class);
         when(mockSession.getUploadSchemaClient()).thenReturn(mockSchemaClient);
 
-        // Spy bridge helper, because signIn() statically calls ClientProvider.signIn()
-        BridgeHelper bridgeHelper = spy(new BridgeHelper());
-        doReturn(mockSession).when(bridgeHelper).signIn();
-        return bridgeHelper;
+        // set up bridge helper
+        return setupBridgeHelperWithSession(mockSession);
     }
 
     @Test

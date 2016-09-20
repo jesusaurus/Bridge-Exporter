@@ -34,6 +34,21 @@ public class BridgeHelper {
     }
 
     /**
+     * Signals Bridge Server that the upload is completed and to begin processing the upload. Used by Upload
+     * Auto-Complete.
+     *
+     * @param uploadId
+     *         upload to mark completed and begin processing
+     */
+    public void completeUpload(String uploadId) {
+        sessionHelper(() -> {
+            session.getWorkerClient().completeUpload(uploadId);
+            // Needs return null because session helper expects a return value.
+            return null;
+        });
+    }
+
+    /**
      * Returns the schema for the given key.
      *
      * @param metrics
