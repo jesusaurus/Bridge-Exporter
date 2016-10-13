@@ -7,7 +7,6 @@ import static org.testng.Assert.assertTrue;
 
 import java.io.File;
 import java.io.PrintWriter;
-import java.util.ArrayList;
 import java.util.Queue;
 import java.util.Set;
 
@@ -142,6 +141,6 @@ public class ExportTaskTest {
 
     private static TsvInfo createTsvInfo() {
         // We don't actually use the TSV for anything, so it's safe to stick an empty list and 2 mocks in here.
-        return new TsvInfo(ImmutableList.of(), mock(File.class), mock(PrintWriter.class), mock(ArrayList.class));
+        return new TsvInfo(ImmutableList.of(), mock(File.class), mock(PrintWriter.class));
     }
 }

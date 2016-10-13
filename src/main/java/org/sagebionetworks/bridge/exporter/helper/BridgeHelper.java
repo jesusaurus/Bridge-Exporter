@@ -1,12 +1,8 @@
 package org.sagebionetworks.bridge.exporter.helper;
 
-import java.util.Arrays;
-import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import com.jcabi.aspects.Cacheable;
-import org.sagebionetworks.bridge.exporter.config.SpringConfig;
-import org.sagebionetworks.bridge.sdk.models.healthData.RecordExportStatusRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -48,23 +44,6 @@ public class BridgeHelper {
         sessionHelper(() -> {
             session.getWorkerClient().completeUpload(uploadId);
             // Needs return null because session helper expects a return value.
-            return null;
-        });
-    }
-
-    /**
-     * Helper method to update export status in records
-     */
-    public void updateRecordExporterStatus(List<String> recordIds, RecordExportStatusRequest.ExporterStatus status) {
-        // first create a credentials for this session
-        SpringConfig config = new SpringConfig();
-        SignInCredentials credentials = config.bridgeWorkerCredentials();
-        setCredentials(credentials);
-
-        // then update status
-        RecordExportStatusRequest request = new RecordExportStatusRequest(recordIds, status);
-        sessionHelper(() -> {
-            session.getWorkerClient().updateRecordExporterStatus(request);
             return null;
         });
     }

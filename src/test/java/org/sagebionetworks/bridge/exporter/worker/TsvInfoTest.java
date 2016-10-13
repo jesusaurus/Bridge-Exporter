@@ -3,11 +3,13 @@ package org.sagebionetworks.bridge.exporter.worker;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertSame;
+import static org.testng.Assert.fail;
 
 import java.io.File;
 import java.io.PrintWriter;
-import java.util.ArrayList;
 import java.util.List;
 
 import com.google.common.collect.ImmutableList;
@@ -19,7 +21,6 @@ import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
 
 public class TsvInfoTest {
     private static final List<String> COLUMN_NAME_LIST = ImmutableList.of("foo", "bar");
-    private static final String TEST_RECORD_ID = "test record id";
 
     private File mockFile;
     private PrintWriter mockWriter;
@@ -29,7 +30,7 @@ public class TsvInfoTest {
     public void before() {
         mockFile = mock(File.class);
         mockWriter = mock(PrintWriter.class);
-        tsvInfo = new TsvInfo(COLUMN_NAME_LIST, mockFile, mockWriter, new ArrayList<>());
+        tsvInfo = new TsvInfo(COLUMN_NAME_LIST, mockFile, mockWriter);
     }
 
     @Test
@@ -43,13 +44,11 @@ public class TsvInfoTest {
         tsvInfo.writeRow(new ImmutableMap.Builder<String, String>().put("foo", "second foo value")
                 .put("extraneous", "extraneous value").put("bar", "second bar value").build());
         tsvInfo.writeRow(new ImmutableMap.Builder<String, String>().put("bar", "has bar but not foo").build());
-        tsvInfo.addRecordId(TEST_RECORD_ID);
         tsvInfo.flushAndCloseWriter();
 
         // validate TSV info fields
         assertSame(tsvInfo.getFile(), mockFile);
         assertEquals(tsvInfo.getLineCount(), 3);
-        assertEquals(tsvInfo.getRecordIds().get(0), TEST_RECORD_ID);
 
         // validate writer
         verify(mockWriter).println("foo\tbar");
@@ -95,6 +94,5 @@ public class TsvInfoTest {
 
         assertNull(TsvInfo.INIT_ERROR_TSV_INFO.getFile());
         assertEquals(TsvInfo.INIT_ERROR_TSV_INFO.getLineCount(), 0);
-        assertNull(TsvInfo.INIT_ERROR_TSV_INFO.getRecordIds());
     }
 }
