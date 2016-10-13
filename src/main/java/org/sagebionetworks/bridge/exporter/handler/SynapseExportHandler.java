@@ -18,6 +18,7 @@ import com.amazonaws.services.dynamodbv2.document.Item;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
+import org.sagebionetworks.bridge.exporter.helper.BridgeHelper;
 import org.sagebionetworks.client.exceptions.SynapseException;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
@@ -126,6 +127,8 @@ public abstract class SynapseExportHandler extends ExportHandler {
 
             // write to TSV
             tsvInfo.writeRow(rowValueMap);
+            // add one record into tsv
+            tsvInfo.addRecordId(recordId);
             metrics.incrementCounter(tableKey + ".lineCount");
         } catch (BridgeExporterException | IOException | RuntimeException | SchemaNotFoundException |
                 SynapseException ex) {
@@ -156,7 +159,7 @@ public abstract class SynapseExportHandler extends ExportHandler {
             PrintWriter tsvWriter = new PrintWriter(fileHelper.getWriter(tsvFile));
 
             // create TSV info
-            tsvInfo = new TsvInfo(columnNameList, tsvFile, tsvWriter);
+            tsvInfo = new TsvInfo(columnNameList, tsvFile, tsvWriter, new ArrayList<String>());
         } catch (BridgeExporterException | FileNotFoundException | SchemaNotFoundException | SynapseException ex) {
             LOG.error("Error initializing TSV for table " + getDdbTableKeyValue() + ": " + ex.getMessage(), ex);
             tsvInfo = TsvInfo.INIT_ERROR_TSV_INFO;
@@ -358,6 +361,9 @@ public abstract class SynapseExportHandler extends ExportHandler {
                         synapseTableId + ", expected=" + lineCount + ", actual=" + linesProcessed);
             }
 
+            // call java sdk api to update records' exporter status
+            postProcessTsv(tsvInfo);
+
             LOG.info("Done uploading to Synapse for table name=" + getDdbTableKeyValue() + ", id=" + synapseTableId);
         }
 
@@ -392,4 +398,22 @@ public abstract class SynapseExportHandler extends ExportHandler {
     /** Creates a row values for a single row from the given export task. */
     protected abstract Map<String, String> getTsvRowValueMap(ExportSubtask subtask) throws BridgeExporterException,
             IOException, SchemaNotFoundException, SynapseException;
+
+
+    /**
+     * dummy method to implement by healthDataExportHandler to handle update record exporter status
+     * @param tsvInfo
+     * @throws BridgeExporterException
+     */
+    protected void postProcessTsv(TsvInfo tsvInfo) throws BridgeExporterException {
+
+    };
+
+    /**
+     * dummy method to implement by HealthDataExportHandler for testing
+     * @param bridgeHelper
+     */
+    protected void setBridgeHelper(BridgeHelper bridgeHelper) {
+
+    }
 }

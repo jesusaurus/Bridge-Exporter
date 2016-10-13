@@ -21,6 +21,7 @@ public class TsvInfo {
     private final File file;
     private final PrintWriter writer;
     private final boolean initError;
+    private List<String> recordIds;
 
     private int lineCount = 0;
 
@@ -37,6 +38,7 @@ public class TsvInfo {
         this.file = null;
         this.writer = null;
         this.initError = true;
+        this.recordIds = null;
     }
 
     /**
@@ -49,11 +51,12 @@ public class TsvInfo {
      * @param writer
      *         writer for the TSV file
      */
-    public TsvInfo(List<String> columnNameList, File file, PrintWriter writer) {
+    public TsvInfo(List<String> columnNameList, File file, PrintWriter writer, List<String> recordIds) {
         this.columnNameList = columnNameList;
         this.file = file;
         this.writer = writer;
         this.initError = false;
+        this.recordIds = recordIds;
 
         writer.println(JOINER_COLUMN_JOINER.join(columnNameList));
     }
@@ -84,6 +87,18 @@ public class TsvInfo {
     /** Number of lines written to TSV file. */
     public int getLineCount() {
         return lineCount;
+    }
+
+    /**
+     * helper method to add a record id into the list
+     * @param recordId
+     */
+    public void addRecordId(String recordId) {
+        this.recordIds.add(recordId);
+    }
+
+    public List<String> getRecordIds() {
+        return this.recordIds;
     }
 
     /**

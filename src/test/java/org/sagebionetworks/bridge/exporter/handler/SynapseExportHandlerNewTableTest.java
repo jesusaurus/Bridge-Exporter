@@ -63,6 +63,7 @@ public class SynapseExportHandlerNewTableTest {
         // mock BridgeHelper
         BridgeHelper mockBridgeHelper = mock(BridgeHelper.class);
         when(mockBridgeHelper.getSchema(any(), eq(schemaKey))).thenReturn(schema);
+        handler.setBridgeHelper(mockBridgeHelper);
 
         // mock config
         Config mockConfig = mock(Config.class);

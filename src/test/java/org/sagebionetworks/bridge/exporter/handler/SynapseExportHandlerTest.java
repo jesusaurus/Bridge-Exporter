@@ -1,23 +1,13 @@
 package org.sagebionetworks.bridge.exporter.handler;
 
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.eq;
-import static org.mockito.Matchers.notNull;
-import static org.mockito.Matchers.same;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNull;
-import static org.testng.Assert.assertTrue;
-import static org.testng.Assert.fail;
+import static org.mockito.Matchers.*;
+import static org.mockito.Mockito.*;
+import static org.testng.Assert.*;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 
@@ -28,6 +18,7 @@ import com.google.common.collect.Multiset;
 import com.google.common.collect.SetMultimap;
 import org.joda.time.DateTime;
 import org.joda.time.LocalDate;
+import org.sagebionetworks.bridge.sdk.models.healthData.RecordExportStatusRequest;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -98,6 +89,8 @@ public class SynapseExportHandlerTest {
     public static final String TEST_SYNAPSE_PROJECT_ID = "test-synapse-project-id";
     public static final String TEST_SYNAPSE_TABLE_ID = "test-synapse-table-id";
 
+    private static final RecordExportStatusRequest.ExporterStatus TEST_EXPORTER_STATUS = RecordExportStatusRequest.ExporterStatus.SUCCEEDED;
+
     private InMemoryFileHelper mockFileHelper;
     private SynapseHelper mockSynapseHelper;
     private byte[] tsvBytes;
@@ -121,6 +114,7 @@ public class SynapseExportHandlerTest {
         // mock BridgeHelper
         BridgeHelper mockBridgeHelper = mock(BridgeHelper.class);
         when(mockBridgeHelper.getSchema(any(), eq(schemaKey))).thenReturn(schema);
+        handler.setBridgeHelper(mockBridgeHelper);
 
         // mock config
         Config mockConfig = mock(Config.class);
@@ -209,6 +203,12 @@ public class SynapseExportHandlerTest {
         // validate tsvInfo
         TsvInfo tsvInfo = handler.getTsvInfoForTask(task);
         assertEquals(tsvInfo.getLineCount(), 2);
+        assertNotNull(tsvInfo.getRecordIds());
+        List<String> recordIds = tsvInfo.getRecordIds();
+        assertEquals(recordIds.size(), 2);
+        for (String recordId : recordIds) {
+            assertEquals(recordId, DUMMY_RECORD_ID);
+        }
 
         postValidation();
     }
@@ -272,6 +272,7 @@ public class SynapseExportHandlerTest {
         // validate tsvInfo
         TsvInfo tsvInfo = handler.getTsvInfoForTask(task);
         assertEquals(tsvInfo.getLineCount(), 0);
+        assertEquals(tsvInfo.getRecordIds().size(), 0);
 
         postValidation();
     }
@@ -401,6 +402,12 @@ public class SynapseExportHandlerTest {
         // validate tsvInfo
         TsvInfo tsvInfo = handler.getTsvInfoForTask(task);
         assertEquals(tsvInfo.getLineCount(), 1);
+        assertNotNull(tsvInfo.getRecordIds());
+        List<String> recordIds = tsvInfo.getRecordIds();
+        assertEquals(recordIds.size(), 1);
+        for (String recordId : recordIds) {
+            assertEquals(recordId, DUMMY_RECORD_ID);
+        }
 
         postValidation();
     }
