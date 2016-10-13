@@ -233,7 +233,6 @@ public class HealthDataExportHandlerTest {
         BridgeHelper mockBridgeHelper = mock(BridgeHelper.class);
         when(mockBridgeHelper.getSchema(any(), eq(BridgeHelperTest.TEST_SCHEMA_KEY))).thenReturn(
                 BridgeHelperTest.TEST_SCHEMA);
-        handler.setBridgeHelper(mockBridgeHelper);
 
         // mock config
         Config mockConfig = mock(Config.class);

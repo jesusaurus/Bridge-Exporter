@@ -1,7 +1,6 @@
 package org.sagebionetworks.bridge.exporter.helper;
 
 import static org.mockito.Matchers.anyInt;
-import static org.mockito.Matchers.anyVararg;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -13,13 +12,9 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
-import java.util.Arrays;
-import java.util.List;
 import java.util.SortedSet;
 
 import com.google.common.collect.SortedSetMultimap;
-import org.mockito.ArgumentCaptor;
-import org.sagebionetworks.bridge.sdk.models.healthData.RecordExportStatusRequest;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 import org.testng.annotations.Test;
@@ -41,8 +36,6 @@ public class BridgeHelperTest {
     public static final String TEST_SCHEMA_ID = "my-schema";
     public static final int TEST_SCHEMA_REV = 2;
     public static final String TEST_STUDY_ID = "test-study";
-    public static final List<String> TEST_RECORD_IDS = Arrays.asList("test record id");
-    public static final RecordExportStatusRequest.ExporterStatus TEST_STATUS = RecordExportStatusRequest.ExporterStatus.NOT_EXPORTED;
 
     public static final String TEST_FIELD_NAME = "my-field";
     public static final UploadFieldDefinition TEST_FIELD_DEF = new UploadFieldDefinition.Builder()
@@ -71,9 +64,6 @@ public class BridgeHelperTest {
         return bridgeHelper;
     }
 
-    ArgumentCaptor<RecordExportStatusRequest> requestArgumentCaptor = ArgumentCaptor.forClass(RecordExportStatusRequest.class);
-
-
     @Test
     public void completeUpload() {
         // mock worker client, session, and setup bridge helper
@@ -85,23 +75,6 @@ public class BridgeHelperTest {
         // execute and verify
         bridgeHelper.completeUpload("test-upload");
         verify(mockWorkerClient).completeUpload("test-upload");
-    }
-
-    @Test
-    public void updateRecordExporterStatus() {
-        // mock worker client, session, and setup bridge helper
-        WorkerClient mockWorkerClient = mock(WorkerClient.class);
-        Session mockSession = mock(Session.class);
-        when(mockSession.getWorkerClient()).thenReturn(mockWorkerClient);
-        BridgeHelper bridgeHelper = setupBridgeHelperWithSession(mockSession);
-
-        // execute and verify
-        bridgeHelper.updateRecordExporterStatus(TEST_RECORD_IDS, TEST_STATUS);
-        verify(mockWorkerClient).updateRecordExporterStatus(anyVararg());
-        verify(mockWorkerClient).updateRecordExporterStatus(requestArgumentCaptor.capture());
-        RecordExportStatusRequest request = requestArgumentCaptor.getValue();
-        assertEquals(request.getRecordIds().get(0), TEST_RECORD_IDS.get(0));
-        assertEquals(request.getSynapseExporterStatus(), TEST_STATUS);
     }
 
     @Test
