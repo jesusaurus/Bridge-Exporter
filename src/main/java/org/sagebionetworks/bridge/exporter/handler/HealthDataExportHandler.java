@@ -88,11 +88,6 @@ public class HealthDataExportHandler extends SynapseExportHandler {
         return getSynapseTableColumnListCached(schemaFieldDefList);
     }
 
-    @Override
-    public void setBridgeHelper(BridgeHelper bridgeHelper) {
-        this.bridgeHelper = bridgeHelper;
-    }
-
     // Helper method to compute the Synapse column list from the schema field def list. Since this is a non-trivial
     // amount of computation, we also wrap this in a cacheable annotation.
     @Cacheable(forever = true)
@@ -239,7 +234,7 @@ public class HealthDataExportHandler extends SynapseExportHandler {
             throw new BridgeExporterException("No record id in this tsv file.");
         }
 
-        bridgeHelper.updateRecordExporterStatus(recordIds, RecordExportStatusRequest.ExporterStatus.SUCCEEDED);
+        getManager().getBridgeHelper().updateRecordExporterStatus(recordIds, RecordExportStatusRequest.ExporterStatus.SUCCEEDED);
     }
 
     // Helper method for getting the field definition list from the schema. This calls through to Bridge using the

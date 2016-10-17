@@ -38,7 +38,7 @@ public class TsvInfo {
         this.file = null;
         this.writer = null;
         this.initError = true;
-        this.recordIds = null;
+        this.recordIds = new ArrayList<>();
     }
 
     /**

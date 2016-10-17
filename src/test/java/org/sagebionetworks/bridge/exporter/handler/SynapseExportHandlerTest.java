@@ -1,8 +1,5 @@
 package org.sagebionetworks.bridge.exporter.handler;
 
-import static org.mockito.Matchers.*;
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
 
 import java.io.File;
 import java.io.IOException;
@@ -42,6 +39,22 @@ import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldDefinition;
 import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldType;
 import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
+
+import static org.junit.Assert.fail;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.eq;
+import static org.mockito.Matchers.notNull;
+import static org.mockito.Matchers.same;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 
 public class SynapseExportHandlerTest {
     // Constants needed to create metadata (phone info, app version)
@@ -114,7 +127,6 @@ public class SynapseExportHandlerTest {
         // mock BridgeHelper
         BridgeHelper mockBridgeHelper = mock(BridgeHelper.class);
         when(mockBridgeHelper.getSchema(any(), eq(schemaKey))).thenReturn(schema);
-        handler.setBridgeHelper(mockBridgeHelper);
 
         // mock config
         Config mockConfig = mock(Config.class);

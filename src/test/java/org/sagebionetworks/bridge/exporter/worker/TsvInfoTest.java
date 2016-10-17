@@ -95,6 +95,6 @@ public class TsvInfoTest {
 
         assertNull(TsvInfo.INIT_ERROR_TSV_INFO.getFile());
         assertEquals(TsvInfo.INIT_ERROR_TSV_INFO.getLineCount(), 0);
-        assertNull(TsvInfo.INIT_ERROR_TSV_INFO.getRecordIds());
+        assertEquals(TsvInfo.INIT_ERROR_TSV_INFO.getRecordIds().size(), 0);
     }
 }

@@ -409,11 +409,4 @@ public abstract class SynapseExportHandler extends ExportHandler {
 
     };
 
-    /**
-     * dummy method to implement by HealthDataExportHandler for testing
-     * @param bridgeHelper
-     */
-    protected void setBridgeHelper(BridgeHelper bridgeHelper) {
-
-    }
 }
