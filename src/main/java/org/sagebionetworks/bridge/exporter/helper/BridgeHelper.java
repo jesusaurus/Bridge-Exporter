@@ -4,6 +4,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+import com.google.common.collect.Lists;
 import com.jcabi.aspects.Cacheable;
 import org.sagebionetworks.bridge.exporter.config.SpringConfig;
 import org.sagebionetworks.bridge.sdk.models.healthData.RecordExportStatusRequest;
@@ -30,6 +31,7 @@ public class BridgeHelper {
 
     private SignInCredentials credentials;
     private Session session = null;
+    private static final int MAX_BATCH_SIZE = 25;
 
     /** Bridge credentials for the Exporter account. This needs to be saved in memory so we can refresh the session. */
     @Autowired
@@ -62,11 +64,21 @@ public class BridgeHelper {
         setCredentials(credentials);
 
         // then update status
-        RecordExportStatusRequest request = new RecordExportStatusRequest(recordIds, status);
-        sessionHelper(() -> {
-            session.getWorkerClient().updateRecordExporterStatus(request);
-            return null;
+        // breaking down the list into batches whenever the list size exceeds the batch size
+        List<List<String>> batches = Lists.partition(recordIds, MAX_BATCH_SIZE);
+        batches.forEach(batch-> {
+            RecordExportStatusRequest request = new RecordExportStatusRequest(batch, status);
+            sessionHelper(() -> {
+                session.getWorkerClient().updateRecordExporterStatus(request);
+                return null;
+            });
+            try {
+                TimeUnit.SECONDS.sleep(1);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
         });
+
     }
 
     /**

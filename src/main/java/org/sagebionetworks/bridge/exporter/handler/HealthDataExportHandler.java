@@ -16,10 +16,7 @@ import com.jcabi.aspects.Cacheable;
 import org.joda.time.DateTime;
 import org.joda.time.format.DateTimeFormat;
 import org.joda.time.format.DateTimeFormatter;
-import org.sagebionetworks.bridge.exporter.config.SpringConfig;
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
-import org.sagebionetworks.bridge.exporter.helper.BridgeHelper;
-import org.sagebionetworks.bridge.sdk.models.accounts.SignInCredentials;
 import org.sagebionetworks.bridge.sdk.models.healthData.RecordExportStatusRequest;
 import org.sagebionetworks.client.exceptions.SynapseException;
 import org.sagebionetworks.repo.model.table.ColumnModel;
@@ -50,7 +47,6 @@ public class HealthDataExportHandler extends SynapseExportHandler {
     private static final long TIME_ZONE_FIELD_LENGTH = 5;
     private static final DateTimeFormatter TIME_ZONE_FORMATTER = DateTimeFormat.forPattern("Z");
     private static final String TIME_ZONE_UTC_STRING = "+0000";
-    private BridgeHelper bridgeHelper = new BridgeHelper();
 
     private UploadSchemaKey schemaKey;
 
@@ -230,9 +226,6 @@ public class HealthDataExportHandler extends SynapseExportHandler {
     @Override
     protected void postProcessTsv(TsvInfo tsvInfo) throws BridgeExporterException {
         List<String> recordIds = tsvInfo.getRecordIds();
-        if (recordIds == null) {
-            throw new BridgeExporterException("No record id in this tsv file.");
-        }
 
         getManager().getBridgeHelper().updateRecordExporterStatus(recordIds, RecordExportStatusRequest.ExporterStatus.SUCCEEDED);
     }

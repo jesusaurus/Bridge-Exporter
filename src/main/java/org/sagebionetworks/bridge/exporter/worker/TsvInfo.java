@@ -8,6 +8,7 @@ import java.util.Map;
 
 import com.google.common.base.Joiner;
 
+import com.google.common.collect.ImmutableList;
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
 
 /**
@@ -21,7 +22,7 @@ public class TsvInfo {
     private final File file;
     private final PrintWriter writer;
     private final boolean initError;
-    private List<String> recordIds;
+    private final List<String> recordIds = new ArrayList<>();
 
     private int lineCount = 0;
 
@@ -38,7 +39,6 @@ public class TsvInfo {
         this.file = null;
         this.writer = null;
         this.initError = true;
-        this.recordIds = new ArrayList<>();
     }
 
     /**
@@ -51,12 +51,11 @@ public class TsvInfo {
      * @param writer
      *         writer for the TSV file
      */
-    public TsvInfo(List<String> columnNameList, File file, PrintWriter writer, List<String> recordIds) {
+    public TsvInfo(List<String> columnNameList, File file, PrintWriter writer) {
         this.columnNameList = columnNameList;
         this.file = file;
         this.writer = writer;
         this.initError = false;
-        this.recordIds = recordIds;
 
         writer.println(JOINER_COLUMN_JOINER.join(columnNameList));
     }
@@ -98,7 +97,7 @@ public class TsvInfo {
     }
 
     public List<String> getRecordIds() {
-        return this.recordIds;
+        return ImmutableList.copyOf(this.recordIds);
     }
 
     /**

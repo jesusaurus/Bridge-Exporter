@@ -421,6 +421,8 @@ public class SynapseExportHandlerTest {
             assertEquals(recordId, DUMMY_RECORD_ID);
         }
 
+        verify(handler.getManager().getBridgeHelper()).updateRecordExporterStatus(any(), any());
+
         postValidation();
     }
 

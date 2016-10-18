@@ -29,7 +29,7 @@ public class TsvInfoTest {
     public void before() {
         mockFile = mock(File.class);
         mockWriter = mock(PrintWriter.class);
-        tsvInfo = new TsvInfo(COLUMN_NAME_LIST, mockFile, mockWriter, new ArrayList<>());
+        tsvInfo = new TsvInfo(COLUMN_NAME_LIST, mockFile, mockWriter);
     }
 
     @Test

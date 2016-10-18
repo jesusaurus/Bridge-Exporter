@@ -22,6 +22,7 @@ import org.mockito.ArgumentCaptor;
 import org.sagebionetworks.bridge.sdk.models.healthData.RecordExportStatusRequest;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
@@ -59,6 +60,8 @@ public class BridgeHelperTest {
     public static final UploadSchemaKey TEST_SCHEMA_KEY = new UploadSchemaKey.Builder().withStudyId(TEST_STUDY_ID)
             .withSchemaId(TEST_SCHEMA_ID).withRevision(TEST_SCHEMA_REV).build();
 
+    public ArgumentCaptor<RecordExportStatusRequest> requestArgumentCaptor;
+
     public static UploadSchema.Builder simpleSchemaBuilder() {
         return new UploadSchema.Builder().withName("My Schema").withRevision(TEST_SCHEMA_REV)
                 .withSchemaId(TEST_SCHEMA_ID).withSchemaType(UploadSchemaType.IOS_DATA).withStudyId(TEST_STUDY_ID);
@@ -71,8 +74,10 @@ public class BridgeHelperTest {
         return bridgeHelper;
     }
 
-    ArgumentCaptor<RecordExportStatusRequest> requestArgumentCaptor = ArgumentCaptor.forClass(RecordExportStatusRequest.class);
-
+    @BeforeMethod
+    public void initializeRequestArgumentCaptor() {
+        requestArgumentCaptor = ArgumentCaptor.forClass(RecordExportStatusRequest.class);
+    }
 
     @Test
     public void completeUpload() {
@@ -100,7 +105,7 @@ public class BridgeHelperTest {
         verify(mockWorkerClient).updateRecordExporterStatus(anyVararg());
         verify(mockWorkerClient).updateRecordExporterStatus(requestArgumentCaptor.capture());
         RecordExportStatusRequest request = requestArgumentCaptor.getValue();
-        assertEquals(request.getRecordIds().get(0), TEST_RECORD_IDS.get(0));
+        request.getRecordIds().equals(TEST_RECORD_IDS);
         assertEquals(request.getSynapseExporterStatus(), TEST_STATUS);
     }
 

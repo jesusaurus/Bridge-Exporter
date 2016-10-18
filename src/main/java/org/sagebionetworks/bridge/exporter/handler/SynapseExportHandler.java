@@ -159,7 +159,7 @@ public abstract class SynapseExportHandler extends ExportHandler {
             PrintWriter tsvWriter = new PrintWriter(fileHelper.getWriter(tsvFile));
 
             // create TSV info
-            tsvInfo = new TsvInfo(columnNameList, tsvFile, tsvWriter, new ArrayList<String>());
+            tsvInfo = new TsvInfo(columnNameList, tsvFile, tsvWriter);
         } catch (BridgeExporterException | FileNotFoundException | SchemaNotFoundException | SynapseException ex) {
             LOG.error("Error initializing TSV for table " + getDdbTableKeyValue() + ": " + ex.getMessage(), ex);
             tsvInfo = TsvInfo.INIT_ERROR_TSV_INFO;
