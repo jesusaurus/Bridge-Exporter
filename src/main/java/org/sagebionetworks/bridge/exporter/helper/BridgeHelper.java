@@ -58,12 +58,7 @@ public class BridgeHelper {
      * Helper method to update export status in records
      */
     public void updateRecordExporterStatus(List<String> recordIds, RecordExportStatusRequest.ExporterStatus status) {
-        // first create a credentials for this session
-        SpringConfig config = new SpringConfig();
-        SignInCredentials credentials = config.bridgeWorkerCredentials();
-        setCredentials(credentials);
-
-        // then update status
+        // update status
         // breaking down the list into batches whenever the list size exceeds the batch size
         List<List<String>> batches = Lists.partition(recordIds, MAX_BATCH_SIZE);
         batches.forEach(batch-> {
