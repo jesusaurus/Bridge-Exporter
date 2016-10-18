@@ -6,6 +6,7 @@ import java.util.concurrent.TimeUnit;
 
 import com.google.common.collect.Lists;
 import com.jcabi.aspects.Cacheable;
+import org.apache.commons.lang.exception.ExceptionUtils;
 import org.sagebionetworks.bridge.exporter.config.SpringConfig;
 import org.sagebionetworks.bridge.sdk.models.healthData.RecordExportStatusRequest;
 import org.slf4j.Logger;
@@ -70,7 +71,7 @@ public class BridgeHelper {
             try {
                 TimeUnit.SECONDS.sleep(1);
             } catch (InterruptedException e) {
-                e.printStackTrace();
+                LOG.warn(ExceptionUtils.getFullStackTrace(e));
             }
         });
 

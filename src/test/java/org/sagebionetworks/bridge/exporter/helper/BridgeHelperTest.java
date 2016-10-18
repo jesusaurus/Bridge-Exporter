@@ -105,7 +105,7 @@ public class BridgeHelperTest {
         verify(mockWorkerClient).updateRecordExporterStatus(anyVararg());
         verify(mockWorkerClient).updateRecordExporterStatus(requestArgumentCaptor.capture());
         RecordExportStatusRequest request = requestArgumentCaptor.getValue();
-        request.getRecordIds().equals(TEST_RECORD_IDS);
+        assertEquals(request.getRecordIds(), TEST_RECORD_IDS);
         assertEquals(request.getSynapseExporterStatus(), TEST_STATUS);
     }
 
