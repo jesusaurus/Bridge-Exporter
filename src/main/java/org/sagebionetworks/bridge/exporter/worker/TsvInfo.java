@@ -8,6 +8,7 @@ import java.util.Map;
 
 import com.google.common.base.Joiner;
 
+import com.google.common.collect.ImmutableList;
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
 
 /**
@@ -21,6 +22,7 @@ public class TsvInfo {
     private final File file;
     private final PrintWriter writer;
     private final boolean initError;
+    private final List<String> recordIds = new ArrayList<>();
 
     private int lineCount = 0;
 
@@ -84,6 +86,18 @@ public class TsvInfo {
     /** Number of lines written to TSV file. */
     public int getLineCount() {
         return lineCount;
+    }
+
+    /**
+     * helper method to add a record id into the list
+     * @param recordId
+     */
+    public void addRecordId(String recordId) {
+        this.recordIds.add(recordId);
+    }
+
+    public List<String> getRecordIds() {
+        return ImmutableList.copyOf(this.recordIds);
     }
 
     /**

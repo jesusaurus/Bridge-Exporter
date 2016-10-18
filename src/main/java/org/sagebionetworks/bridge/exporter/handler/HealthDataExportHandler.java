@@ -16,6 +16,8 @@ import com.jcabi.aspects.Cacheable;
 import org.joda.time.DateTime;
 import org.joda.time.format.DateTimeFormat;
 import org.joda.time.format.DateTimeFormatter;
+import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
+import org.sagebionetworks.bridge.sdk.models.healthData.RecordExportStatusRequest;
 import org.sagebionetworks.client.exceptions.SynapseException;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
@@ -215,6 +217,17 @@ public class HealthDataExportHandler extends SynapseExportHandler {
         }
 
         return rowValueMap;
+    }
+
+    /**
+     * post process tsv to call update records' exporter status as SUCCEEDED
+     * @param tsvInfo
+     */
+    @Override
+    protected void postProcessTsv(TsvInfo tsvInfo) throws BridgeExporterException {
+        List<String> recordIds = tsvInfo.getRecordIds();
+
+        getManager().getBridgeHelper().updateRecordExporterStatus(recordIds, RecordExportStatusRequest.ExporterStatus.SUCCEEDED);
     }
 
     // Helper method for getting the field definition list from the schema. This calls through to Bridge using the
