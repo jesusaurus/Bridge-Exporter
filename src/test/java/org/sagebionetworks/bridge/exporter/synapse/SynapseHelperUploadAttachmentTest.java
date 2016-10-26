@@ -3,7 +3,9 @@ package org.sagebionetworks.bridge.exporter.synapse;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
@@ -14,7 +16,6 @@ import java.io.Reader;
 import java.io.Writer;
 
 import com.google.common.io.CharStreams;
-import org.sagebionetworks.client.SynapseClient;
 import org.sagebionetworks.client.exceptions.SynapseClientException;
 import org.sagebionetworks.client.exceptions.SynapseException;
 import org.sagebionetworks.repo.model.file.FileHandle;
@@ -148,31 +149,29 @@ public class SynapseHelperUploadAttachmentTest {
         InMemoryFileHelper mockFileHelper = new InMemoryFileHelper();
         File tmpDir = mockFileHelper.createTempDir();
 
-        // Mock Synapse client. Since we delete the file immediately afterwards, use a mock answer to validate file
-        // contents.
-        SynapseClient mockSynapseClient = mock(SynapseClient.class);
-        when(mockSynapseClient.createFileHandle(any(), eq(expectedMimeType), eq(TEST_PROJECT_ID)))
-                .thenAnswer(invocation -> {
-                    // validate file name and contents
-                    File file = invocation.getArgumentAt(0, File.class);
-                    assertEquals(file.getName(), expectedFilename);
-                    try (Reader fileReader = mockFileHelper.getReader(file)) {
-                        String fileContent = CharStreams.toString(fileReader);
-                        assertEquals(fileContent, DUMMY_FILE_CONTENT);
-                    }
-
-                    // Create return value. Only thing we care about is file handle ID.
-                    FileHandle fileHandle = mock(FileHandle.class);
-                    when(fileHandle.getId()).thenReturn(TEST_FILE_HANDLE_ID);
-                    return fileHandle;
-                });
-
         // set up other mocks
-        SynapseHelper synapseHelper = new SynapseHelper();
+        SynapseHelper synapseHelper = spy(new SynapseHelper());
         synapseHelper.setConfig(mockConfig());
         synapseHelper.setFileHelper(mockFileHelper);
         synapseHelper.setS3Helper(mockS3Helper(mockFileHelper, expectedFilename));
-        synapseHelper.setSynapseClient(mockSynapseClient);
+
+        // Spy createFileHandle. This is tested somewhere else, and spying it here means we don't have to change tests
+        // in 3 different places when we change the createFileHandle implementation.
+        // Since we delete the file immediately afterwards, use a mock answer to validate file contents.
+        doAnswer(invocation -> {
+            // validate file name and contents
+            File file = invocation.getArgumentAt(0, File.class);
+            assertEquals(file.getName(), expectedFilename);
+            try (Reader fileReader = mockFileHelper.getReader(file)) {
+                String fileContent = CharStreams.toString(fileReader);
+                assertEquals(fileContent, DUMMY_FILE_CONTENT);
+            }
+
+            // Create return value. Only thing we care about is file handle ID.
+            FileHandle fileHandle = mock(FileHandle.class);
+            when(fileHandle.getId()).thenReturn(TEST_FILE_HANDLE_ID);
+            return fileHandle;
+        }).when(synapseHelper).createFileHandleWithRetry(any(), eq(expectedMimeType), eq(TEST_PROJECT_ID));
 
         // execute and validate
         String fileHandleId = synapseHelper.uploadFromS3ToSynapseFileHandle(tmpDir, TEST_PROJECT_ID,
@@ -190,17 +189,17 @@ public class SynapseHelperUploadAttachmentTest {
         InMemoryFileHelper mockFileHelper = new InMemoryFileHelper();
         File tmpDir = mockFileHelper.createTempDir();
 
-        // mock Synapse client to throw exception
-        SynapseClient mockSynapseClient = mock(SynapseClient.class);
-        when(mockSynapseClient.createFileHandle(any(), eq("application/octet-stream"), eq(TEST_PROJECT_ID)))
-                .thenThrow(SynapseClientException.class);
-
         // set up other mocks
-        SynapseHelper synapseHelper = new SynapseHelper();
+        SynapseHelper synapseHelper = spy(new SynapseHelper());
         synapseHelper.setConfig(mockConfig());
         synapseHelper.setFileHelper(mockFileHelper);
         synapseHelper.setS3Helper(mockS3Helper(mockFileHelper, "test-attId.blob"));
-        synapseHelper.setSynapseClient(mockSynapseClient);
+
+        // Spy createFileHandle. This is tested somewhere else, and spying it here means we don't have to change tests
+        // in 3 different places when we change the createFileHandle implementation.
+        // Mock to throw exception.
+        doThrow(SynapseClientException.class).when(synapseHelper).createFileHandleWithRetry(any(),
+                eq("application/octet-stream"), eq(TEST_PROJECT_ID));
 
         // execute and validate
         try {

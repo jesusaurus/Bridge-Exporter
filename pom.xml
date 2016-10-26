@@ -82,7 +82,7 @@
         <dependency>
             <groupId>org.sagebionetworks</groupId>
             <artifactId>synapseJavaClient</artifactId>
-            <version>145.0</version>
+            <version>157.0</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
