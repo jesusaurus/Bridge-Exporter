@@ -21,6 +21,7 @@ import org.sagebionetworks.repo.model.ACCESS_TYPE;
 import org.sagebionetworks.repo.model.AccessControlList;
 import org.sagebionetworks.repo.model.ResourceAccess;
 import org.sagebionetworks.repo.model.file.FileHandle;
+import org.sagebionetworks.repo.model.file.UploadDestination;
 import org.sagebionetworks.repo.model.status.StackStatus;
 import org.sagebionetworks.repo.model.status.StatusEnum;
 import org.sagebionetworks.repo.model.table.AppendableRowSet;
@@ -511,7 +512,8 @@ public class SynapseHelper {
             types = { AmazonClientException.class, SynapseException.class }, randomize = false)
     public FileHandle createFileHandleWithRetry(File file, String contentType, String projectId) throws IOException,
             SynapseException {
-        return synapseClient.createFileHandle(file, contentType, projectId);
+        UploadDestination uploadDestination = synapseClient.getDefaultUploadDestination(projectId);
+        return synapseClient.multipartUpload(file, uploadDestination.getStorageLocationId(), null, null);
     }
 
     /**

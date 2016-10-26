@@ -2,7 +2,9 @@ package org.sagebionetworks.bridge.exporter.synapse;
 
 import static org.mockito.Matchers.eq;
 import static org.mockito.Matchers.isNull;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
@@ -47,18 +49,20 @@ public class SynapseHelperUploadTsvToTableTest {
         // mock Synapse Client - Mock everything except uploadCsvToTableAsyncGet(), which depends on the test.
         mockSynapseClient = mock(SynapseClient.class);
 
-        FileHandle mockFileHandle = mock(FileHandle.class);
-        when(mockFileHandle.getId()).thenReturn(TEST_FILE_HANDLE_ID);
-        when(mockSynapseClient.createFileHandle(mockTsvFile, "text/tab-separated-values", TEST_PROJECT_ID))
-                .thenReturn(mockFileHandle);
-
         tableDescCaptor = ArgumentCaptor.forClass(CsvTableDescriptor.class);
         when(mockSynapseClient.uploadCsvToTableAsyncStart(eq(TEST_TABLE_ID), eq(TEST_FILE_HANDLE_ID),
                 isNull(String.class), isNull(Long.class), tableDescCaptor.capture())).thenReturn(TEST_JOB_TOKEN);
 
-        synapseHelper = new SynapseHelper();
+        synapseHelper = spy(new SynapseHelper());
         synapseHelper.setConfig(config);
         synapseHelper.setSynapseClient(mockSynapseClient);
+
+        // Spy createFileHandle. This is tested somewhere else, and spying it here means we don't have to change tests
+        // in 3 different places when we change the createFileHandle implementation.
+        FileHandle mockFileHandle = mock(FileHandle.class);
+        when(mockFileHandle.getId()).thenReturn(TEST_FILE_HANDLE_ID);
+        doReturn(mockFileHandle).when(synapseHelper).createFileHandleWithRetry(mockTsvFile,
+                "text/tab-separated-values", TEST_PROJECT_ID);
     }
 
     @Test

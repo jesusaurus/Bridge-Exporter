@@ -24,6 +24,8 @@ import org.sagebionetworks.client.exceptions.SynapseResultNotReadyException;
 import org.sagebionetworks.repo.model.AccessControlList;
 import org.sagebionetworks.repo.model.ResourceAccess;
 import org.sagebionetworks.repo.model.file.FileHandle;
+import org.sagebionetworks.repo.model.file.S3FileHandle;
+import org.sagebionetworks.repo.model.file.UploadDestination;
 import org.sagebionetworks.repo.model.status.StackStatus;
 import org.sagebionetworks.repo.model.status.StatusEnum;
 import org.sagebionetworks.repo.model.table.ColumnModel;
@@ -121,10 +123,14 @@ public class SynapseHelperTest {
     public void createFileHandle() throws Exception {
         // mock Synapse Client
         SynapseClient mockSynapseClient = mock(SynapseClient.class);
+
+        UploadDestination mockUploadDestination = mock(UploadDestination.class);
+        when(mockUploadDestination.getStorageLocationId()).thenReturn(1234L);
+        when(mockSynapseClient.getDefaultUploadDestination("project-id")).thenReturn(mockUploadDestination);
+
         File mockFile = mock(File.class);
-        FileHandle mockFileHandle = mock(FileHandle.class);
-        when(mockSynapseClient.createFileHandle(mockFile, "application/mock", "project-id"))
-                .thenReturn(mockFileHandle);
+        S3FileHandle mockFileHandle = mock(S3FileHandle.class);
+        when(mockSynapseClient.multipartUpload(mockFile, 1234L, null, null)).thenReturn(mockFileHandle);
 
         SynapseHelper synapseHelper = new SynapseHelper();
         synapseHelper.setSynapseClient(mockSynapseClient);
