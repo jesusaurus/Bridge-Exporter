@@ -39,10 +39,10 @@ import org.springframework.stereotype.Component;
 import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.file.FileHelper;
+import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
+import org.sagebionetworks.bridge.rest.model.UploadFieldType;
 import org.sagebionetworks.bridge.s3.S3Helper;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldDefinition;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldType;
 
 /** Helper class for Synapse calls, including complex logic around asynchronous calls and retry helper. */
 @Component
@@ -219,7 +219,7 @@ public class SynapseHelper {
                     nodeValue = node.toString();
                 }
 
-                Boolean isUnboundedText = fieldDef.isUnboundedText();
+                Boolean isUnboundedText = fieldDef.getUnboundedText();
                 Integer maxLength = null;
                 if (isUnboundedText == null || !isUnboundedText) {
                     maxLength = getMaxLengthForFieldDef(fieldDef);
@@ -510,8 +510,8 @@ public class SynapseHelper {
      */
     @RetryOnFailure(attempts = 2, delay = 1, unit = TimeUnit.SECONDS,
             types = { AmazonClientException.class, SynapseException.class }, randomize = false)
-    public FileHandle createFileHandleWithRetry(File file, String contentType, String projectId) throws IOException,
-            SynapseException {
+    public FileHandle createFileHandleWithRetry(File file, @SuppressWarnings("UnusedParameters") String contentType,
+            String projectId) throws IOException, SynapseException {
         UploadDestination uploadDestination = synapseClient.getDefaultUploadDestination(projectId);
         return synapseClient.multipartUpload(file, uploadDestination.getStorageLocationId(), null, null);
     }

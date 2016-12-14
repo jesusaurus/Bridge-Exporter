@@ -36,8 +36,8 @@ import org.sagebionetworks.repo.model.table.UploadToTableResult;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldDefinition;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldType;
+import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
+import org.sagebionetworks.bridge.rest.model.UploadFieldType;
 
 @SuppressWarnings({ "unchecked", "rawtypes" })
 public class SynapseHelperTest {
@@ -45,20 +45,13 @@ public class SynapseHelperTest {
     public Object[][] maxLengthTestDataProvider() {
         // { fieldDef, expectedMaxLength }
         return new Object[][] {
-                { new UploadFieldDefinition.Builder().withName("dummy").withType(UploadFieldType.CALENDAR_DATE)
-                        .build(), 10 },
-                { new UploadFieldDefinition.Builder().withName("dummy").withType(UploadFieldType.DURATION_V2).build(),
-                        24 },
-                { new UploadFieldDefinition.Builder().withName("dummy").withType(UploadFieldType.INLINE_JSON_BLOB)
-                        .build(), 100 },
-                { new UploadFieldDefinition.Builder().withName("dummy").withType(UploadFieldType.SINGLE_CHOICE)
-                        .build(), 100 },
-                { new UploadFieldDefinition.Builder().withName("dummy").withType(UploadFieldType.STRING).build(),
-                        100 },
-                { new UploadFieldDefinition.Builder().withName("dummy").withType(UploadFieldType.TIME_V2).build(),
-                        12 },
-                { new UploadFieldDefinition.Builder().withName("dummy").withType(UploadFieldType.STRING)
-                        .withMaxLength(256).build(), 256 },
+                { new UploadFieldDefinition().name("dummy").type(UploadFieldType.CALENDAR_DATE), 10 },
+                { new UploadFieldDefinition().name("dummy").type(UploadFieldType.DURATION_V2), 24 },
+                { new UploadFieldDefinition().name("dummy").type(UploadFieldType.INLINE_JSON_BLOB), 100 },
+                { new UploadFieldDefinition().name("dummy").type(UploadFieldType.SINGLE_CHOICE), 100 },
+                { new UploadFieldDefinition().name("dummy").type(UploadFieldType.STRING), 100 },
+                { new UploadFieldDefinition().name("dummy").type(UploadFieldType.TIME_V2), 12 },
+                { new UploadFieldDefinition().name("dummy").type(UploadFieldType.STRING).maxLength(256), 256 },
         };
     }
 

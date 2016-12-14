@@ -17,6 +17,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.google.common.collect.ImmutableList;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -32,10 +33,10 @@ import org.sagebionetworks.bridge.exporter.worker.ExportSubtask;
 import org.sagebionetworks.bridge.exporter.worker.ExportTask;
 import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
 import org.sagebionetworks.bridge.file.InMemoryFileHelper;
+import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
+import org.sagebionetworks.bridge.rest.model.UploadFieldType;
+import org.sagebionetworks.bridge.rest.model.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldDefinition;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldType;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
 
 public class SynapseExportHandlerNewTableTest {
     private String ddbSynapseTableId;
@@ -185,10 +186,9 @@ public class SynapseExportHandlerNewTableTest {
     public void healthDataExportHandlerTest() throws Exception {
         // Freeform text to attachments is already tested in SynapseExportHandlerTest. Just test simple string and int
         // fields.
-        UploadSchema testSchema = BridgeHelperTest.simpleSchemaBuilder().withFieldDefinitions(
-                new UploadFieldDefinition.Builder().withName("foo").withType(UploadFieldType.STRING).build(),
-                new UploadFieldDefinition.Builder().withName("bar").withType(UploadFieldType.INT).build())
-                .build();
+        UploadSchema testSchema = BridgeHelperTest.simpleSchemaBuilder().fieldDefinitions(ImmutableList.of(
+                new UploadFieldDefinition().name("foo").type(UploadFieldType.STRING),
+                new UploadFieldDefinition().name("bar").type(UploadFieldType.INT)));
         UploadSchemaKey testSchemaKey = BridgeExporterUtil.getSchemaKeyFromSchema(testSchema);
 
         // Set up handler and test. setSchema() needs to be called before setup, since a lot of the stuff in the

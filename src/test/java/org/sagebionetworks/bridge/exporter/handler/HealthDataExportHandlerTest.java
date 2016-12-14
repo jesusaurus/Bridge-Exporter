@@ -22,6 +22,7 @@ import com.fasterxml.jackson.databind.node.BooleanNode;
 import com.fasterxml.jackson.databind.node.IntNode;
 import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.TextNode;
+import com.google.common.collect.ImmutableList;
 import org.joda.time.DateTime;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.testng.annotations.DataProvider;
@@ -38,20 +39,20 @@ import org.sagebionetworks.bridge.exporter.worker.ExportTask;
 import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
 import org.sagebionetworks.bridge.file.InMemoryFileHelper;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldDefinition;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldType;
+import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
+import org.sagebionetworks.bridge.rest.model.UploadFieldType;
 
 public class HealthDataExportHandlerTest {
     private static final String FIELD_NAME = "foo-field";
     private static final String FIELD_NAME_TIMEZONE = FIELD_NAME + ".timezone";
     private static final String FIELD_VALUE = "asdf jkl;";
 
-    private static final UploadFieldDefinition MULTI_CHOICE_FIELD_DEF = new UploadFieldDefinition.Builder()
-            .withName(FIELD_NAME).withType(UploadFieldType.MULTI_CHOICE).withMultiChoiceAnswerList("foo", "bar", "baz",
-                    "true", "42").build();
-    private static final UploadFieldDefinition OTHER_CHOICE_FIELD_DEF = new UploadFieldDefinition.Builder()
-            .withAllowOtherChoices(true).withName(FIELD_NAME).withType(UploadFieldType.MULTI_CHOICE)
-            .withMultiChoiceAnswerList("one", "two").build();
+    private static final UploadFieldDefinition MULTI_CHOICE_FIELD_DEF = new UploadFieldDefinition().name(FIELD_NAME)
+            .type(UploadFieldType.MULTI_CHOICE).multiChoiceAnswerList(ImmutableList.of("foo", "bar", "baz", "true",
+                    "42"));
+    private static final UploadFieldDefinition OTHER_CHOICE_FIELD_DEF = new UploadFieldDefinition()
+            .allowOtherChoices(true).name(FIELD_NAME).type(UploadFieldType.MULTI_CHOICE)
+            .multiChoiceAnswerList(ImmutableList.of("one", "two"));
 
     // branch coverage
     @Test

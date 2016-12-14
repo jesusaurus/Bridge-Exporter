@@ -11,6 +11,7 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.ImmutableList;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -18,10 +19,10 @@ import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
+import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
+import org.sagebionetworks.bridge.rest.model.UploadFieldType;
+import org.sagebionetworks.bridge.rest.model.UploadSchema;
 import org.sagebionetworks.bridge.s3.S3Helper;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldDefinition;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldType;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
 
 public class ExportHelperConvertSurveyTest {
     private static final String DUMMY_ANSWERS_ATTACHMENT_ID = "answers-attachment-id";
@@ -92,25 +93,24 @@ public class ExportHelperConvertSurveyTest {
     @Test
     public void normalCase() throws Exception {
         // Make schema with all fields from the below answers.
-        UploadSchema testSchema = BridgeHelperTest.simpleSchemaBuilder().withFieldDefinitions(
-                new UploadFieldDefinition.Builder().withName("no-question-type-name").withType(UploadFieldType.STRING)
-                        .build(),
-                new UploadFieldDefinition.Builder().withName("fallback-to-question-type")
-                        .withType(UploadFieldType.STRING).build(),
-                new UploadFieldDefinition.Builder().withName("bad-type").withType(UploadFieldType.STRING).build(),
-                new UploadFieldDefinition.Builder().withName("null-value").withType(UploadFieldType.STRING).build(),
-                new UploadFieldDefinition.Builder().withName("inline-string").withType(UploadFieldType.STRING).build(),
-                new UploadFieldDefinition.Builder().withName("attachment-string")
-                        .withType(UploadFieldType.ATTACHMENT_JSON_BLOB).build(),
-                new UploadFieldDefinition.Builder().withName("integer").withType(UploadFieldType.INT).build(),
-                new UploadFieldDefinition.Builder().withName("integer_unit").withType(UploadFieldType.STRING).build(),
-                new UploadFieldDefinition.Builder().withName("single-choice")
-                        .withType(UploadFieldType.INLINE_JSON_BLOB).build(),
-                new UploadFieldDefinition.Builder().withName("inline-multiple-choice")
-                        .withType(UploadFieldType.INLINE_JSON_BLOB).build(),
-                new UploadFieldDefinition.Builder().withName("attachment-multiple-choice")
-                        .withType(UploadFieldType.ATTACHMENT_JSON_BLOB).build())
-                .build();
+        UploadSchema testSchema = BridgeHelperTest.simpleSchemaBuilder().fieldDefinitions(ImmutableList.of(
+                new UploadFieldDefinition().name("no-question-type-name").type(UploadFieldType.STRING)
+                        ,
+                new UploadFieldDefinition().name("fallback-to-question-type")
+                        .type(UploadFieldType.STRING),
+                new UploadFieldDefinition().name("bad-type").type(UploadFieldType.STRING),
+                new UploadFieldDefinition().name("null-value").type(UploadFieldType.STRING),
+                new UploadFieldDefinition().name("inline-string").type(UploadFieldType.STRING),
+                new UploadFieldDefinition().name("attachment-string")
+                        .type(UploadFieldType.ATTACHMENT_JSON_BLOB),
+                new UploadFieldDefinition().name("integer").type(UploadFieldType.INT),
+                new UploadFieldDefinition().name("integer_unit").type(UploadFieldType.STRING),
+                new UploadFieldDefinition().name("single-choice")
+                        .type(UploadFieldType.INLINE_JSON_BLOB),
+                new UploadFieldDefinition().name("inline-multiple-choice")
+                        .type(UploadFieldType.INLINE_JSON_BLOB),
+                new UploadFieldDefinition().name("attachment-multiple-choice")
+                        .type(UploadFieldType.ATTACHMENT_JSON_BLOB)));
 
         // Make answers array. This is semi-realistic.
         String answersAttachmentText = "[\n" +

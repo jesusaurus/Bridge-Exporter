@@ -13,9 +13,9 @@ import org.jsoup.safety.Whitelist;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
+import org.sagebionetworks.bridge.rest.model.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldDefinition;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
 
 /** Various static utility methods that don't neatly fit anywhere else. */
 public class BridgeExporterUtil {
@@ -83,8 +83,14 @@ public class BridgeExporterUtil {
      * @return schema key
      */
     public static UploadSchemaKey getSchemaKeyFromSchema(UploadSchema schema) {
+        // In the new JavaSDK, revision is a Long. However, in bridge-base UploadSchemaKey, revision is an Integer.
+        // There is no null-safe way to convert this. So do a null check and throw an IllegalArgumentException, so that
+        // we don't have to deal with a NullPointerException.
+        if (schema.getRevision() == null) {
+            throw new IllegalArgumentException("revision can't be null");
+        }
         return new UploadSchemaKey.Builder().withStudyId(schema.getStudyId()).withSchemaId(schema.getSchemaId())
-                .withRevision(schema.getRevision()).build();
+                .withRevision(schema.getRevision().intValue()).build();
     }
 
     /**
