@@ -1,53 +1,57 @@
 package org.sagebionetworks.bridge.exporter.helper;
 
-import static org.mockito.Matchers.anyInt;
-import static org.mockito.Matchers.anyVararg;
-import static org.mockito.Matchers.eq;
-import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.SortedSet;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.SortedSetMultimap;
 import org.mockito.ArgumentCaptor;
-import org.sagebionetworks.bridge.sdk.models.healthData.RecordExportStatusRequest;
+import org.mockito.InOrder;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
+import retrofit2.Call;
+import retrofit2.Response;
 
 import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
+import org.sagebionetworks.bridge.rest.ClientManager;
+import org.sagebionetworks.bridge.rest.api.AuthenticationApi;
+import org.sagebionetworks.bridge.rest.api.ForWorkersApi;
+import org.sagebionetworks.bridge.rest.exceptions.NotAuthenticatedException;
+import org.sagebionetworks.bridge.rest.model.Message;
+import org.sagebionetworks.bridge.rest.model.RecordExportStatusRequest;
+import org.sagebionetworks.bridge.rest.model.SignIn;
+import org.sagebionetworks.bridge.rest.model.SynapseExporterStatus;
+import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
+import org.sagebionetworks.bridge.rest.model.UploadFieldType;
+import org.sagebionetworks.bridge.rest.model.UploadSchema;
+import org.sagebionetworks.bridge.rest.model.UploadSchemaType;
+import org.sagebionetworks.bridge.rest.model.UploadSession;
+import org.sagebionetworks.bridge.rest.model.UserSessionInfo;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
-import org.sagebionetworks.bridge.sdk.Session;
-import org.sagebionetworks.bridge.sdk.UploadSchemaClient;
-import org.sagebionetworks.bridge.sdk.WorkerClient;
-import org.sagebionetworks.bridge.sdk.exceptions.NotAuthenticatedException;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldDefinition;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldType;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadSchemaType;
 
 @SuppressWarnings("unchecked")
 public class BridgeHelperTest {
     public static final String TEST_SCHEMA_ID = "my-schema";
     public static final int TEST_SCHEMA_REV = 2;
+    public static final SignIn TEST_SIGN_IN = new SignIn();
     public static final String TEST_STUDY_ID = "test-study";
-    public static final List<String> TEST_RECORD_IDS = Arrays.asList("test record id");
-    public static final RecordExportStatusRequest.ExporterStatus TEST_STATUS = RecordExportStatusRequest.ExporterStatus.NOT_EXPORTED;
+    public static final List<String> TEST_RECORD_IDS = ImmutableList.of("test record id");
+    public static final SynapseExporterStatus TEST_STATUS = SynapseExporterStatus.NOT_EXPORTED;
 
     public static final String TEST_FIELD_NAME = "my-field";
-    public static final UploadFieldDefinition TEST_FIELD_DEF = new UploadFieldDefinition.Builder()
-            .withName(TEST_FIELD_NAME).withType(UploadFieldType.STRING).withUnboundedText(true).build();
+    public static final UploadFieldDefinition TEST_FIELD_DEF = new UploadFieldDefinition()
+            .name(TEST_FIELD_NAME).type(UploadFieldType.STRING).unboundedText(true);
 
     public static final ColumnModel TEST_SYNAPSE_COLUMN;
     static {
@@ -56,54 +60,57 @@ public class BridgeHelperTest {
         TEST_SYNAPSE_COLUMN.setColumnType(ColumnType.LARGETEXT);
     }
 
-    public static final UploadSchema TEST_SCHEMA = simpleSchemaBuilder().withFieldDefinitions(TEST_FIELD_DEF).build();
+    public static final UploadSchema TEST_SCHEMA = simpleSchemaBuilder().fieldDefinitions(ImmutableList.of(
+            TEST_FIELD_DEF));
     public static final UploadSchemaKey TEST_SCHEMA_KEY = new UploadSchemaKey.Builder().withStudyId(TEST_STUDY_ID)
             .withSchemaId(TEST_SCHEMA_ID).withRevision(TEST_SCHEMA_REV).build();
 
-    public ArgumentCaptor<RecordExportStatusRequest> requestArgumentCaptor;
+    public BridgeHelper bridgeHelper;
+    public AuthenticationApi mockAuthApi;
+    public ForWorkersApi mockWorkersApi;
 
-    public static UploadSchema.Builder simpleSchemaBuilder() {
-        return new UploadSchema.Builder().withName("My Schema").withRevision(TEST_SCHEMA_REV)
-                .withSchemaId(TEST_SCHEMA_ID).withSchemaType(UploadSchemaType.IOS_DATA).withStudyId(TEST_STUDY_ID);
-    }
-
-    private static BridgeHelper setupBridgeHelperWithSession(Session session) {
-        // Spy bridge helper, because signIn() statically calls ClientProvider.signIn()
-        BridgeHelper bridgeHelper = spy(new BridgeHelper());
-        doReturn(session).when(bridgeHelper).signIn();
-        return bridgeHelper;
+    public static UploadSchema simpleSchemaBuilder() {
+        return new UploadSchema().name("My Schema").revision((long) TEST_SCHEMA_REV)
+                .schemaId(TEST_SCHEMA_ID).schemaType(UploadSchemaType.IOS_DATA).studyId(TEST_STUDY_ID);
     }
 
     @BeforeMethod
-    public void initializeRequestArgumentCaptor() {
-        requestArgumentCaptor = ArgumentCaptor.forClass(RecordExportStatusRequest.class);
+    public void setup() {
+        mockAuthApi = mock(AuthenticationApi.class);
+        mockWorkersApi = mock(ForWorkersApi.class);
+
+        ClientManager mockClientManager = mock(ClientManager.class);
+        when(mockClientManager.getClient(AuthenticationApi.class)).thenReturn(mockAuthApi);
+        when(mockClientManager.getClient(ForWorkersApi.class)).thenReturn(mockWorkersApi);
+
+        bridgeHelper = new BridgeHelper();
+        bridgeHelper.setBridgeClientManager(mockClientManager);
+        bridgeHelper.setBridgeCredentials(TEST_SIGN_IN);
     }
 
     @Test
-    public void completeUpload() {
-        // mock worker client, session, and setup bridge helper
-        WorkerClient mockWorkerClient = mock(WorkerClient.class);
-        Session mockSession = mock(Session.class);
-        when(mockSession.getWorkerClient()).thenReturn(mockWorkerClient);
-        BridgeHelper bridgeHelper = setupBridgeHelperWithSession(mockSession);
+    public void completeUpload() throws Exception {
+        // mock call
+        Call<UploadSession> mockCall = mock(Call.class);
+        when(mockWorkersApi.completeUploadSession("test-upload")).thenReturn(mockCall);
 
         // execute and verify
         bridgeHelper.completeUpload("test-upload");
-        verify(mockWorkerClient).completeUpload("test-upload");
+        verify(mockCall).execute();
     }
 
     @Test
-    public void updateRecordExporterStatus() {
-        // mock worker client, session, and setup bridge helper
-        WorkerClient mockWorkerClient = mock(WorkerClient.class);
-        Session mockSession = mock(Session.class);
-        when(mockSession.getWorkerClient()).thenReturn(mockWorkerClient);
-        BridgeHelper bridgeHelper = setupBridgeHelperWithSession(mockSession);
+    public void updateRecordExporterStatus() throws Exception {
+        // mock call
+        Call<Message> mockCall = mock(Call.class);
+        ArgumentCaptor<RecordExportStatusRequest> requestArgumentCaptor = ArgumentCaptor.forClass(
+                RecordExportStatusRequest.class);
+        when(mockWorkersApi.updateRecordExportStatuses(requestArgumentCaptor.capture())).thenReturn(mockCall);
 
         // execute and verify
         bridgeHelper.updateRecordExporterStatus(TEST_RECORD_IDS, TEST_STATUS);
-        verify(mockWorkerClient).updateRecordExporterStatus(anyVararg());
-        verify(mockWorkerClient).updateRecordExporterStatus(requestArgumentCaptor.capture());
+        verify(mockCall).execute();
+
         RecordExportStatusRequest request = requestArgumentCaptor.getValue();
         assertEquals(request.getRecordIds(), TEST_RECORD_IDS);
         assertEquals(request.getSynapseExporterStatus(), TEST_STATUS);
@@ -112,7 +119,7 @@ public class BridgeHelperTest {
     @Test
     public void getSchema() throws Exception {
         // set up bridge helper
-        BridgeHelper bridgeHelper = setupBridgeHelperWithSchema(TEST_SCHEMA);
+        setupBridgeHelperWithSchema(TEST_SCHEMA);
 
         // execute and validate
         UploadSchema retVal = bridgeHelper.getSchema(new Metrics(), TEST_SCHEMA_KEY);
@@ -122,7 +129,7 @@ public class BridgeHelperTest {
     @Test
     public void getSchemaNotFound() throws Exception {
         // set up bridge helper
-        BridgeHelper bridgeHelper = setupBridgeHelperWithSchema(null);
+        setupBridgeHelperWithSchema(null);
 
         Metrics metrics = new Metrics();
 
@@ -140,17 +147,14 @@ public class BridgeHelperTest {
         assertTrue(schemasNotFoundSet.contains(TEST_SCHEMA_KEY.toString()));
     }
 
-    private static BridgeHelper setupBridgeHelperWithSchema(UploadSchema schema) throws Exception {
-        // mock schema client
-        UploadSchemaClient mockSchemaClient = mock(UploadSchemaClient.class);
-        when(mockSchemaClient.getSchema(TEST_STUDY_ID, TEST_SCHEMA_ID, TEST_SCHEMA_REV)).thenReturn(schema);
+    private void setupBridgeHelperWithSchema(UploadSchema schema) throws Exception {
+        Response<UploadSchema> response = Response.success(schema);
 
-        // mock session, which returns the schema client
-        Session mockSession = mock(Session.class);
-        when(mockSession.getUploadSchemaClient()).thenReturn(mockSchemaClient);
+        Call<UploadSchema> mockCall = mock(Call.class);
+        when(mockCall.execute()).thenReturn(response);
 
-        // set up bridge helper
-        return setupBridgeHelperWithSession(mockSession);
+        when(mockWorkersApi.getSchemaRevisionInStudy(TEST_STUDY_ID, TEST_SCHEMA_ID, (long) TEST_SCHEMA_REV))
+                .thenReturn(mockCall);
     }
 
     @Test
@@ -160,48 +164,39 @@ public class BridgeHelperTest {
         // 2. second request re-uses same session
         // 3. third request gets 401'ed, refreshes session
         //
-        // This necessitates 4 calls to our test server call (we'll use getSchema):
+        // This necessitates 4 calls to our test server call (we'll use completeUpload):
         // 1. Initial call succeeds.
         // 2. Second call also succeeds.
         // 3. Third call throws 401.
         // 4. Fourth call succeeds, to complete our call pattern.
 
-        // Create 2 mock schema clients.
-        // First schema client succeeds twice, then 401s.
-        // Second schema client succeeds.
-        UploadSchemaClient mockSchemaClient1 = mock(UploadSchemaClient.class);
-        when(mockSchemaClient1.getSchema(eq(TEST_STUDY_ID), eq(TEST_SCHEMA_ID), anyInt())).thenReturn(TEST_SCHEMA)
-                .thenReturn(TEST_SCHEMA).thenThrow(NotAuthenticatedException.class);
+        // Mock ForWorkersApi - third call throws
+        Call<UploadSession> mockUploadCall1 = mock(Call.class);
+        Call<UploadSession> mockUploadCall2 = mock(Call.class);
+        Call<UploadSession> mockUploadCall3a = mock(Call.class);
+        Call<UploadSession> mockUploadCall3b = mock(Call.class);
+        when(mockUploadCall3a.execute()).thenThrow(NotAuthenticatedException.class);
 
-        UploadSchemaClient mockSchemaClient2 = mock(UploadSchemaClient.class);
-        when(mockSchemaClient2.getSchema(eq(TEST_STUDY_ID), eq(TEST_SCHEMA_ID), anyInt())).thenReturn(TEST_SCHEMA);
+        when(mockWorkersApi.completeUploadSession("upload1")).thenReturn(mockUploadCall1);
+        when(mockWorkersApi.completeUploadSession("upload2")).thenReturn(mockUploadCall2);
+        when(mockWorkersApi.completeUploadSession("upload3")).thenReturn(mockUploadCall3a, mockUploadCall3b);
 
-        // Create 2 mock sessions. Each mock session simply returns its corresponing schema client.
-        Session mockSession1 = mock(Session.class);
-        when(mockSession1.getUploadSchemaClient()).thenReturn(mockSchemaClient1);
+        // Mock AuthenticationApi
+        Call<UserSessionInfo> mockSignInCall = mock(Call.class);
+        when(mockAuthApi.signIn(TEST_SIGN_IN)).thenReturn(mockSignInCall);
 
-        Session mockSession2 = mock(Session.class);
-        when(mockSession2.getUploadSchemaClient()).thenReturn(mockSchemaClient2);
+        // execute
+        bridgeHelper.completeUpload("upload1");
+        bridgeHelper.completeUpload("upload2");
+        bridgeHelper.completeUpload("upload3");
 
-        // Spy BridgeHelper.signIn(), which returns these sessions.
-        BridgeHelper bridgeHelper = spy(new BridgeHelper());
-        doReturn(mockSession1).doReturn(mockSession2).when(bridgeHelper).signIn();
-
-        // Dummy metrics for test.
-        Metrics metrics = new Metrics();
-
-        // Call BridgeHelper.getSchema() 3 times. Each call will look identical, except pass in a different rev to
-        // bypass the cache.
-        for (int i = 1; i <= 3; i++) {
-            UploadSchemaKey schemaKey = new UploadSchemaKey.Builder().withStudyId(TEST_STUDY_ID)
-                    .withSchemaId(TEST_SCHEMA_ID).withRevision(i).build();
-            UploadSchema retval = bridgeHelper.getSchema(metrics, schemaKey);
-            assertEquals(retval, TEST_SCHEMA);
-        }
-
-        // Validate behind the scenes. We made 3 calls to mockSchemaClient1 and 1 call to mockSchemaClient2. This
-        // ensures we're properly throwing and catching 401s and refreshing sessions.
-        verify(mockSchemaClient1, times(3)).getSchema(eq(TEST_STUDY_ID), eq(TEST_SCHEMA_ID), anyInt());
-        verify(mockSchemaClient2, times(1)).getSchema(eq(TEST_STUDY_ID), eq(TEST_SCHEMA_ID), anyInt());
+        // Validate behind the scenes, in order.
+        InOrder inOrder = inOrder(mockUploadCall1, mockUploadCall2, mockUploadCall3a, mockSignInCall,
+                mockUploadCall3b);
+        inOrder.verify(mockUploadCall1).execute();
+        inOrder.verify(mockUploadCall2).execute();
+        inOrder.verify(mockUploadCall3a).execute();
+        inOrder.verify(mockSignInCall).execute();
+        inOrder.verify(mockUploadCall3b).execute();
     }
 }

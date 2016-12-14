@@ -23,7 +23,7 @@ import org.testng.annotations.Test;
 import com.google.common.collect.Lists;
 
 import org.sagebionetworks.bridge.exporter.helper.BridgeHelper;
-import org.sagebionetworks.bridge.sdk.exceptions.BridgeSDKException;
+import org.sagebionetworks.bridge.rest.exceptions.BridgeSDKException;
 
 public class S3EventNotificationCallbackTest {
 

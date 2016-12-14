@@ -17,7 +17,6 @@ import org.joda.time.DateTime;
 import org.joda.time.format.DateTimeFormat;
 import org.joda.time.format.DateTimeFormatter;
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
-import org.sagebionetworks.bridge.sdk.models.healthData.RecordExportStatusRequest;
 import org.sagebionetworks.client.exceptions.SynapseException;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
@@ -32,10 +31,11 @@ import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
 import org.sagebionetworks.bridge.exporter.worker.TsvInfo;
 import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
+import org.sagebionetworks.bridge.rest.model.SynapseExporterStatus;
+import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
+import org.sagebionetworks.bridge.rest.model.UploadFieldType;
+import org.sagebionetworks.bridge.rest.model.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldDefinition;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldType;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
 
 /** Synapse export worker for health data tables. */
 public class HealthDataExportHandler extends SynapseExportHandler {
@@ -138,7 +138,7 @@ public class HealthDataExportHandler extends SynapseExportHandler {
                         oneColumn.setColumnType(ColumnType.FILEHANDLEID);
                     } else {
                         // Could be String or LargeText, depending on max length.
-                        Boolean isUnboundedText = oneFieldDef.isUnboundedText();
+                        Boolean isUnboundedText = oneFieldDef.getUnboundedText();
                         int maxLength = SynapseHelper.getMaxLengthForFieldDef(oneFieldDef);
                         if ((isUnboundedText != null && isUnboundedText) || maxLength > 1000) {
                             oneColumn.setColumnType(ColumnType.LARGETEXT);
@@ -189,8 +189,7 @@ public class HealthDataExportHandler extends SynapseExportHandler {
                 // special hack, see comments on shouldConvertFreeformTextToAttachment()
                 // For the purposes of this hack, the only fields in the field def that matter the field name and type
                 // (attachment).
-                oneFieldDef = new UploadFieldDefinition.Builder().withName(oneFieldName)
-                        .withType(UploadFieldType.ATTACHMENT_V2).build();
+                oneFieldDef = new UploadFieldDefinition().name(oneFieldName).type(UploadFieldType.ATTACHMENT_V2);
                 if (valueNode != null && !valueNode.isNull() && valueNode.isTextual()) {
                     String attachmentId = manager.getExportHelper().uploadFreeformTextAsAttachment(recordId,
                             valueNode.textValue());
@@ -221,13 +220,12 @@ public class HealthDataExportHandler extends SynapseExportHandler {
 
     /**
      * post process tsv to call update records' exporter status as SUCCEEDED
-     * @param tsvInfo
      */
     @Override
     protected void postProcessTsv(TsvInfo tsvInfo) throws BridgeExporterException {
         List<String> recordIds = tsvInfo.getRecordIds();
 
-        getManager().getBridgeHelper().updateRecordExporterStatus(recordIds, RecordExportStatusRequest.ExporterStatus.SUCCEEDED);
+        getManager().getBridgeHelper().updateRecordExporterStatus(recordIds, SynapseExporterStatus.SUCCEEDED);
     }
 
     // Helper method for getting the field definition list from the schema. This calls through to Bridge using the

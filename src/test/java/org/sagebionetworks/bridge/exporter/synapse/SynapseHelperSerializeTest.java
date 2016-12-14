@@ -21,8 +21,8 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldDefinition;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldType;
+import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
+import org.sagebionetworks.bridge.rest.model.UploadFieldType;
 
 // Tests for SynapseHelper.serializeToSynapseType()
 public class SynapseHelperSerializeTest {
@@ -164,8 +164,8 @@ public class SynapseHelperSerializeTest {
     @Test(dataProvider = "stringTypeProvider")
     public void stringSanitized(UploadFieldType stringType) throws Exception {
         // Use an extra short field def.
-        UploadFieldDefinition fieldDef = new UploadFieldDefinition.Builder().withName(TEST_FIELD_NAME)
-                .withType(stringType).withMaxLength(10).build();
+        UploadFieldDefinition fieldDef = new UploadFieldDefinition().name(TEST_FIELD_NAME).type(stringType)
+                .maxLength(10);
 
         // String value has newlines and tabs that need to be stripped out.
         String input = "asdf\njkl;\tlorem ipsum dolor";
@@ -187,8 +187,8 @@ public class SynapseHelperSerializeTest {
     // branch coverage
     @Test(dataProvider = "stringTypeProvider")
     public void stringUnboundedTrue(UploadFieldType stringType) throws Exception {
-        UploadFieldDefinition fieldDef = new UploadFieldDefinition.Builder().withName(TEST_FIELD_NAME)
-                .withType(stringType).withUnboundedText(true).build();
+        UploadFieldDefinition fieldDef = new UploadFieldDefinition().name(TEST_FIELD_NAME).type(stringType).
+                unboundedText(true);
         String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
                 fieldDef, new TextNode("unbounded text not really"));
         assertEquals(retVal, "unbounded text not really");
@@ -197,8 +197,8 @@ public class SynapseHelperSerializeTest {
     // branch coverage
     @Test(dataProvider = "stringTypeProvider")
     public void stringUnboundedFalse(UploadFieldType stringType) throws Exception {
-        UploadFieldDefinition fieldDef = new UploadFieldDefinition.Builder().withName(TEST_FIELD_NAME)
-                .withType(stringType).withUnboundedText(false).build();
+        UploadFieldDefinition fieldDef = new UploadFieldDefinition().name(TEST_FIELD_NAME).type(stringType)
+                .unboundedText(false);
         String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
                 fieldDef, new TextNode("not really unbounded text"));
         assertEquals(retVal, "not really unbounded text");
@@ -263,6 +263,6 @@ public class SynapseHelperSerializeTest {
     }
 
     private static UploadFieldDefinition fieldDefForType(UploadFieldType type) {
-        return new UploadFieldDefinition.Builder().withName(TEST_FIELD_NAME).withType(type).build();
+        return new UploadFieldDefinition().name(TEST_FIELD_NAME).type(type);
     }
 }

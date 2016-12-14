@@ -26,9 +26,9 @@ import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.file.FileHelper;
 import org.sagebionetworks.bridge.file.InMemoryFileHelper;
+import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
+import org.sagebionetworks.bridge.rest.model.UploadFieldType;
 import org.sagebionetworks.bridge.s3.S3Helper;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldDefinition;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldType;
 
 // Tests for SynapseHelper.uploadFromS3ToSynapseFileHandle() and related methods.
 @SuppressWarnings("unchecked")
@@ -37,85 +37,85 @@ public class SynapseHelperUploadAttachmentTest {
 
     @Test
     public void filenameFromFieldDef() {
-        UploadFieldDefinition fieldDef = new UploadFieldDefinition.Builder().withName("test.foo")
-                .withType(UploadFieldType.ATTACHMENT_V2).withFileExtension(".foo").build();
+        UploadFieldDefinition fieldDef = new UploadFieldDefinition().name("test.foo")
+                .type(UploadFieldType.ATTACHMENT_V2).fileExtension(".foo");
         String filename = SynapseHelper.generateFilename(fieldDef, TEST_ATTACHMENT_ID);
         assertEquals(filename, "test-attId.foo");
     }
 
     @Test
     public void filenameFromFieldDefMismatchedExtension() {
-        UploadFieldDefinition fieldDef = new UploadFieldDefinition.Builder().withName("test.bar")
-                .withType(UploadFieldType.ATTACHMENT_V2).withFileExtension(".foo").build();
+        UploadFieldDefinition fieldDef = new UploadFieldDefinition().name("test.bar")
+                .type(UploadFieldType.ATTACHMENT_V2).fileExtension(".foo");
         String filename = SynapseHelper.generateFilename(fieldDef, TEST_ATTACHMENT_ID);
         assertEquals(filename, "test.bar-attId.foo");
     }
 
     @Test
     public void filenameJsonBlob() {
-        assertEquals(SynapseHelper.generateFilename(new UploadFieldDefinition.Builder().withName("test.json.blob")
-            .withType(UploadFieldType.ATTACHMENT_JSON_BLOB).build(), TEST_ATTACHMENT_ID), "test.json.blob-attId.json");
+        assertEquals(SynapseHelper.generateFilename(new UploadFieldDefinition().name("test.json.blob")
+            .type(UploadFieldType.ATTACHMENT_JSON_BLOB), TEST_ATTACHMENT_ID), "test.json.blob-attId.json");
     }
 
     @Test
     public void filenameJsonTable() {
-        assertEquals(SynapseHelper.generateFilename(new UploadFieldDefinition.Builder().withName("test.json.table")
-                        .withType(UploadFieldType.ATTACHMENT_JSON_TABLE).build(), TEST_ATTACHMENT_ID),
+        assertEquals(SynapseHelper.generateFilename(new UploadFieldDefinition().name("test.json.table")
+                        .type(UploadFieldType.ATTACHMENT_JSON_TABLE), TEST_ATTACHMENT_ID),
                 "test.json.table-attId.json");
     }
 
     @Test
     public void filenameJsonWithJsonExtension() {
-        assertEquals(SynapseHelper.generateFilename(new UploadFieldDefinition.Builder().withName("test.json")
-                .withType(UploadFieldType.ATTACHMENT_JSON_BLOB).build(), TEST_ATTACHMENT_ID), "test-attId.json");
+        assertEquals(SynapseHelper.generateFilename(new UploadFieldDefinition().name("test.json")
+                .type(UploadFieldType.ATTACHMENT_JSON_BLOB), TEST_ATTACHMENT_ID), "test-attId.json");
     }
 
     @Test
     public void filenameCsv() {
-        assertEquals(SynapseHelper.generateFilename(new UploadFieldDefinition.Builder().withName("csv.data")
-                .withType(UploadFieldType.ATTACHMENT_CSV).build(), TEST_ATTACHMENT_ID), "csv.data-attId.csv");
+        assertEquals(SynapseHelper.generateFilename(new UploadFieldDefinition().name("csv.data")
+                .type(UploadFieldType.ATTACHMENT_CSV), TEST_ATTACHMENT_ID), "csv.data-attId.csv");
     }
 
     @Test
     public void filenameCsvWithCsvExtension() {
-        assertEquals(SynapseHelper.generateFilename(new UploadFieldDefinition.Builder().withName("data.csv")
-                .withType(UploadFieldType.ATTACHMENT_CSV).build(), TEST_ATTACHMENT_ID), "data-attId.csv");
+        assertEquals(SynapseHelper.generateFilename(new UploadFieldDefinition().name("data.csv")
+                .type(UploadFieldType.ATTACHMENT_CSV), TEST_ATTACHMENT_ID), "data-attId.csv");
     }
 
     @Test
     public void filenameBlob() {
-        assertEquals(SynapseHelper.generateFilename(new UploadFieldDefinition.Builder().withName("generic.blob")
-                .withType(UploadFieldType.ATTACHMENT_BLOB).build(), TEST_ATTACHMENT_ID), "generic-attId.blob");
+        assertEquals(SynapseHelper.generateFilename(new UploadFieldDefinition().name("generic.blob")
+                .type(UploadFieldType.ATTACHMENT_BLOB), TEST_ATTACHMENT_ID), "generic-attId.blob");
     }
 
     @Test
     public void filenameBlobWithNoExtension() {
-        assertEquals(SynapseHelper.generateFilename(new UploadFieldDefinition.Builder().withName("genericBlob")
-                .withType(UploadFieldType.ATTACHMENT_BLOB).build(), TEST_ATTACHMENT_ID), "genericBlob-attId");
+        assertEquals(SynapseHelper.generateFilename(new UploadFieldDefinition().name("genericBlob")
+                .type(UploadFieldType.ATTACHMENT_BLOB), TEST_ATTACHMENT_ID), "genericBlob-attId");
     }
 
     @Test
     public void filenameBlobWithMultipleDots() {
-        assertEquals(SynapseHelper.generateFilename(new UploadFieldDefinition.Builder().withName("generic.blob.ext")
-                .withType(UploadFieldType.ATTACHMENT_BLOB).build(), TEST_ATTACHMENT_ID), "generic.blob-attId.ext");
+        assertEquals(SynapseHelper.generateFilename(new UploadFieldDefinition().name("generic.blob.ext")
+                .type(UploadFieldType.ATTACHMENT_BLOB), TEST_ATTACHMENT_ID), "generic.blob-attId.ext");
     }
 
     @Test
     public void filenameBlobStartsWithDot() {
-        assertEquals(SynapseHelper.generateFilename(new UploadFieldDefinition.Builder().withName(".dot")
-                .withType(UploadFieldType.ATTACHMENT_BLOB).build(), TEST_ATTACHMENT_ID), ".dot-attId");
+        assertEquals(SynapseHelper.generateFilename(new UploadFieldDefinition().name(".dot")
+                .type(UploadFieldType.ATTACHMENT_BLOB), TEST_ATTACHMENT_ID), ".dot-attId");
     }
 
     @Test
     public void filenameBlobStartsWithDotWithExtension() {
-        assertEquals(SynapseHelper.generateFilename(new UploadFieldDefinition.Builder().withName(".dot.ext")
-                .withType(UploadFieldType.ATTACHMENT_BLOB).build(), TEST_ATTACHMENT_ID), ".dot-attId.ext");
+        assertEquals(SynapseHelper.generateFilename(new UploadFieldDefinition().name(".dot.ext")
+                .type(UploadFieldType.ATTACHMENT_BLOB), TEST_ATTACHMENT_ID), ".dot-attId.ext");
     }
 
     @Test
     public void filenameBlobEndsWithDot() {
-        assertEquals(SynapseHelper.generateFilename(new UploadFieldDefinition.Builder().withName("dot.dot.")
-                .withType(UploadFieldType.ATTACHMENT_BLOB).build(), TEST_ATTACHMENT_ID), "dot.dot.-attId");
+        assertEquals(SynapseHelper.generateFilename(new UploadFieldDefinition().name("dot.dot.")
+                .type(UploadFieldType.ATTACHMENT_BLOB), TEST_ATTACHMENT_ID), "dot.dot.-attId");
     }
 
     private static final String DUMMY_FILE_CONTENT = "This is some file content.";
@@ -127,18 +127,18 @@ public class SynapseHelperUploadAttachmentTest {
     public Object[][] uploadTestDataProvider() {
         // { fieldDef, expectedFilename, expectedMimeType }
         return new Object[][] {
-                { new UploadFieldDefinition.Builder().withName("foo.blob").withType(UploadFieldType.ATTACHMENT_BLOB)
-                        .build(), "foo-attId.blob", "application/octet-stream" },
-                { new UploadFieldDefinition.Builder().withName("bar.csv").withType(UploadFieldType.ATTACHMENT_CSV)
-                        .build(), "bar-attId.csv", "text/csv" },
-                { new UploadFieldDefinition.Builder().withName("baz.json")
-                        .withType(UploadFieldType.ATTACHMENT_JSON_BLOB).build(), "baz-attId.json", "text/json" },
-                { new UploadFieldDefinition.Builder().withName("qwerty.json")
-                        .withType(UploadFieldType.ATTACHMENT_JSON_TABLE).build(), "qwerty-attId.json", "text/json" },
-                { new UploadFieldDefinition.Builder().withName("asdf.file").withType(UploadFieldType.ATTACHMENT_V2)
-                        .build(), "asdf-attId.file", "application/octet-stream" },
-                { new UploadFieldDefinition.Builder().withName("jkl.txt").withType(UploadFieldType.ATTACHMENT_V2)
-                        .withFileExtension(".txt").withMimeType("text/plain").build(), "jkl-attId.txt", "text/plain" },
+                { new UploadFieldDefinition().name("foo.blob").type(UploadFieldType.ATTACHMENT_BLOB),"foo-attId.blob",
+                        "application/octet-stream" },
+                { new UploadFieldDefinition().name("bar.csv").type(UploadFieldType.ATTACHMENT_CSV), "bar-attId.csv",
+                        "text/csv" },
+                { new UploadFieldDefinition().name("baz.json").type(UploadFieldType.ATTACHMENT_JSON_BLOB),
+                        "baz-attId.json", "text/json" },
+                { new UploadFieldDefinition().name("qwerty.json").type(UploadFieldType.ATTACHMENT_JSON_TABLE),
+                        "qwerty-attId.json", "text/json" },
+                { new UploadFieldDefinition().name("asdf.file").type(UploadFieldType.ATTACHMENT_V2), "asdf-attId.file",
+                        "application/octet-stream" },
+                { new UploadFieldDefinition().name("jkl.txt").type(UploadFieldType.ATTACHMENT_V2).fileExtension(".txt")
+                        .mimeType("text/plain"), "jkl-attId.txt", "text/plain" },
         };
     }
 
@@ -203,8 +203,8 @@ public class SynapseHelperUploadAttachmentTest {
 
         // execute and validate
         try {
-            synapseHelper.uploadFromS3ToSynapseFileHandle(tmpDir, TEST_PROJECT_ID, new UploadFieldDefinition.Builder()
-                    .withName("test.blob").withType(UploadFieldType.ATTACHMENT_BLOB).build(), TEST_ATTACHMENT_ID);
+            synapseHelper.uploadFromS3ToSynapseFileHandle(tmpDir, TEST_PROJECT_ID, new UploadFieldDefinition()
+                    .name("test.blob").type(UploadFieldType.ATTACHMENT_BLOB), TEST_ATTACHMENT_ID);
             fail("expected exception");
         } catch (SynapseException ex) {
             // expected exception

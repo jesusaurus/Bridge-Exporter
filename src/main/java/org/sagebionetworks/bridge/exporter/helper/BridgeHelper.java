@@ -1,14 +1,11 @@
 package org.sagebionetworks.bridge.exporter.helper;
 
-import java.util.Arrays;
+import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import com.google.common.collect.Lists;
 import com.jcabi.aspects.Cacheable;
-import org.apache.commons.lang.exception.ExceptionUtils;
-import org.sagebionetworks.bridge.exporter.config.SpringConfig;
-import org.sagebionetworks.bridge.sdk.models.healthData.RecordExportStatusRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,12 +13,16 @@ import org.springframework.stereotype.Component;
 
 import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
+import org.sagebionetworks.bridge.rest.ClientManager;
+import org.sagebionetworks.bridge.rest.api.AuthenticationApi;
+import org.sagebionetworks.bridge.rest.api.ForWorkersApi;
+import org.sagebionetworks.bridge.rest.exceptions.BridgeSDKException;
+import org.sagebionetworks.bridge.rest.exceptions.NotAuthenticatedException;
+import org.sagebionetworks.bridge.rest.model.RecordExportStatusRequest;
+import org.sagebionetworks.bridge.rest.model.SignIn;
+import org.sagebionetworks.bridge.rest.model.SynapseExporterStatus;
+import org.sagebionetworks.bridge.rest.model.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
-import org.sagebionetworks.bridge.sdk.ClientProvider;
-import org.sagebionetworks.bridge.sdk.Session;
-import org.sagebionetworks.bridge.sdk.exceptions.NotAuthenticatedException;
-import org.sagebionetworks.bridge.sdk.models.accounts.SignInCredentials;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
 
 /**
  * Helper to call Bridge Server to get information such as schemas. Also wraps some of the calls to provide caching.
@@ -29,15 +30,21 @@ import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
 @Component
 public class BridgeHelper {
     private static final Logger LOG = LoggerFactory.getLogger(BridgeHelper.class);
-
-    private SignInCredentials credentials;
-    private Session session = null;
     private static final int MAX_BATCH_SIZE = 25;
 
-    /** Bridge credentials for the Exporter account. This needs to be saved in memory so we can refresh the session. */
+    private ClientManager bridgeClientManager;
+    private SignIn bridgeCredentials;
+
+    /** Bridge Client Manager, with credentials for Exporter account. This is used to refresh the session. */
     @Autowired
-    final void setCredentials(SignInCredentials credentials) {
-        this.credentials = credentials;
+    public final void setBridgeClientManager(ClientManager bridgeClientManager) {
+        this.bridgeClientManager = bridgeClientManager;
+    }
+
+    /** Bridge credentials, used by the session helper to refresh the session. */
+    @Autowired
+    public final void setBridgeCredentials(SignIn bridgeCredentials) {
+        this.bridgeCredentials = bridgeCredentials;
     }
 
     /**
@@ -48,33 +55,37 @@ public class BridgeHelper {
      *         upload to mark completed and begin processing
      */
     public void completeUpload(String uploadId) {
-        sessionHelper(() -> {
-            session.getWorkerClient().completeUpload(uploadId);
-            // Needs return null because session helper expects a return value.
-            return null;
-        });
+        try {
+            sessionHelper(() -> bridgeClientManager.getClient(ForWorkersApi.class).completeUploadSession(uploadId)
+                    .execute());
+        } catch (IOException ex) {
+            throw new BridgeSDKException("Error completing upload to Bridge: " + ex.getMessage(), ex);
+        }
     }
 
     /**
      * Helper method to update export status in records
      */
-    public void updateRecordExporterStatus(List<String> recordIds, RecordExportStatusRequest.ExporterStatus status) {
+    public void updateRecordExporterStatus(List<String> recordIds, SynapseExporterStatus status) {
         // update status
         // breaking down the list into batches whenever the list size exceeds the batch size
         List<List<String>> batches = Lists.partition(recordIds, MAX_BATCH_SIZE);
         batches.forEach(batch-> {
-            RecordExportStatusRequest request = new RecordExportStatusRequest(batch, status);
-            sessionHelper(() -> {
-                session.getWorkerClient().updateRecordExporterStatus(request);
-                return null;
-            });
+            RecordExportStatusRequest request = new RecordExportStatusRequest().recordIds(batch).synapseExporterStatus(
+                    status);
+            try {
+                sessionHelper(() -> bridgeClientManager.getClient(ForWorkersApi.class)
+                        .updateRecordExportStatuses(request).execute());
+            } catch (IOException ex) {
+                throw new BridgeSDKException("Error sending record export statuses to Bridge: " + ex.getMessage(), ex);
+            }
+
             try {
                 TimeUnit.SECONDS.sleep(1);
             } catch (InterruptedException e) {
-                LOG.warn(ExceptionUtils.getFullStackTrace(e));
+                LOG.warn("Error sleeping while sending export statuses: " + e.getMessage(), e);
             }
         });
-
     }
 
     /**
@@ -100,17 +111,16 @@ public class BridgeHelper {
     // Helper method that encapsulates just the service call, cached with annotation.
     @Cacheable(lifetime = 5, unit = TimeUnit.MINUTES)
     private UploadSchema getSchemaCached(UploadSchemaKey schemaKey) {
-        return sessionHelper(() -> session.getUploadSchemaClient().getSchema(schemaKey.getStudyId(),
-                schemaKey.getSchemaId(), schemaKey.getRevision()));
+        try {
+            return sessionHelper(() -> bridgeClientManager.getClient(ForWorkersApi.class).getSchemaRevisionInStudy(
+                    schemaKey.getStudyId(), schemaKey.getSchemaId(), (long) schemaKey.getRevision()).execute().body());
+        } catch (IOException ex) {
+            throw new BridgeSDKException("Error getting schema from Bridge: " + ex.getMessage(), ex);
+        }
     }
 
     // Helper method, which wraps a Bridge Server call with logic for initializing and refreshing a session.
-    private <T> T sessionHelper(BridgeCallable<T> callable) {
-        // Init session if necessary.
-        if (session == null) {
-            session = signIn();
-        }
-
+    private <T> T sessionHelper(BridgeCallable<T> callable) throws IOException {
         // First attempt. This should be enough for most cases.
         try {
             return callable.call();
@@ -121,20 +131,14 @@ public class BridgeHelper {
 
         // Refresh session and try again. This time, if the call fails, just let the exception bubble up.
         LOG.info("Bridge server session expired. Refreshing session...");
-        session = signIn();
-        return callable.call();
-    }
+        bridgeClientManager.getClient(AuthenticationApi.class).signIn(bridgeCredentials).execute();
 
-    // Helper method to sign in to Bridge Server and get a session. This needs to be wrapped because the sign-in call
-    // is static and therefore not mockable.
-    // Package-scoped to facilitate unit tests.
-    Session signIn() {
-        return ClientProvider.signIn(credentials);
+        return callable.call();
     }
 
     // Functional interface used to make lambdas for the session helper.
     @FunctionalInterface
     interface BridgeCallable<T> {
-        T call();
+        T call() throws IOException;
     }
 }

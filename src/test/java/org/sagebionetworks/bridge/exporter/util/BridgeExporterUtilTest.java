@@ -13,20 +13,19 @@ import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.exporter.helper.BridgeHelperTest;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
+import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
+import org.sagebionetworks.bridge.rest.model.UploadFieldType;
+import org.sagebionetworks.bridge.rest.model.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldDefinition;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldType;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
 
 public class BridgeExporterUtilTest {
     @Test
     public void getFieldDefMapFromSchema() {
         // set up test schema
-        UploadFieldDefinition fooField = new UploadFieldDefinition.Builder().withName("foo")
-                .withType(UploadFieldType.STRING).build();
-        UploadFieldDefinition barField = new UploadFieldDefinition.Builder().withName("bar")
-                .withType(UploadFieldType.INT).build();
-        UploadSchema schema = BridgeHelperTest.simpleSchemaBuilder().withFieldDefinitions(fooField, barField).build();
+        UploadFieldDefinition fooField = new UploadFieldDefinition().name("foo").type(UploadFieldType.STRING);
+        UploadFieldDefinition barField = new UploadFieldDefinition().name("bar").type(UploadFieldType.INT);
+        UploadSchema schema = BridgeHelperTest.simpleSchemaBuilder().addFieldDefinitionsItem(fooField)
+                .addFieldDefinitionsItem(barField);
 
         // execute and validate
         Map<String, UploadFieldDefinition> fieldDefMap = BridgeExporterUtil.getFieldDefMapFromSchema(schema);
@@ -47,16 +46,28 @@ public class BridgeExporterUtilTest {
     @Test
     public void getSchemaKeyFromSchema() {
         // set up test schema
-        UploadFieldDefinition fooField = new UploadFieldDefinition.Builder().withName("foo")
-                .withType(UploadFieldType.STRING).build();
-        UploadSchema schema = BridgeHelperTest.simpleSchemaBuilder().withStudyId("test-study")
-                .withSchemaId("test-schema").withRevision(3).withFieldDefinitions(fooField).build();
+        UploadFieldDefinition fooField = new UploadFieldDefinition().name("foo").type(UploadFieldType.STRING);
+        UploadSchema schema = BridgeHelperTest.simpleSchemaBuilder().studyId("test-study").schemaId("test-schema")
+                .revision(3L).addFieldDefinitionsItem(fooField);
 
         // execute and validate
         UploadSchemaKey schemaKey = BridgeExporterUtil.getSchemaKeyFromSchema(schema);
         assertEquals(schemaKey.getStudyId(), "test-study");
         assertEquals(schemaKey.getSchemaId(), "test-schema");
         assertEquals(schemaKey.getRevision(), 3);
+    }
+
+    // branch coverage
+    @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp =
+            "revision can't be null")
+    public void getSchemaKeyNullRev() {
+        // set up test schema
+        UploadFieldDefinition fooField = new UploadFieldDefinition().name("foo").type(UploadFieldType.STRING);
+        UploadSchema schema = BridgeHelperTest.simpleSchemaBuilder().studyId("test-study").schemaId("test-schema")
+                .revision(null).addFieldDefinitionsItem(fooField);
+
+        // execute and validate
+        BridgeExporterUtil.getSchemaKeyFromSchema(schema);
     }
 
     @Test

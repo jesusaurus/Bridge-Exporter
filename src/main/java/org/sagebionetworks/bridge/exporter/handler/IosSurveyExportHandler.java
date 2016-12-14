@@ -14,8 +14,8 @@ import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.worker.ExportSubtask;
 import org.sagebionetworks.bridge.exporter.worker.ExportTask;
 import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
+import org.sagebionetworks.bridge.rest.model.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
 
 /**
  * This class is responsible for converting the raw survey answers into a form the Synapse Export Worker can consume.

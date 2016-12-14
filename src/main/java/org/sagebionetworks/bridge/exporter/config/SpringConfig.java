@@ -27,10 +27,10 @@ import org.sagebionetworks.bridge.exporter.request.BridgeExporterSqsCallback;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.file.FileHelper;
 import org.sagebionetworks.bridge.heartbeat.HeartbeatLogger;
+import org.sagebionetworks.bridge.rest.ClientManager;
+import org.sagebionetworks.bridge.rest.model.ClientInfo;
+import org.sagebionetworks.bridge.rest.model.SignIn;
 import org.sagebionetworks.bridge.s3.S3Helper;
-import org.sagebionetworks.bridge.sdk.ClientInfo;
-import org.sagebionetworks.bridge.sdk.ClientProvider;
-import org.sagebionetworks.bridge.sdk.models.accounts.SignInCredentials;
 import org.sagebionetworks.bridge.sqs.PollSqsWorker;
 import org.sagebionetworks.bridge.sqs.SqsHelper;
 import org.sagebionetworks.client.SynapseAdminClientImpl;
@@ -46,13 +46,6 @@ public class SpringConfig {
     private static final String CONFIG_FILE = "BridgeExporter.conf";
     private static final String DEFAULT_CONFIG_FILE = CONFIG_FILE;
     private static final String USER_CONFIG_FILE = System.getProperty("user.home") + "/" + CONFIG_FILE;
-
-    // ClientProvider needs to be statically configured.
-    static {
-        // set client info
-        ClientInfo clientInfo = new ClientInfo.Builder().withAppName("BridgeEX").withAppVersion(2).build();
-        ClientProvider.setClientInfo(clientInfo);
-    }
 
     @Bean
     public Config bridgeConfig() {
@@ -72,12 +65,19 @@ public class SpringConfig {
     }
 
     @Bean
-    public SignInCredentials bridgeWorkerCredentials() {
+    public ClientManager bridgeClientManager() {
+        ClientInfo clientInfo = new ClientInfo().appName("BridgeEX").appVersion(2);
+        return new ClientManager.Builder().withClientInfo(clientInfo).withSignIn(bridgeCredentials()).build();
+    }
+
+    @Bean
+    public SignIn bridgeCredentials() {
+        // sign-in credentials
         Config config = bridgeConfig();
         String study = config.get("bridge.worker.study");
         String email = config.get("bridge.worker.email");
         String password = config.get("bridge.worker.password");
-        return new SignInCredentials(study, email, password);
+        return new SignIn().study(study).email(email).password(password);
     }
 
     @Bean

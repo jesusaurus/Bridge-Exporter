@@ -21,10 +21,10 @@ import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
+import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
+import org.sagebionetworks.bridge.rest.model.UploadSchema;
 import org.sagebionetworks.bridge.s3.S3Helper;
 import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldDefinition;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
 
 /**
  * This class contains utility methods that call multiple backend services that doesn't really fit into any of the

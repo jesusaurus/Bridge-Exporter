@@ -4,18 +4,17 @@ package org.sagebionetworks.bridge.exporter.handler;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Multiset;
 import com.google.common.collect.SetMultimap;
 import org.joda.time.DateTime;
 import org.joda.time.LocalDate;
-import org.sagebionetworks.bridge.sdk.models.healthData.RecordExportStatusRequest;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -35,10 +34,10 @@ import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
 import org.sagebionetworks.bridge.exporter.worker.TsvInfo;
 import org.sagebionetworks.bridge.file.InMemoryFileHelper;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
+import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
+import org.sagebionetworks.bridge.rest.model.UploadFieldType;
+import org.sagebionetworks.bridge.rest.model.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldDefinition;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadFieldType;
-import org.sagebionetworks.bridge.sdk.models.upload.UploadSchema;
 
 import static org.junit.Assert.fail;
 import static org.mockito.Matchers.any;
@@ -101,8 +100,6 @@ public class SynapseExportHandlerTest {
     public static final int TEST_SYNAPSE_PRINCIPAL_ID = 123456;
     public static final String TEST_SYNAPSE_PROJECT_ID = "test-synapse-project-id";
     public static final String TEST_SYNAPSE_TABLE_ID = "test-synapse-table-id";
-
-    private static final RecordExportStatusRequest.ExporterStatus TEST_EXPORTER_STATUS = RecordExportStatusRequest.ExporterStatus.SUCCEEDED;
 
     private InMemoryFileHelper mockFileHelper;
     private SynapseHelper mockSynapseHelper;
@@ -333,25 +330,19 @@ public class SynapseExportHandlerTest {
         // int (non-string), short string, long string (large text aka blob), and freeform text -> attachment
         // Since we want to test that our hack works, we'll need to use the breastcancer-BreastCancer-DailyJournal-v1
         // schema, field DailyJournalStep103_data.content
-        UploadSchema testSchema = BridgeHelperTest.simpleSchemaBuilder().withStudyId(TEST_STUDY_ID)
-                .withSchemaId(TEST_SCHEMA_ID).withRevision(TEST_SCHEMA_REV).withFieldDefinitions(
-                        new UploadFieldDefinition.Builder().withName("foo").withType(UploadFieldType.STRING)
-                                .withMaxLength(20).build(),
-                        new UploadFieldDefinition.Builder().withName("foooo").withType(UploadFieldType.STRING)
-                                .withMaxLength(9999).build(),
-                        new UploadFieldDefinition.Builder().withName("unbounded-foo").withType(UploadFieldType.STRING)
-                                .withUnboundedText(true).build(),
-                        new UploadFieldDefinition.Builder().withName("bar").withType(UploadFieldType.INT).build(),
-                        new UploadFieldDefinition.Builder().withName("submitTime").withType(UploadFieldType.TIMESTAMP)
-                                .build(),
-                        new UploadFieldDefinition.Builder().withName("sports").withType(UploadFieldType.MULTI_CHOICE)
-                                .withMultiChoiceAnswerList("fencing", "football", "running", "swimming").build(),
-                        new UploadFieldDefinition.Builder().withName("delicious")
-                                .withType(UploadFieldType.MULTI_CHOICE).withMultiChoiceAnswerList("Yes", "No")
-                                .withAllowOtherChoices(true).build(),
-                        new UploadFieldDefinition.Builder().withName(FREEFORM_FIELD_NAME)
-                                .withType(UploadFieldType.STRING).build())
-                .build();
+        UploadSchema testSchema = BridgeHelperTest.simpleSchemaBuilder().studyId(TEST_STUDY_ID)
+                .schemaId(TEST_SCHEMA_ID).revision((long) TEST_SCHEMA_REV).fieldDefinitions(ImmutableList.of(
+                        new UploadFieldDefinition().name("foo").type(UploadFieldType.STRING).maxLength(20),
+                        new UploadFieldDefinition().name("foooo").type(UploadFieldType.STRING).maxLength(9999),
+                        new UploadFieldDefinition().name("unbounded-foo").type(UploadFieldType.STRING)
+                                .unboundedText(true),
+                        new UploadFieldDefinition().name("bar").type(UploadFieldType.INT),
+                        new UploadFieldDefinition().name("submitTime").type(UploadFieldType.TIMESTAMP),
+                        new UploadFieldDefinition().name("sports").type(UploadFieldType.MULTI_CHOICE)
+                                .multiChoiceAnswerList(ImmutableList.of("fencing", "football", "running", "swimming")),
+                        new UploadFieldDefinition().name("delicious").type(UploadFieldType.MULTI_CHOICE)
+                                .multiChoiceAnswerList(ImmutableList.of("Yes", "No")).allowOtherChoices(true),
+                        new UploadFieldDefinition().name(FREEFORM_FIELD_NAME).type(UploadFieldType.STRING)));
         UploadSchemaKey testSchemaKey = BridgeExporterUtil.getSchemaKeyFromSchema(testSchema);
 
         // Set up handler and test. setSchema() needs to be called before setup, since a lot of the stuff in the
@@ -371,8 +362,8 @@ public class SynapseExportHandlerTest {
         // uploadFromS3ToSynapseFileHandle() to avoid hitting real back-ends.
         when(mockSynapseHelper.serializeToSynapseType(any(), any(), any(), any(), any())).thenCallRealMethod();
 
-        UploadFieldDefinition freeformAttachmentFieldDef = new UploadFieldDefinition.Builder()
-                .withName(FREEFORM_FIELD_NAME).withType(UploadFieldType.ATTACHMENT_V2).build();
+        UploadFieldDefinition freeformAttachmentFieldDef = new UploadFieldDefinition().name(FREEFORM_FIELD_NAME)
+                .type(UploadFieldType.ATTACHMENT_V2);
         when(mockSynapseHelper.uploadFromS3ToSynapseFileHandle(task.getTmpDir(), TEST_SYNAPSE_PROJECT_ID,
                 freeformAttachmentFieldDef, DUMMY_ATTACHMENT_ID)).thenReturn(
                 DUMMY_FILEHANDLE_ID);
