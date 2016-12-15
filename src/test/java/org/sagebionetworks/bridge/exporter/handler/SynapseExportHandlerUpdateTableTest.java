@@ -12,6 +12,7 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import java.io.File;
@@ -32,6 +33,8 @@ import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
+import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterNonRetryableException;
+import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterTsvException;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
 import org.sagebionetworks.bridge.exporter.util.TestUtil;
@@ -203,7 +206,10 @@ public class SynapseExportHandlerUpdateTableTest {
             handler.uploadToSynapseForTask(task);
             fail("expected exception");
         } catch (BridgeExporterException ex) {
-            // expected exception
+            assertTrue(ex instanceof BridgeExporterTsvException);
+            assertTrue(ex.getMessage().startsWith("TSV was not successfully initialized: "));
+            assertTrue(ex.getCause() instanceof BridgeExporterNonRetryableException);
+            assertEquals(ex.getCause().getMessage(), "Table has deleted and/or modified columns");
         }
 
         // verify we did not update the table
@@ -228,7 +234,10 @@ public class SynapseExportHandlerUpdateTableTest {
             handler.handle(subtask);
             fail("expected exception");
         } catch (BridgeExporterException ex) {
-            assertEquals(ex.getMessage(), "TSV was not successfully initialized");
+            assertTrue(ex instanceof BridgeExporterTsvException);
+            assertTrue(ex.getMessage().startsWith("TSV was not successfully initialized: "));
+            assertTrue(ex.getCause() instanceof BridgeExporterNonRetryableException);
+            assertEquals(ex.getCause().getMessage(), "Table has deleted and/or modified columns");
         }
     }
 

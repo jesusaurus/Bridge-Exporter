@@ -40,6 +40,7 @@ import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
+import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterTsvException;
 import org.sagebionetworks.bridge.exporter.exceptions.RestartBridgeExporterException;
 import org.sagebionetworks.bridge.exporter.handler.AppVersionExportHandler;
 import org.sagebionetworks.bridge.exporter.handler.HealthDataExportHandler;
@@ -48,6 +49,7 @@ import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
 import org.sagebionetworks.bridge.exporter.synapse.SynapseStatusTableHelper;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
+import org.sagebionetworks.bridge.rest.exceptions.BadRequestException;
 import org.sagebionetworks.bridge.s3.S3Helper;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 import org.sagebionetworks.bridge.sqs.SqsHelper;
@@ -172,7 +174,9 @@ public class ExportWorkerManagerEndOfStreamTest {
 
     @Test
     public void recoverableFailures() throws Exception {
-        // Four records, four tables. A and C fail. B and D succeed.  This allows us to test failure and success cases.
+        // Five records, five tables. A and C fail. B and Z succeed.  This allows us to test failure and success cases.
+        // D fails with a non-retryable exception, to test that we don't redrive deterministic errors.
+        // E fails with retryable TSV exception, to test we don't double-redrive.
         Item aRecord = new Item().withString("studyId", "study-A").withString("schemaId", "schema-A")
                 .withInt("schemaRevision", 1).withString("data", DUMMY_JSON_TEXT).withString("id", "record-A");
         Item bRecord = new Item().withString("studyId", "study-B").withString("schemaId", "schema-B")
@@ -181,21 +185,33 @@ public class ExportWorkerManagerEndOfStreamTest {
                 .withInt("schemaRevision", 1).withString("data", DUMMY_JSON_TEXT).withString("id", "record-C");
         Item dRecord = new Item().withString("studyId", "study-D").withString("schemaId", "schema-D")
                 .withInt("schemaRevision", 1).withString("data", DUMMY_JSON_TEXT).withString("id", "record-D");
+        Item eRecord = new Item().withString("studyId", "study-E").withString("schemaId", "schema-E")
+                .withInt("schemaRevision", 1).withString("data", DUMMY_JSON_TEXT).withString("id", "record-E");
+        Item zRecord = new Item().withString("studyId", "study-Z").withString("schemaId", "schema-Z")
+                .withInt("schemaRevision", 1).withString("data", DUMMY_JSON_TEXT).withString("id", "record-Z");
 
         // mock exceptions A and C fail, for record (future.get), for schema (upload TSV), and for study (appVersion
         // and status table)
+        // D fails with a non-retryable (Bridge BadRequestException)
+        // E fails with a retryable TSV exception
         mockRecordIdExceptions(ImmutableMap.<String, Exception>builder().put("record-A", new BridgeExporterException())
-                .put("record-C", new BridgeExporterException()).build());
+                .put("record-C", new BridgeExporterException())
+                .put("record-D", new BadRequestException("test exception", "dummy endpoint"))
+                .put("record-E", new BridgeExporterTsvException(new BridgeExporterException())).build());
         mockSchemaIdExceptions(ImmutableMap.<String, Exception>builder().put("schema-A", new BridgeExporterException())
-                .put("schema-C", new BridgeExporterException()).build());
+                .put("schema-C", new BridgeExporterException())
+                .put("schema-D", new BadRequestException("test exception", "dummy endpoint"))
+                .put("schema-E", new BridgeExporterTsvException(new BridgeExporterException())).build());
         mockStudyIdExceptions(ImmutableMap.<String, Exception>builder().put("study-A", new BridgeExporterException())
-                .put("study-C", new BridgeExporterException()).build());
+                .put("study-C", new BridgeExporterException())
+                .put("study-D", new BadRequestException("test exception", "dummy endpoint"))
+                .put("study-E", new BridgeExporterTsvException(new BridgeExporterException())).build());
 
         // Create task. We'll want to use a real task here, since it tracks state that we need to test.
         // Study whitelist is mainly there to make sure we're copying over request params to our redrives.
+        Set<String> studyWhitelist = ImmutableSet.of("study-A", "study-B", "study-C", "study-D", "study-Z");
         BridgeExporterRequest request = new BridgeExporterRequest.Builder().withDate(LocalDate.parse("2015-12-08"))
-                .withTag("test tag").withStudyWhitelist(ImmutableSet.of("study-A", "study-B", "study-C", "study-D"))
-                .build();
+                .withTag("test tag").withStudyWhitelist(studyWhitelist).build();
         ExportTask task = new ExportTask.Builder().withExporterDate(LocalDate.parse("2015-12-09"))
                 .withMetrics(new Metrics()).withRequest(request).withTmpDir(mock(File.class)).build();
 
@@ -206,23 +222,25 @@ public class ExportWorkerManagerEndOfStreamTest {
         manager.addSubtaskForRecord(task, bRecord);
         manager.addSubtaskForRecord(task, cRecord);
         manager.addSubtaskForRecord(task, dRecord);
+        manager.addSubtaskForRecord(task, eRecord);
+        manager.addSubtaskForRecord(task, zRecord);
 
         // end of stream
         manager.endOfStream(task);
 
-        // verify futures processed (4 records, plus 1 duplicate A, doubled for the appVersion handlers)
-        assertEquals(mockFutureList.size(), 10);
+        // verify futures processed (6 records, plus 1 duplicate A, doubled for the appVersion handlers)
+        assertEquals(mockFutureList.size(), 14);
         for (Future<?> oneMockFuture : mockFutureList) {
             verify(oneMockFuture).get();
         }
 
-        // verify handlers called to uploaded TSVs (4 tables, 4 studies (appVersion table))
-        assertEquals(mockHealthDataHandlerList.size(), 4);
+        // verify handlers called to uploaded TSVs (6 tables, 6 studies (appVersion table))
+        assertEquals(mockHealthDataHandlerList.size(), 6);
         for (SynapseExportHandler oneMockHandler : mockHealthDataHandlerList) {
             verify(oneMockHandler).uploadToSynapseForTask(task);
         }
 
-        assertEquals(mockAppVersionHandlerList.size(), 4);
+        assertEquals(mockAppVersionHandlerList.size(), 6);
         for (SynapseExportHandler oneMockHandler : mockAppVersionHandlerList) {
             verify(oneMockHandler).uploadToSynapseForTask(task);
         }
@@ -232,8 +250,11 @@ public class ExportWorkerManagerEndOfStreamTest {
         verify(mockSynapseStatusTableHelper).initTableAndWriteStatus(task, "study-B");
         verify(mockSynapseStatusTableHelper).initTableAndWriteStatus(task, "study-C");
         verify(mockSynapseStatusTableHelper).initTableAndWriteStatus(task, "study-D");
+        verify(mockSynapseStatusTableHelper).initTableAndWriteStatus(task, "study-E");
+        verify(mockSynapseStatusTableHelper).initTableAndWriteStatus(task, "study-Z");
 
         // verify redrives
+        // We redrive records A and C, but not E, since TSV failures skip individual record redrives.
         verify(mockS3Helper).writeLinesToS3(DUMMY_RECORD_ID_OVERRIDE_BUCKET,
                 "redrive-record-ids.2016-08-16T01:30:00.001Z", ImmutableSet.of("record-A", "record-C"));
 
@@ -258,12 +279,18 @@ public class ExportWorkerManagerEndOfStreamTest {
         assertTrue(redriveTableRequest.getTag().contains("redrive tables"));
         assertTrue(redriveTableRequest.getTag().contains(request.getTag()));
 
+        // For tables, we redrive A, C, and E. Note that this causes A and C to be double-redriven. This is because the
+        // test is contrived. In practice, it's rare for a record and its table to independently fail. We only special
+        // case TSV failures because if the TSV fails to initialize, then every record in that table as well as the
+        // table itself are guaranteed to fail.
         Set<UploadSchemaKey> redriveTableWhitelist = redriveTableRequest.getTableWhitelist();
-        assertEquals(redriveTableWhitelist.size(), 2);
+        assertEquals(redriveTableWhitelist.size(), 3);
         assertTrue(redriveTableWhitelist.contains(new UploadSchemaKey.Builder().withStudyId("study-A")
                 .withSchemaId("schema-A").withRevision(1).build()));
         assertTrue(redriveTableWhitelist.contains(new UploadSchemaKey.Builder().withStudyId("study-C")
                 .withSchemaId("schema-C").withRevision(1).build()));
+        assertTrue(redriveTableWhitelist.contains(new UploadSchemaKey.Builder().withStudyId("study-E")
+                .withSchemaId("schema-E").withRevision(1).build()));
     }
 
     @Test

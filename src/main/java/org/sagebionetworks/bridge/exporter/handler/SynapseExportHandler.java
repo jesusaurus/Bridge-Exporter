@@ -18,7 +18,8 @@ import com.amazonaws.services.dynamodbv2.document.Item;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
-import org.sagebionetworks.bridge.exporter.helper.BridgeHelper;
+
+import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterNonRetryableException;
 import org.sagebionetworks.client.exceptions.SynapseException;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
@@ -162,7 +163,7 @@ public abstract class SynapseExportHandler extends ExportHandler {
             tsvInfo = new TsvInfo(columnNameList, tsvFile, tsvWriter);
         } catch (BridgeExporterException | FileNotFoundException | SchemaNotFoundException | SynapseException ex) {
             LOG.error("Error initializing TSV for table " + getDdbTableKeyValue() + ": " + ex.getMessage(), ex);
-            tsvInfo = TsvInfo.INIT_ERROR_TSV_INFO;
+            tsvInfo = new TsvInfo(ex);
         }
 
         setTsvInfoForTask(task, tsvInfo);
@@ -274,7 +275,7 @@ public abstract class SynapseExportHandler extends ExportHandler {
         }
 
         if (shouldThrow) {
-            throw new BridgeExporterException("Table has deleted and/or modified columns");
+            throw new BridgeExporterNonRetryableException("Table has deleted and/or modified columns");
         }
 
         // Optimization: Were any columns added?
@@ -402,11 +403,9 @@ public abstract class SynapseExportHandler extends ExportHandler {
 
     /**
      * dummy method to implement by healthDataExportHandler to handle update record exporter status
-     * @param tsvInfo
      * @throws BridgeExporterException
      */
     protected void postProcessTsv(TsvInfo tsvInfo) throws BridgeExporterException {
 
-    };
-
+    }
 }

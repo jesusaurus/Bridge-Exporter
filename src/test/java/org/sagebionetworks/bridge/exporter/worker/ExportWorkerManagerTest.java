@@ -18,7 +18,10 @@ import java.util.concurrent.Future;
 import com.amazonaws.services.dynamodbv2.document.DynamoDB;
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.collect.ImmutableMap;
+import com.google.gson.JsonParseException;
+import com.google.gson.stream.MalformedJsonException;
 import org.mockito.ArgumentCaptor;
 import org.sagebionetworks.client.exceptions.SynapseClientException;
 import org.sagebionetworks.client.exceptions.SynapseServerException;
@@ -30,6 +33,7 @@ import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.exporter.dynamo.DynamoHelper;
 import org.sagebionetworks.bridge.exporter.dynamo.StudyInfo;
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
+import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterNonRetryableException;
 import org.sagebionetworks.bridge.exporter.handler.AppVersionExportHandler;
 import org.sagebionetworks.bridge.exporter.handler.HealthDataExportHandler;
 import org.sagebionetworks.bridge.exporter.handler.IosSurveyExportHandler;
@@ -37,6 +41,8 @@ import org.sagebionetworks.bridge.exporter.helper.BridgeHelper;
 import org.sagebionetworks.bridge.exporter.helper.BridgeHelperTest;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
+import org.sagebionetworks.bridge.rest.exceptions.BadRequestException;
+import org.sagebionetworks.bridge.rest.exceptions.BridgeSDKException;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
 public class ExportWorkerManagerTest {
@@ -352,5 +358,37 @@ public class ExportWorkerManagerTest {
     @Test(dataProvider = "isSynapseDownProvider")
     public void isSynapseDown(Exception exception, boolean expected) {
         assertEquals(ExportWorkerManager.isSynapseDown(exception), expected);
+    }
+
+    @SuppressWarnings("serial")
+    private static class TestJacksonException extends JsonProcessingException {
+        protected TestJacksonException() {
+            super("test exception");
+        }
+    }
+
+    @DataProvider(name = "isRetryableProvider")
+    public Object[][] isRetryableProvider() {
+        // { exception, expected }
+        return new Object[][] {
+                { new BadRequestException("test exception", "dummy endpoint"), false },
+                { new BridgeSDKException("branch coverage", 310), true },
+                { new BridgeSDKException("test 400 exception", 400), false },
+                { new BridgeSDKException("test 500 exception", 500), true },
+                { new TestJacksonException(), false },
+                { new JsonParseException("test exception"), false },
+                { new MalformedJsonException("test exception"), false },
+                { new BridgeExporterNonRetryableException(), false },
+                { new IllegalArgumentException(), true },
+                { new BridgeExporterException(), true },
+
+                // branch coverage
+                { null, false },
+        };
+    }
+
+    @Test(dataProvider = "isRetryableProvider")
+    public void isRetryable(Exception exception, boolean expected) {
+        assertEquals(ExportWorkerManager.isRetryable(exception), expected);
     }
 }
