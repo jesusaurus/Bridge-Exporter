@@ -20,6 +20,8 @@ import com.amazonaws.services.dynamodbv2.document.Table;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Stopwatch;
+import com.google.gson.JsonParseException;
+import com.google.gson.stream.MalformedJsonException;
 import org.apache.commons.lang.StringUtils;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
@@ -32,6 +34,8 @@ import org.springframework.stereotype.Component;
 
 import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.exporter.dynamo.DynamoHelper;
+import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterNonRetryableException;
+import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterTsvException;
 import org.sagebionetworks.bridge.exporter.exceptions.RestartBridgeExporterException;
 import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
 import org.sagebionetworks.bridge.exporter.handler.AppVersionExportHandler;
@@ -48,6 +52,7 @@ import org.sagebionetworks.bridge.exporter.synapse.SynapseStatusTableHelper;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.file.FileHelper;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
+import org.sagebionetworks.bridge.rest.exceptions.BridgeSDKException;
 import org.sagebionetworks.bridge.s3.S3Helper;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
@@ -515,10 +520,14 @@ public class ExportWorkerManager {
                     throw new RestartBridgeExporterException("Restarting Bridge Exporter; last recordId=" + recordId +
                             ": " + originalEx.getMessage(), originalEx);
                 } else {
-                    // This failure is recoverable. Track which record IDs need to be redriven, so we can redrive it
-                    // later.
                     LOG.error("Error completing subtask for recordId=" + recordId + ": " + ex.getMessage(), ex);
-                    redriveRecordIdSet.add(recordId);
+                    // We exclude TSV exceptions here. Since TSVs cause the whole table to fail, redrive the table
+                    // instead of individual records.
+                    if (!(originalEx instanceof BridgeExporterTsvException) && isRetryable(originalEx)) {
+                        // This failure is recoverable. Track which record IDs need to be redriven, so we can redrive it
+                        // later.
+                        redriveRecordIdSet.add(recordId);
+                    }
                 }
             }
         }
@@ -560,15 +569,23 @@ public class ExportWorkerManager {
             try {
                 handler.uploadToSynapseForTask(task);
             } catch (BridgeExporterException | IOException | RuntimeException | SynapseException ex) {
-                if (isSynapseDown(ex)) {
+                Throwable originalEx = ex;
+                if (originalEx instanceof BridgeExporterTsvException) {
+                    // TSV exception is just a wrapper. Go down one level to get the real exception.
+                    originalEx = originalEx.getCause();
+                }
+
+                if (isSynapseDown(originalEx)) {
                     // Similarly, if Synapse is down, restart BridgeEX.
                     throw new RestartBridgeExporterException("Restarting Bridge Exporter; last schema=" + schemaKey +
-                            ": " + ex.getMessage(), ex);
+                            ": " + originalEx.getMessage(), originalEx);
                 } else {
-                    // Similarly, track which tables (schemas) to redrive.
-                    LOG.error("Error uploading health data to Synapse for schema=" + schemaKey + ": " + ex.getMessage(),
-                            ex);
-                    redriveTableWhitelist.add(schemaKey);
+                    LOG.error("Error uploading health data to Synapse for schema=" + schemaKey + ": " +
+                            originalEx.getMessage(), originalEx);
+                    if (isRetryable(originalEx)) {
+                        // Similarly, track which tables (schemas) to redrive.
+                        redriveTableWhitelist.add(schemaKey);
+                    }
                 }
             }
         }
@@ -610,7 +627,7 @@ public class ExportWorkerManager {
         for (String oneStudyId : task.getStudyIdSet()) {
             try {
                 synapseStatusTableHelper.initTableAndWriteStatus(task, oneStudyId);
-            } catch (BridgeExporterException | InterruptedException | SynapseException ex) {
+            } catch (BridgeExporterException | InterruptedException | RuntimeException | SynapseException ex) {
                 // TODO: Improved error handling
                 // Similarly, status table is also not critical, but we should think about how to improve this.
                 LOG.error("Error writing to status table for study=" + oneStudyId + ": " + ex.getMessage(), ex);
@@ -626,5 +643,35 @@ public class ExportWorkerManager {
     // Package-scoped for unit tests.
     static boolean isSynapseDown(Throwable t) {
         return (t instanceof SynapseServerException && ((SynapseServerException)t).getStatusCode() == 503);
+    }
+
+    // For redrives, we need to know whether an exception is retryable or not. If it is, we can redrive it. If not, we
+    // log the exception but otherwise swallow it.
+    //
+    // Package-scoped for unit tests.
+    static boolean isRetryable(Throwable t) {
+        if (t == null) {
+            // This should never happen. But if it does, assume something really bad happened and don't try to redrive.
+            return false;
+        } else if (t instanceof BridgeSDKException) {
+            // If this is a Bridge exception in the 400s, this is not retryable.
+            int statusCode = ((BridgeSDKException) t).getStatusCode();
+            if (statusCode >= 400 && statusCode < 500) {
+                return false;
+            }
+        } else if (t instanceof JsonProcessingException || t instanceof JsonParseException ||
+                t instanceof MalformedJsonException) {
+            // JSON parse exceptions are generally also not retryable. Note that BridgeEX uses Jackson, but
+            // BridgeJavaSDK uses GSON, so we need to handle both.
+            // Jackson uses JsonProcessingException as their base exception.
+            // GSON uses JsonParseException and MalformedJsonException.
+            return false;
+        } else if (t instanceof BridgeExporterNonRetryableException) {
+            // BridgeExporterNonRetryableExceptions are not retryable. (It's in the name.)
+            return false;
+        }
+
+        // Everything else should be retryable.
+        return true;
     }
 }

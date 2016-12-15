@@ -10,6 +10,7 @@ import com.google.common.base.Joiner;
 
 import com.google.common.collect.ImmutableList;
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
+import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterTsvException;
 
 /**
  * Helper class that keeps track of a TSV file, the writer that writes to the file, and a method for tracking and
@@ -21,25 +22,10 @@ public class TsvInfo {
     private final List<String> columnNameList;
     private final File file;
     private final PrintWriter writer;
-    private final boolean initError;
+    private final Throwable initError;
     private final List<String> recordIds = new ArrayList<>();
 
     private int lineCount = 0;
-
-    /**
-     * Singleton instance of a TsvInfo that failed to initialize (because they all have the same internal state). Used
-     * to represent, for example, TSVs where creating or updating the Synapse table failed, or where the schema changes
-     * dictate an impossible table update.
-     */
-    public static final TsvInfo INIT_ERROR_TSV_INFO = new TsvInfo();
-
-    /** Private constructor that represents a TSV initialization error. */
-    private TsvInfo() {
-        this.columnNameList = null;
-        this.file = null;
-        this.writer = null;
-        this.initError = true;
-    }
 
     /**
      * TSV info constructor.
@@ -55,15 +41,28 @@ public class TsvInfo {
         this.columnNameList = columnNameList;
         this.file = file;
         this.writer = writer;
-        this.initError = false;
+        this.initError = null;
 
         writer.println(JOINER_COLUMN_JOINER.join(columnNameList));
     }
 
+    /**
+     * Constructs a TsvInfo that failed to initialize. Used to represent, for example, TSVs where creating or updating
+     * the Synapse table failed, or where the schema changes dictate an impossible table update. This wraps an internal
+     * exception, so that calls further down the chain can handle the error accordingly.
+     */
+    public TsvInfo(Throwable t) {
+        this.columnNameList = null;
+        this.file = null;
+        this.writer = null;
+        this.initError = t;
+    }
+
     /** Checks if the TSV is properly initialized. Throws a BridgeExporterException if it isn't. */
     public void checkInitAndThrow() throws BridgeExporterException {
-        if (initError) {
-            throw new BridgeExporterException("TSV was not successfully initialized");
+        if (initError != null) {
+            throw new BridgeExporterTsvException("TSV was not successfully initialized: " + initError.getMessage(),
+                    initError);
         }
     }
 
@@ -90,7 +89,6 @@ public class TsvInfo {
 
     /**
      * helper method to add a record id into the list
-     * @param recordId
      */
     public void addRecordId(String recordId) {
         this.recordIds.add(recordId);

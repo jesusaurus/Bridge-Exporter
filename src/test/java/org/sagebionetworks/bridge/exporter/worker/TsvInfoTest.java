@@ -7,7 +7,6 @@ import static org.testng.Assert.*;
 
 import java.io.File;
 import java.io.PrintWriter;
-import java.util.ArrayList;
 import java.util.List;
 
 import com.google.common.collect.ImmutableList;
@@ -16,6 +15,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
+import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterTsvException;
 
 public class TsvInfoTest {
     private static final List<String> COLUMN_NAME_LIST = ImmutableList.of("foo", "bar");
@@ -72,29 +72,35 @@ public class TsvInfoTest {
 
     @Test
     public void initError() {
+        Exception testEx = new Exception();
+        TsvInfo errorTsvInfo = new TsvInfo(testEx);
+
         try {
-            TsvInfo.INIT_ERROR_TSV_INFO.checkInitAndThrow();
+            errorTsvInfo.checkInitAndThrow();
             fail("expected exception");
         } catch (BridgeExporterException ex) {
-            // expected exception
+            assertTrue(ex instanceof BridgeExporterTsvException);
+            assertSame(ex.getCause(), testEx);
         }
 
         try {
-            TsvInfo.INIT_ERROR_TSV_INFO.writeRow(ImmutableMap.of());
+            errorTsvInfo.writeRow(ImmutableMap.of());
             fail("expected exception");
         } catch (BridgeExporterException ex) {
-            // expected exception
+            assertTrue(ex instanceof BridgeExporterTsvException);
+            assertSame(ex.getCause(), testEx);
         }
 
         try {
-            TsvInfo.INIT_ERROR_TSV_INFO.flushAndCloseWriter();
+            errorTsvInfo.flushAndCloseWriter();
             fail("expected exception");
         } catch (BridgeExporterException ex) {
-            // expected exception
+            assertTrue(ex instanceof BridgeExporterTsvException);
+            assertSame(ex.getCause(), testEx);
         }
 
-        assertNull(TsvInfo.INIT_ERROR_TSV_INFO.getFile());
-        assertEquals(TsvInfo.INIT_ERROR_TSV_INFO.getLineCount(), 0);
-        assertEquals(TsvInfo.INIT_ERROR_TSV_INFO.getRecordIds().size(), 0);
+        assertNull(errorTsvInfo.getFile());
+        assertEquals(errorTsvInfo.getLineCount(), 0);
+        assertEquals(errorTsvInfo.getRecordIds().size(), 0);
     }
 }
