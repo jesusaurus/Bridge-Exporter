@@ -5,9 +5,12 @@ import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
@@ -153,7 +156,7 @@ public class SynapseHelperUploadAttachmentTest {
         SynapseHelper synapseHelper = spy(new SynapseHelper());
         synapseHelper.setConfig(mockConfig());
         synapseHelper.setFileHelper(mockFileHelper);
-        synapseHelper.setS3Helper(mockS3Helper(mockFileHelper, expectedFilename));
+        synapseHelper.setS3Helper(mockS3Helper(mockFileHelper, expectedFilename, DUMMY_FILE_CONTENT));
 
         // Spy createFileHandle. This is tested somewhere else, and spying it here means we don't have to change tests
         // in 3 different places when we change the createFileHandle implementation.
@@ -184,6 +187,32 @@ public class SynapseHelperUploadAttachmentTest {
     }
 
     @Test
+    public void uploadEmptyAttachment() throws Exception {
+        // mock (in-memory) file helper
+        InMemoryFileHelper mockFileHelper = new InMemoryFileHelper();
+        File tmpDir = mockFileHelper.createTempDir();
+
+        // set up other mocks
+        SynapseHelper synapseHelper = spy(new SynapseHelper());
+        synapseHelper.setConfig(mockConfig());
+        synapseHelper.setFileHelper(mockFileHelper);
+        synapseHelper.setS3Helper(mockS3Helper(mockFileHelper, "test-attId.blob", ""));
+
+        // execute and validate
+        String fileHandleId = synapseHelper.uploadFromS3ToSynapseFileHandle(tmpDir, TEST_PROJECT_ID,
+                new UploadFieldDefinition().name("test.blob").type(UploadFieldType.ATTACHMENT_BLOB),
+                TEST_ATTACHMENT_ID);
+        assertNull(fileHandleId);
+
+        // validate that createFileHandle is never called
+        verify(synapseHelper, never()).createFileHandleWithRetry(any(), any() ,any());
+
+        // validate that SynapseHelper cleans up after itself
+        mockFileHelper.deleteDir(tmpDir);
+        assertTrue(mockFileHelper.isEmpty());
+    }
+
+    @Test
     public void uploadFailureStillDeletesFiles() throws Exception {
         // mock (in-memory) file helper
         InMemoryFileHelper mockFileHelper = new InMemoryFileHelper();
@@ -193,7 +222,7 @@ public class SynapseHelperUploadAttachmentTest {
         SynapseHelper synapseHelper = spy(new SynapseHelper());
         synapseHelper.setConfig(mockConfig());
         synapseHelper.setFileHelper(mockFileHelper);
-        synapseHelper.setS3Helper(mockS3Helper(mockFileHelper, "test-attId.blob"));
+        synapseHelper.setS3Helper(mockS3Helper(mockFileHelper, "test-attId.blob", DUMMY_FILE_CONTENT));
 
         // Spy createFileHandle. This is tested somewhere else, and spying it here means we don't have to change tests
         // in 3 different places when we change the createFileHandle implementation.
@@ -221,14 +250,14 @@ public class SynapseHelperUploadAttachmentTest {
         return mockConfig;
     }
 
-    private static S3Helper mockS3Helper(FileHelper mockFileHelper, String expectedFilename) {
+    private static S3Helper mockS3Helper(FileHelper mockFileHelper, String expectedFilename, String fileContent) {
         S3Helper mockS3Helper = mock(S3Helper.class);
         doAnswer(invocation -> {
             // write to file to simulate an actual download
             File destFile = invocation.getArgumentAt(2, File.class);
             assertEquals(destFile.getName(), expectedFilename);
             try (Writer destFileWriter = mockFileHelper.getWriter(destFile)) {
-                destFileWriter.write(DUMMY_FILE_CONTENT);
+                destFileWriter.write(fileContent);
             }
 
             // Java doesn't know that we don't need to return anything.
