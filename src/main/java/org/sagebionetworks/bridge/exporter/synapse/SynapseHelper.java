@@ -21,7 +21,6 @@ import org.sagebionetworks.repo.model.ACCESS_TYPE;
 import org.sagebionetworks.repo.model.AccessControlList;
 import org.sagebionetworks.repo.model.ResourceAccess;
 import org.sagebionetworks.repo.model.file.FileHandle;
-import org.sagebionetworks.repo.model.file.UploadDestination;
 import org.sagebionetworks.repo.model.status.StackStatus;
 import org.sagebionetworks.repo.model.status.StatusEnum;
 import org.sagebionetworks.repo.model.table.AppendableRowSet;
@@ -258,7 +257,7 @@ public class SynapseHelper {
      *         field definition, used to determine file name, extension, and MIME type
      * @param attachmentId
      *         attachment ID, also used as the S3 key into the attachments bucket
-     * @return the uploaded Synapse file handle ID
+     * @return the uploaded Synapse file handle ID, or null if no file handle was created
      * @throws IOException
      *         if downloading the attachment from S3 fails
      * @throws SynapseException
@@ -274,6 +273,11 @@ public class SynapseHelper {
         try {
             // download from S3
             s3Helper.downloadS3File(attachmentBucket, attachmentId, tempFile);
+
+            // don't upload empty files
+            if (fileHelper.fileSize(tempFile) == 0) {
+                return null;
+            }
 
             // upload to Synapse
             FileHandle synapseFileHandle = createFileHandleWithRetry(tempFile, mimeType, projectId);
@@ -510,10 +514,10 @@ public class SynapseHelper {
      */
     @RetryOnFailure(attempts = 2, delay = 1, unit = TimeUnit.SECONDS,
             types = { AmazonClientException.class, SynapseException.class }, randomize = false)
-    public FileHandle createFileHandleWithRetry(File file, @SuppressWarnings("UnusedParameters") String contentType,
-            String projectId) throws IOException, SynapseException {
-        UploadDestination uploadDestination = synapseClient.getDefaultUploadDestination(projectId);
-        return synapseClient.multipartUpload(file, uploadDestination.getStorageLocationId(), null, null);
+    @SuppressWarnings("UnusedParameters")
+    public FileHandle createFileHandleWithRetry(File file, String contentType, String projectId) throws IOException,
+            SynapseException {
+        return synapseClient.multipartUpload(file, null, null, null);
     }
 
     /**
