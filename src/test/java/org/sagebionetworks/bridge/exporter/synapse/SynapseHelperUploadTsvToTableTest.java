@@ -45,6 +45,8 @@ public class SynapseHelperUploadTsvToTableTest {
         Config config = mock(Config.class);
         when(config.getInt(SynapseHelper.CONFIG_KEY_SYNAPSE_ASYNC_INTERVAL_MILLIS)).thenReturn(0);
         when(config.getInt(SynapseHelper.CONFIG_KEY_SYNAPSE_ASYNC_TIMEOUT_LOOPS)).thenReturn(2);
+        // Set a very high number for rate limiting, since we don't want the rate limiter to interfere with our tests.
+        when(config.getInt(SynapseHelper.CONFIG_KEY_SYNAPSE_RATE_LIMIT_PER_SECOND)).thenReturn(1000);
 
         // mock Synapse Client - Mock everything except uploadCsvToTableAsyncGet(), which depends on the test.
         mockSynapseClient = mock(SynapseClient.class);

@@ -13,6 +13,7 @@ import com.amazonaws.AmazonClientException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.util.concurrent.RateLimiter;
 import com.jcabi.aspects.RetryOnFailure;
 import org.sagebionetworks.client.SynapseClient;
 import org.sagebionetworks.client.exceptions.SynapseException;
@@ -37,6 +38,7 @@ import org.springframework.stereotype.Component;
 
 import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
+import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.file.FileHelper;
 import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
 import org.sagebionetworks.bridge.rest.model.UploadFieldType;
@@ -53,6 +55,7 @@ public class SynapseHelper {
     // Config keys. Package-scoped to allow unit tests to mock.
     static final String CONFIG_KEY_SYNAPSE_ASYNC_INTERVAL_MILLIS = "synapse.async.interval.millis";
     static final String CONFIG_KEY_SYNAPSE_ASYNC_TIMEOUT_LOOPS = "synapse.async.timeout.loops";
+    static final String CONFIG_KEY_SYNAPSE_RATE_LIMIT_PER_SECOND = "synapse.rate.limit.per.second";
 
     // Shared constants.
     public static final Set<ACCESS_TYPE> ACCESS_TYPE_ALL = ImmutableSet.copyOf(ACCESS_TYPE.values());
@@ -124,12 +127,18 @@ public class SynapseHelper {
     private S3Helper s3Helper;
     private SynapseClient synapseClient;
 
+    // Rate limiter, used to limit the amount of traffic to Synapse. Synapse throttles at 10 requests per second.
+    private final RateLimiter rateLimiter = RateLimiter.create(10.0);
+
     /** Config, used to get the attachment S3 bucket to get Bridge attachments. */
     @Autowired
     public final void setConfig(Config config) {
         this.asyncIntervalMillis = config.getInt(CONFIG_KEY_SYNAPSE_ASYNC_INTERVAL_MILLIS);
         this.asyncTimeoutLoops = config.getInt(CONFIG_KEY_SYNAPSE_ASYNC_TIMEOUT_LOOPS);
         this.attachmentBucket = config.get(BridgeExporterUtil.CONFIG_KEY_ATTACHMENT_S3_BUCKET);
+
+        int rateLimitPerSecond = config.getInt(CONFIG_KEY_SYNAPSE_RATE_LIMIT_PER_SECOND);
+        rateLimiter.setRate(rateLimitPerSecond);
     }
 
     /** File helper, used when we need to create a temporary file for downloads and uploads. */
@@ -175,7 +184,7 @@ public class SynapseHelper {
      * @throws SynapseException
      *         if uploading the attachment to Synapse fails
      */
-    public String serializeToSynapseType(File tmpDir, String projectId, String recordId,
+    public String serializeToSynapseType(Metrics metrics, File tmpDir, String projectId, String recordId,
             UploadFieldDefinition fieldDef, JsonNode node) throws IOException, SynapseException {
         if (node == null || node.isNull()) {
             return null;
@@ -190,6 +199,10 @@ public class SynapseHelper {
             case ATTACHMENT_V2: {
                 // file handles are text nodes, where the text is the attachment ID (which is the S3 Key)
                 if (node.isTextual()) {
+                    // We want to count the number of attachments we upload to Synapse, since this is the biggest source of
+                    // Synapse traffic from us.
+                    metrics.incrementCounter("numAttachments");
+
                     String s3Key = node.textValue();
                     return uploadFromS3ToSynapseFileHandle(tmpDir, projectId, fieldDef, s3Key);
                 }
@@ -464,6 +477,7 @@ public class SynapseHelper {
             types = { InterruptedException.class, SynapseException.class }, randomize = false)
     public void appendRowsToTableWithRetry(AppendableRowSet rowSet, String tableId) throws InterruptedException,
             SynapseException {
+        rateLimiter.acquire();
         synapseClient.appendRowsToTable(rowSet, APPEND_TIMEOUT_MILLISECONDS, tableId);
     }
 
@@ -479,6 +493,7 @@ public class SynapseHelper {
     @RetryOnFailure(attempts = 2, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
             randomize = false)
     public AccessControlList createAclWithRetry(AccessControlList acl) throws SynapseException {
+        rateLimiter.acquire();
         return synapseClient.createACL(acl);
     }
 
@@ -494,6 +509,7 @@ public class SynapseHelper {
     @RetryOnFailure(attempts = 2, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
             randomize = false)
     public List<ColumnModel> createColumnModelsWithRetry(List<ColumnModel> columnList) throws SynapseException {
+        rateLimiter.acquire();
         return synapseClient.createColumnModels(columnList);
     }
 
@@ -517,6 +533,7 @@ public class SynapseHelper {
     @SuppressWarnings("UnusedParameters")
     public FileHandle createFileHandleWithRetry(File file, String contentType, String projectId) throws IOException,
             SynapseException {
+        rateLimiter.acquire();
         return synapseClient.multipartUpload(file, null, null, null);
     }
 
@@ -598,6 +615,7 @@ public class SynapseHelper {
     @RetryOnFailure(attempts = 2, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
             randomize = false)
     public TableEntity createTableWithRetry(TableEntity table) throws SynapseException {
+        rateLimiter.acquire();
         return synapseClient.createEntity(table);
     }
 
@@ -614,6 +632,7 @@ public class SynapseHelper {
     @RetryOnFailure(attempts = 2, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
             randomize = false)
     public void downloadFileHandleWithRetry(String fileHandleId, File toFile) throws SynapseException {
+        rateLimiter.acquire();
         synapseClient.downloadFromFileHandleTemporaryUrl(fileHandleId, toFile);
     }
 
@@ -629,6 +648,7 @@ public class SynapseHelper {
     @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
             randomize = false)
     public boolean isSynapseWritable() throws JSONObjectAdapterException, SynapseException {
+        rateLimiter.acquire();
         StackStatus status = synapseClient.getCurrentStackStatus();
         return status.getStatus() == StatusEnum.READ_WRITE;
     }
@@ -645,6 +665,7 @@ public class SynapseHelper {
     @RetryOnFailure(attempts = 2, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
             randomize = false)
     public List<ColumnModel> getColumnModelsForTableWithRetry(String tableId) throws SynapseException {
+        rateLimiter.acquire();
         return synapseClient.getColumnModelsForTableEntity(tableId);
     }
 
@@ -660,6 +681,7 @@ public class SynapseHelper {
     @RetryOnFailure(attempts = 2, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
             randomize = false)
     public TableEntity getTableWithRetry(String tableId) throws SynapseException {
+        rateLimiter.acquire();
         return synapseClient.getEntity(tableId, TableEntity.class);
     }
 
@@ -675,6 +697,7 @@ public class SynapseHelper {
     @RetryOnFailure(attempts = 2, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
             randomize = false)
     public TableEntity updateTableWithRetry(TableEntity table) throws SynapseException {
+        rateLimiter.acquire();
         return synapseClient.putEntity(table);
     }
 
@@ -695,6 +718,7 @@ public class SynapseHelper {
             randomize = false)
     public String uploadTsvStartWithRetry(String tableId, String fileHandleId, CsvTableDescriptor tableDescriptor)
             throws SynapseException {
+        rateLimiter.acquire();
         return synapseClient.uploadCsvToTableAsyncStart(tableId, fileHandleId, null, null, tableDescriptor);
     }
 
@@ -715,6 +739,7 @@ public class SynapseHelper {
             randomize = false)
     public UploadToTableResult getUploadTsvStatus(String jobToken, String tableId) throws SynapseException {
         try {
+            rateLimiter.acquire();
             return synapseClient.uploadCsvToTableAsyncGet(jobToken, tableId);
         } catch (SynapseResultNotReadyException ex) {
             // catch this and return null so we don't retry on "not ready"

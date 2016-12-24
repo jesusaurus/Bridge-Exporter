@@ -247,6 +247,10 @@ public class SynapseHelperUploadAttachmentTest {
     private static Config mockConfig() {
         Config mockConfig = mock(Config.class);
         when(mockConfig.get(BridgeExporterUtil.CONFIG_KEY_ATTACHMENT_S3_BUCKET)).thenReturn(TEST_ATTACHMENTS_BUCKET);
+
+        // Set a very high number for rate limiting, since we don't want the rate limiter to interfere with our tests.
+        when(mockConfig.getInt(SynapseHelper.CONFIG_KEY_SYNAPSE_RATE_LIMIT_PER_SECOND)).thenReturn(1000);
+
         return mockConfig;
     }
 

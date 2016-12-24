@@ -4,7 +4,6 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import java.io.File;
@@ -17,9 +16,11 @@ import com.fasterxml.jackson.databind.node.IntNode;
 import com.fasterxml.jackson.databind.node.LongNode;
 import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.TextNode;
+import com.google.common.collect.Multiset;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
+import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
 import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
 import org.sagebionetworks.bridge.rest.model.UploadFieldType;
@@ -31,76 +32,50 @@ public class SynapseHelperSerializeTest {
     private static final String TEST_RECORD_ID = "test-record-id";
     private static final String TEST_FIELD_NAME = "test-field-name";
 
-    @Test
-    public void nullValue() throws Exception {
-        String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                fieldDefForType(UploadFieldType.STRING), null);
-        assertNull(retVal);
+    @DataProvider(name = "testSerializeProvider")
+    public Object[][] testSerializeProvider() {
+        // fieldType, input, expected
+        return new Object[][] {
+                { UploadFieldType.STRING, null, null },
+                { UploadFieldType.STRING, NullNode.instance, null },
+
+                { UploadFieldType.BOOLEAN, BooleanNode.TRUE, "true" },
+                { UploadFieldType.BOOLEAN, BooleanNode.FALSE, "false" },
+                // We don't parse JSON strings. We only accept JSON booleans.
+                { UploadFieldType.BOOLEAN, new TextNode("true"), null },
+
+                { UploadFieldType.CALENDAR_DATE, new TextNode("2015-12-01"), "2015-12-01" },
+                { UploadFieldType.DURATION_V2, new TextNode("PT1H"), "PT1H" },
+                { UploadFieldType.TIME_V2, new TextNode("13:07:56.123"), "13:07:56.123" },
+
+                { UploadFieldType.FLOAT, new DecimalNode(new BigDecimal("3.14")), "3.14" },
+                { UploadFieldType.FLOAT, new IntNode(42), "42" },
+                // We don't parse JSON strings. We only accept numeric JSON values.
+                { UploadFieldType.FLOAT, new TextNode("3.14"), null },
+
+                { UploadFieldType.INT, new IntNode(42), "42" },
+                // This simply calls longValue() on the node, which causes truncation instead of rounding.
+                { UploadFieldType.INT, new DecimalNode(new BigDecimal("-13.9")), "-13" },
+                // We don't parse JSON strings. We only accept numeric JSON values.
+                { UploadFieldType.INT, new TextNode("-13"), null },
+
+                { UploadFieldType.SINGLE_CHOICE, new TextNode("foobarbaz"), "foobarbaz" },
+                { UploadFieldType.STRING, new TextNode("foobarbaz"), "foobarbaz" },
+
+                // Test removing HTML
+                { UploadFieldType.SINGLE_CHOICE, new TextNode("<a href=\"sagebase.org\">link</a>"), "link" },
+                { UploadFieldType.STRING, new TextNode("<a href=\"sagebase.org\">link</a>"), "link" },
+
+                // These types are not supported by serialize() because they serialize into multiple columns.
+                // This test is mainly for branch coverage. This code path should never be hit in real life.
+                { UploadFieldType.MULTI_CHOICE, new TextNode("value doesn't matter"), null },
+                { UploadFieldType.TIMESTAMP, new TextNode("value doesn't matter"), null },
+        };
     }
 
-    @Test
-    public void jsonNull() throws Exception {
-        String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                fieldDefForType(UploadFieldType.STRING), NullNode.instance);
-        assertNull(retVal);
-    }
-
-    @Test
-    public void booleanTrue() throws Exception {
-        String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                fieldDefForType(UploadFieldType.BOOLEAN), BooleanNode.TRUE);
-        assertEquals(retVal, "true");
-    }
-
-    @Test
-    public void booleanFalse() throws Exception {
-        String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                fieldDefForType(UploadFieldType.BOOLEAN), BooleanNode.FALSE);
-        assertEquals(retVal, "false");
-    }
-
-    @Test
-    public void booleanInvalidType() throws Exception {
-        // We don't parse JSON strings. We only accept JSON booleans.
-        String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                fieldDefForType(UploadFieldType.BOOLEAN), new TextNode("true"));
-        assertNull(retVal);
-    }
-
-    @Test
-    public void calendarDate() throws Exception {
-        String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                fieldDefForType(UploadFieldType.CALENDAR_DATE), new TextNode("2015-12-01"));
-        assertEquals(retVal, "2015-12-01");
-    }
-
-    @Test
-    public void duration() throws Exception {
-        String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                fieldDefForType(UploadFieldType.DURATION_V2), new TextNode("PT1H"));
-        assertEquals(retVal, "PT1H");
-    }
-
-    @Test
-    public void floatValue() throws Exception {
-        String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                fieldDefForType(UploadFieldType.FLOAT), new DecimalNode(new BigDecimal("3.14")));
-        assertEquals(retVal, "3.14");
-    }
-
-    @Test
-    public void floatFromInt() throws Exception {
-        String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                fieldDefForType(UploadFieldType.FLOAT), new IntNode(42));
-        assertEquals(retVal, "42");
-    }
-
-    @Test
-    public void floatInvalidType() throws Exception {
-        // We don't parse JSON strings. We only accept JSON booleans.
-        String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                fieldDefForType(UploadFieldType.FLOAT), new TextNode("3.14"));
-        assertNull(retVal);
+    @Test(dataProvider = "testSerializeProvider")
+    public void testSerialize(UploadFieldType fieldType, JsonNode input, String expected) throws Exception {
+        testHelper(new Metrics(), fieldDefForType(fieldType), input, expected);
     }
 
     @Test
@@ -110,8 +85,8 @@ public class SynapseHelperSerializeTest {
         JsonNode originalNode = DefaultObjectMapper.INSTANCE.readTree(jsonText);
 
         // serialize, which basically just copies the JSON text as is
-        String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                fieldDefForType(UploadFieldType.INLINE_JSON_BLOB), originalNode);
+        String retVal = new SynapseHelper().serializeToSynapseType(new Metrics(), MOCK_TEMP_DIR, TEST_PROJECT_ID,
+                TEST_RECORD_ID, fieldDefForType(UploadFieldType.INLINE_JSON_BLOB), originalNode);
 
         // parse back into JSON and compare
         JsonNode reparsedNode = DefaultObjectMapper.INSTANCE.readTree(retVal);
@@ -123,29 +98,6 @@ public class SynapseHelperSerializeTest {
         assertEquals(reparsedNode.get(3).intValue(), 7);
     }
 
-    @Test
-    public void intValue() throws Exception {
-        String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                fieldDefForType(UploadFieldType.INT), new IntNode(42));
-        assertEquals(retVal, "42");
-    }
-
-    @Test
-    public void intFromFloat() throws Exception {
-        // This simply calls longValue() on the node, which causes truncation instead of rounding.
-        String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                fieldDefForType(UploadFieldType.INT), new DecimalNode(new BigDecimal("-13.9")));
-        assertEquals(retVal, "-13");
-    }
-
-    @Test
-    public void intInvalidType() throws Exception {
-        // We don't parse JSON strings. We only accept JSON booleans.
-        String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                fieldDefForType(UploadFieldType.INT), new TextNode("-13"));
-        assertNull(retVal);
-    }
-
     @DataProvider(name = "stringTypeProvider")
     public Object[][] stringTypeProvider() {
         return new Object[][] {
@@ -155,33 +107,14 @@ public class SynapseHelperSerializeTest {
     }
 
     @Test(dataProvider = "stringTypeProvider")
-    public void stringValue(UploadFieldType stringType) throws Exception {
-        String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                fieldDefForType(stringType), new TextNode("foobarbaz"));
-        assertEquals(retVal, "foobarbaz");
-    }
-
-    @Test(dataProvider = "stringTypeProvider")
     public void stringSanitized(UploadFieldType stringType) throws Exception {
         // Use an extra short field def.
         UploadFieldDefinition fieldDef = new UploadFieldDefinition().name(TEST_FIELD_NAME).type(stringType)
                 .maxLength(10);
 
         // String value has newlines and tabs that need to be stripped out.
-        String input = "asdf\njkl;\tlorem ipsum dolor";
-        String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                fieldDef, new TextNode(input));
-
         // Newlines turned into spaces, string truncated to length 10
-        assertEquals(retVal, "asdf jkl; ");
-    }
-
-    @Test(dataProvider = "stringTypeProvider")
-    public void stringStripHtml(UploadFieldType stringType) throws Exception {
-        String input = "<a href=\"sagebase.org\">link</a>";
-        String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                fieldDefForType(stringType), new TextNode(input));
-        assertEquals(retVal, "link");
+        testHelper(new Metrics(), fieldDef, new TextNode("asdf\njkl;\tlorem ipsum dolor"), "asdf jkl; ");
     }
 
     // branch coverage
@@ -189,9 +122,7 @@ public class SynapseHelperSerializeTest {
     public void stringUnboundedTrue(UploadFieldType stringType) throws Exception {
         UploadFieldDefinition fieldDef = new UploadFieldDefinition().name(TEST_FIELD_NAME).type(stringType).
                 unboundedText(true);
-        String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                fieldDef, new TextNode("unbounded text not really"));
-        assertEquals(retVal, "unbounded text not really");
+        testHelper(new Metrics(), fieldDef, new TextNode("unbounded text not really"), "unbounded text not really");
     }
 
     // branch coverage
@@ -199,16 +130,7 @@ public class SynapseHelperSerializeTest {
     public void stringUnboundedFalse(UploadFieldType stringType) throws Exception {
         UploadFieldDefinition fieldDef = new UploadFieldDefinition().name(TEST_FIELD_NAME).type(stringType)
                 .unboundedText(false);
-        String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                fieldDef, new TextNode("not really unbounded text"));
-        assertEquals(retVal, "not really unbounded text");
-    }
-
-    @Test
-    public void time() throws Exception {
-        String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                fieldDefForType(UploadFieldType.TIME_V2), new TextNode("13:07:56.123"));
-        assertEquals(retVal, "13:07:56.123");
+        testHelper(new Metrics(), fieldDef, new TextNode("not really unbounded text"), "not really unbounded text");
     }
 
     @DataProvider(name = "attachmentTypeProvider")
@@ -225,9 +147,12 @@ public class SynapseHelperSerializeTest {
     @Test(dataProvider = "attachmentTypeProvider")
     public void attachmentInvalidType(UploadFieldType attachmentType) throws Exception {
         // Attachments are strings, which is the attachment ID.
-        String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                fieldDefForType(attachmentType), new LongNode(1234567890L));
-        assertNull(retVal);
+        Metrics metrics = new Metrics();
+        testHelper(metrics, fieldDefForType(attachmentType), new LongNode(1234567890L), null);
+
+        // Validate metrics - There were no attachments.
+        Multiset<String> counterMap = metrics.getCounterMap();
+        assertEquals(counterMap.count("numAttachments"), 0);
     }
 
     @Test(dataProvider = "attachmentTypeProvider")
@@ -240,29 +165,25 @@ public class SynapseHelperSerializeTest {
         doReturn("dummy-filehandle-id").when(synapseHelper).uploadFromS3ToSynapseFileHandle(MOCK_TEMP_DIR,
                 TEST_PROJECT_ID, attachmentFieldDef, "dummy-attachment-id");
 
-        String retVal = synapseHelper.serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
+        // execute
+        Metrics metrics = new Metrics();
+        String retVal = synapseHelper.serializeToSynapseType(metrics, MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
                 attachmentFieldDef, new TextNode("dummy-attachment-id"));
         assertEquals(retVal, "dummy-filehandle-id");
-    }
 
-    // These types are not supported by serialize() because they serialize into multiple columns.
-    @DataProvider(name = "unsupportedTypeProvider")
-    public Object[][] unsupportedTypeProvider() {
-        return new Object[][] {
-                { UploadFieldType.MULTI_CHOICE },
-                { UploadFieldType.TIMESTAMP },
-        };
-    }
-
-    // This test is mainly for branch coverage. This code path should never be hit in real life.
-    @Test(dataProvider = "unsupportedTypeProvider")
-    public void unsupportedType(UploadFieldType unsupportedType) throws Exception {
-        String retVal = new SynapseHelper().serializeToSynapseType(MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                fieldDefForType(unsupportedType), new TextNode("value doesn't matter"));
-        assertNull(retVal);
+        // Validate metrics
+        Multiset<String> counterMap = metrics.getCounterMap();
+        assertEquals(counterMap.count("numAttachments"), 1);
     }
 
     private static UploadFieldDefinition fieldDefForType(UploadFieldType type) {
         return new UploadFieldDefinition().name(TEST_FIELD_NAME).type(type);
+    }
+
+    private static void testHelper(Metrics metrics, UploadFieldDefinition fieldDef, JsonNode input,
+            String expected) throws Exception {
+        String retVal = new SynapseHelper().serializeToSynapseType(metrics, MOCK_TEMP_DIR, TEST_PROJECT_ID,
+                TEST_RECORD_ID, fieldDef, input);
+        assertEquals(retVal, expected);
     }
 }

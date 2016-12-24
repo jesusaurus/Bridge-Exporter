@@ -360,7 +360,7 @@ public class SynapseExportHandlerTest {
 
         // mock serializeToSynapseType() - We actually call through to the real method, but we mock out the underlying
         // uploadFromS3ToSynapseFileHandle() to avoid hitting real back-ends.
-        when(mockSynapseHelper.serializeToSynapseType(any(), any(), any(), any(), any())).thenCallRealMethod();
+        when(mockSynapseHelper.serializeToSynapseType(any(), any(), any(), any(), any(), any())).thenCallRealMethod();
 
         UploadFieldDefinition freeformAttachmentFieldDef = new UploadFieldDefinition().name(FREEFORM_FIELD_NAME)
                 .type(UploadFieldType.ATTACHMENT_V2);

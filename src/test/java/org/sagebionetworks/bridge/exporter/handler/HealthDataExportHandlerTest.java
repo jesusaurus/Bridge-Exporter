@@ -253,7 +253,7 @@ public class HealthDataExportHandlerTest {
 
         // mock serializeToSynapseType() - We actually call through to the real method. Don't need to mock
         // uploadFromS3ToSynapseFileHandle() because we don't have file handles this time.
-        when(mockSynapseHelper.serializeToSynapseType(any(), any(), any(), any(), any())).thenCallRealMethod();
+        when(mockSynapseHelper.serializeToSynapseType(any(), any(), any(), any(), any(), any())).thenCallRealMethod();
 
         // mock upload the TSV and capture the upload
         tsvBytes = null;
