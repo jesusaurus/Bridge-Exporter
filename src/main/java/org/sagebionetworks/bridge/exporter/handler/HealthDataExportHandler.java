@@ -176,10 +176,11 @@ public class HealthDataExportHandler extends SynapseExportHandler {
         ExportWorkerManager manager = getManager();
         String synapseProjectId = manager.getSynapseProjectIdForStudyAndTask(getStudyId(), task);
         String recordId = subtask.getRecordId();
+        Metrics metrics = task.getMetrics();
 
         // schema-specific columns
         Map<String, String> rowValueMap = new HashMap<>();
-        List<UploadFieldDefinition> fieldDefList = getSchemaFieldDefList(task.getMetrics());
+        List<UploadFieldDefinition> fieldDefList = getSchemaFieldDefList(metrics);
         for (UploadFieldDefinition oneFieldDef : fieldDefList) {
             String oneFieldName = oneFieldDef.getName();
             UploadFieldType bridgeType = oneFieldDef.getType();
@@ -209,8 +210,8 @@ public class HealthDataExportHandler extends SynapseExportHandler {
                 Map<String, String> serializedTimestampFields = serializeTimestamp(recordId, oneFieldName, valueNode);
                 rowValueMap.putAll(serializedTimestampFields);
             } else {
-                String value = manager.getSynapseHelper().serializeToSynapseType(task.getTmpDir(), synapseProjectId,
-                        recordId, oneFieldDef, valueNode);
+                String value = manager.getSynapseHelper().serializeToSynapseType(metrics, task.getTmpDir(),
+                        synapseProjectId, recordId, oneFieldDef, valueNode);
                 rowValueMap.put(oneFieldName, value);
             }
         }

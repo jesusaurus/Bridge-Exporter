@@ -190,13 +190,25 @@ public class BridgeExporterRecordProcessor {
             }
 
             workerManager.endOfStream(task);
+
+            // We made it to the end. Set the success flag on the task.
+            setTaskSuccess(task);
         } finally {
-            LOG.info("Finished processing request in " + stopwatch.elapsed(TimeUnit.SECONDS) + " seconds, " +
-                    request.toString());
+            long elapsedTime = stopwatch.elapsed(TimeUnit.SECONDS);
+            if (task.isSuccess()) {
+                LOG.info("Finished processing request in " + elapsedTime + " seconds, " + request.toString());
+            } else {
+                LOG.error("Error processing request; elapsed time " + elapsedTime + " seconds, " + request.toString());
+            }
             metricsHelper.publishMetrics(metrics);
         }
 
         // cleanup
         fileHelper.deleteDir(tmpDir);
+    }
+
+    // Helper method that we can spy and verify that we're setting the task success properly.
+    void setTaskSuccess(ExportTask task) {
+        task.setSuccess(true);
     }
 }

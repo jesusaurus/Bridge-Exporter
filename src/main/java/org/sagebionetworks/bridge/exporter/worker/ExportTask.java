@@ -120,6 +120,7 @@ public class ExportTask {
     private final Map<UploadSchemaKey, TsvInfo> healthDataTsvInfoBySchema = new HashMap<>();
     private final Set<String> studyIdSet = new HashSet<>();
     private final Queue<ExportSubtaskFuture> subtaskFutureQueue = new LinkedList<>();
+    private boolean success = false;
 
     /** Gets the appVersion table TSV info for the specified study. */
     public TsvInfo getAppVersionTsvInfoForStudy(String studyId) {
@@ -159,5 +160,15 @@ public class ExportTask {
     /** Gets the set of study IDs that were seen by this task. Used to do per-study post-processing. */
     public Set<String> getStudyIdSet() {
         return studyIdSet;
+    }
+
+    /** True if the task completed successfully. False if the task failed or otherwise did not complete. */
+    public boolean isSuccess() {
+        return success;
+    }
+
+    /** Sets the success status on the task. */
+    public void setSuccess(boolean success) {
+        this.success = success;
     }
 }
