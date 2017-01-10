@@ -99,6 +99,12 @@ public abstract class SynapseExportHandler extends ExportHandler {
         phoneInfoColumn.setMaximumSize(48L);
         columnListBuilder.add(phoneInfoColumn);
 
+        ColumnModel userSharingScopeColumn = new ColumnModel();
+        userSharingScopeColumn.setName("userSharingScope");
+        userSharingScopeColumn.setColumnType(ColumnType.STRING);
+        userSharingScopeColumn.setMaximumSize(48L);
+        columnListBuilder.add(userSharingScopeColumn);
+
         COMMON_COLUMN_LIST = columnListBuilder.build();
     }
 
@@ -331,6 +337,8 @@ public abstract class SynapseExportHandler extends ExportHandler {
 
         rowValueMap.put("appVersion", appVersion);
         rowValueMap.put("phoneInfo", phoneInfo);
+
+        rowValueMap.put("userSharingScope", record.getString("userSharingScope"));
 
         return rowValueMap;
     }

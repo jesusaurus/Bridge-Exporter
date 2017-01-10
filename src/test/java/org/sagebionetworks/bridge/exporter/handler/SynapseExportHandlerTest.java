@@ -57,6 +57,7 @@ import static org.testng.Assert.fail;
 
 public class SynapseExportHandlerTest {
     // Constants needed to create metadata (phone info, app version)
+    private static final String DUMMY_USER_SHARING_SCOPE = "ALL_QUALIFIED_RESEARCHERS";
     private static final String DUMMY_APP_VERSION = "Bridge-EX 2.0";
     private static final String DUMMY_PHONE_INFO = "My Debugger";
     private static final String DUMMY_METADATA_JSON_TEXT = "{\n" +
@@ -73,7 +74,8 @@ public class SynapseExportHandlerTest {
     public static final Item DUMMY_RECORD = new Item().withLong("createdOn", DUMMY_CREATED_ON)
             .withString("healthCode", DUMMY_HEALTH_CODE).withString("id", DUMMY_RECORD_ID)
             .withString("metadata", DUMMY_METADATA_JSON_TEXT).withStringSet("userDataGroups", DUMMY_DATA_GROUPS)
-            .withString("userExternalId", "unsanitized\t\texternal\t\tid");
+            .withString("userExternalId", "unsanitized\t\texternal\t\tid")
+            .withString("userSharingScope", DUMMY_USER_SHARING_SCOPE);
 
     // Constants to make a request.
     public static final LocalDate DUMMY_REQUEST_DATE = LocalDate.parse("2015-10-31");
@@ -452,7 +454,7 @@ public class SynapseExportHandlerTest {
 
     public static void validateTsvHeaders(String line, String... extraColumnNameVarargs) {
         StringBuilder expectedLineBuilder = new StringBuilder("recordId\thealthCode\texternalId\tdataGroups\t" +
-                "uploadDate\tcreatedOn\tappVersion\tphoneInfo");
+                "uploadDate\tcreatedOn\tappVersion\tphoneInfo\tuserSharingScope");
         for (String oneExtraColumnName : extraColumnNameVarargs) {
             expectedLineBuilder.append('\t');
             expectedLineBuilder.append(oneExtraColumnName);
@@ -463,7 +465,7 @@ public class SynapseExportHandlerTest {
     public static void validateTsvRow(String line, String... extraValueVarargs) {
         StringBuilder expectedLineBuilder = new StringBuilder(DUMMY_RECORD_ID + '\t' + DUMMY_HEALTH_CODE + '\t' +
                 DUMMY_EXTERNAL_ID + '\t' + DUMMY_DATA_GROUPS_FLATTENED + '\t' + DUMMY_REQUEST_DATE + '\t' +
-                DUMMY_CREATED_ON + '\t' + DUMMY_APP_VERSION + '\t' + DUMMY_PHONE_INFO);
+                DUMMY_CREATED_ON + '\t' + DUMMY_APP_VERSION + '\t' + DUMMY_PHONE_INFO + '\t' + DUMMY_USER_SHARING_SCOPE);
         for (String oneExtraValue : extraValueVarargs) {
             expectedLineBuilder.append('\t');
             expectedLineBuilder.append(oneExtraValue);
