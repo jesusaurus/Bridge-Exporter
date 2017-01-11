@@ -68,12 +68,14 @@ public class ExportWorkerManager {
 
     // Public, so they can be accessed in handler unit tests.
     public static final String CONFIG_KEY_EXPORTER_DDB_PREFIX = "exporter.ddb.prefix";
+    public static final String CONFIG_KEY_REDRIVE_MAX_COUNT = "redrive.max.count";
     public static final String CONFIG_KEY_SYNAPSE_PRINCIPAL_ID = "synapse.principal.id";
     public static final String CONFIG_KEY_WORKER_MANAGER_PROGRESS_REPORT_PERIOD =
             "worker.manager.progress.report.period";
 
     // package-scoped, to be available in tests
     static final String DDB_KEY_TABLE_ID = "tableId";
+    static final String REDRIVE_TAG_PREFIX = "redrive export; original: ";
     static final String SCHEMA_IOS_SURVEY = "ios-survey";
 
     // We need to delay our redrives. Otherwise, if we have a deterministic error, this may cause the Exporter to spin
@@ -86,6 +88,7 @@ public class ExportWorkerManager {
     private String exporterDdbPrefix;
     private int progressReportPeriod;
     private String recordIdOverrideBucket;
+    private int redriveMaxCount;
     private long synapsePrincipalId;
     private String sqsQueueUrl;
 
@@ -94,6 +97,7 @@ public class ExportWorkerManager {
     public final void setConfig(Config config) {
         this.exporterDdbPrefix = config.get(CONFIG_KEY_EXPORTER_DDB_PREFIX);
         this.recordIdOverrideBucket = config.get(BridgeExporterUtil.CONFIG_KEY_RECORD_ID_OVERRIDE_BUCKET);
+        this.redriveMaxCount = config.getInt(CONFIG_KEY_REDRIVE_MAX_COUNT);
         this.synapsePrincipalId = config.getInt(CONFIG_KEY_SYNAPSE_PRINCIPAL_ID);
         this.sqsQueueUrl = config.get(BridgeExporterUtil.CONFIG_KEY_SQS_QUEUE_URL);
 
@@ -490,6 +494,8 @@ public class ExportWorkerManager {
      */
     public void endOfStream(ExportTask task) throws RestartBridgeExporterException {
         BridgeExporterRequest request = task.getRequest();
+        int redriveCount = request.getRedriveCount();
+        String tag = request.getTag();
         LOG.info("End of stream signaled for request " + request.toString());
 
         // Wait for all outstanding tasks to complete
@@ -531,7 +537,7 @@ public class ExportWorkerManager {
                 }
             }
         }
-        if (!redriveRecordIdSet.isEmpty()) {
+        if (!redriveRecordIdSet.isEmpty() && redriveCount < redriveMaxCount) {
             // Upload the list of record IDs that need to be redriven to S3. The filename *should* be unique, since we
             // use the timestamp for the filename, and we currently only run one Export job at a time.
             // Use UTC timezone so we can easily sort and search for files. Redrives should be relatively rare, so
@@ -540,10 +546,15 @@ public class ExportWorkerManager {
 
             // Create a copy of the original request, except add the record override and update the tag. Also, clear
             // date, startDateTime, and endDateTime as these conflict with record override.
-            String redriveTag = "redrive records (original: " + request.getTag() + ")";
+            String redriveTag;
+            if (tag.startsWith(REDRIVE_TAG_PREFIX)) {
+                redriveTag = tag;
+            } else {
+                redriveTag = REDRIVE_TAG_PREFIX + tag;
+            }
             BridgeExporterRequest redriveRequest = new BridgeExporterRequest.Builder().copyOf(request).withDate(null)
                     .withStartDateTime(null).withEndDateTime(null).withRecordIdS3Override(filename).withTag(redriveTag)
-                    .build();
+                    .withRedriveCount(redriveCount + 1).build();
             LOG.info("Redriving records using S3 file " + filename);
 
             try {
@@ -589,12 +600,18 @@ public class ExportWorkerManager {
                 }
             }
         }
-        if (!redriveTableWhitelist.isEmpty()) {
+        if (!redriveTableWhitelist.isEmpty() && redriveCount < redriveMaxCount) {
             // Create a copy of the original request, except add the table whitelist and update the tag. This will be
             // used to trigger the redrive.
-            String redriveTag = "redrive tables (original: " + request.getTag() + ")";
+            String redriveTag;
+            if (tag.startsWith(REDRIVE_TAG_PREFIX)) {
+                redriveTag = tag;
+            } else {
+                redriveTag = REDRIVE_TAG_PREFIX + tag;
+            }
             BridgeExporterRequest redriveRequest = new BridgeExporterRequest.Builder().copyOf(request)
-                    .withTableWhitelist(redriveTableWhitelist).withTag(redriveTag).build();
+                    .withTableWhitelist(redriveTableWhitelist).withRedriveCount(redriveCount + 1).withTag(redriveTag)
+                    .build();
             LOG.info("Redriving tables: " + BridgeExporterUtil.COMMA_SPACE_JOINER.join(redriveTableWhitelist));
 
             try {

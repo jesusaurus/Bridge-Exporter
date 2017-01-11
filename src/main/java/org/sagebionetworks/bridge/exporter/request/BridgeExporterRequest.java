@@ -27,6 +27,7 @@ public class BridgeExporterRequest {
     private final DateTime endDateTime;
     private final String exporterDdbPrefixOverride;
     private final String recordIdS3Override;
+    private final int redriveCount;
     private final BridgeExporterSharingMode sharingMode;
     private final DateTime startDateTime;
     private final Set<String> studyWhitelist;
@@ -36,13 +37,14 @@ public class BridgeExporterRequest {
 
     /** Private constructor. To build, go through the builder. */
     private BridgeExporterRequest(LocalDate date, DateTime endDateTime, String exporterDdbPrefixOverride,
-            String recordIdS3Override, BridgeExporterSharingMode sharingMode, DateTime startDateTime,
+            String recordIdS3Override, int redriveCount, BridgeExporterSharingMode sharingMode, DateTime startDateTime,
             Set<String> studyWhitelist, Map<String, String> synapseProjectOverrideMap,
             Set<UploadSchemaKey> tableWhitelist, String tag) {
         this.date = date;
         this.endDateTime = endDateTime;
         this.exporterDdbPrefixOverride = exporterDdbPrefixOverride;
         this.recordIdS3Override = recordIdS3Override;
+        this.redriveCount = redriveCount;
         this.sharingMode = sharingMode;
         this.startDateTime = startDateTime;
         this.studyWhitelist = studyWhitelist;
@@ -85,6 +87,14 @@ public class BridgeExporterRequest {
      */
     public String getRecordIdS3Override() {
         return recordIdS3Override;
+    }
+
+    /**
+     * The number of times this request has been redriven. Zero if this is the first request. 1 if this is the first
+     * redrive. And so forth.
+     */
+    public int getRedriveCount() {
+        return redriveCount;
     }
 
     /**
@@ -152,6 +162,7 @@ public class BridgeExporterRequest {
                 Objects.equals(endDateTime, that.endDateTime) &&
                 Objects.equals(exporterDdbPrefixOverride, that.exporterDdbPrefixOverride) &&
                 Objects.equals(recordIdS3Override, that.recordIdS3Override) &&
+                redriveCount == that.redriveCount &&
                 sharingMode == that.sharingMode &&
                 Objects.equals(startDateTime, that.startDateTime) &&
                 Objects.equals(studyWhitelist, that.studyWhitelist) &&
@@ -162,7 +173,7 @@ public class BridgeExporterRequest {
 
     @Override
     public final int hashCode() {
-        return Objects.hash(date, endDateTime, exporterDdbPrefixOverride, recordIdS3Override, sharingMode,
+        return Objects.hash(date, endDateTime, exporterDdbPrefixOverride, recordIdS3Override, redriveCount, sharingMode,
                 startDateTime, studyWhitelist, synapseProjectOverrideMap, tableWhitelist, tag);
     }
 
@@ -189,6 +200,10 @@ public class BridgeExporterRequest {
             stringBuilder.append(recordIdS3Override);
         }
 
+        // Include redriveCount, since this is helpful for logging and diagnostics.
+        stringBuilder.append(", redriveCount=");
+        stringBuilder.append(redriveCount);
+
         // Always include tag.
         stringBuilder.append(", tag=");
         stringBuilder.append(tag);
@@ -202,6 +217,7 @@ public class BridgeExporterRequest {
         private DateTime endDateTime;
         private String exporterDdbPrefixOverride;
         private String recordIdS3Override;
+        private int redriveCount;
         private BridgeExporterSharingMode sharingMode;
         private DateTime startDateTime;
         private Set<String> studyWhitelist;
@@ -216,6 +232,7 @@ public class BridgeExporterRequest {
             endDateTime = other.endDateTime;
             exporterDdbPrefixOverride = other.exporterDdbPrefixOverride;
             recordIdS3Override = other.recordIdS3Override;
+            redriveCount = other.redriveCount;
             sharingMode = other.sharingMode;
             startDateTime = other.startDateTime;
             studyWhitelist = other.studyWhitelist;
@@ -248,6 +265,12 @@ public class BridgeExporterRequest {
         /** @see BridgeExporterRequest#getRecordIdS3Override */
         public Builder withRecordIdS3Override(String recordIdS3Override) {
             this.recordIdS3Override = recordIdS3Override;
+            return this;
+        }
+
+        /** @see BridgeExporterRequest#getRedriveCount */
+        public Builder withRedriveCount(int redriveCount) {
+            this.redriveCount = redriveCount;
             return this;
         }
 
@@ -367,7 +390,8 @@ public class BridgeExporterRequest {
             }
 
             return new BridgeExporterRequest(date, endDateTime, exporterDdbPrefixOverride, recordIdS3Override,
-                    sharingMode, startDateTime, studyWhitelist, synapseProjectOverrideMap, tableWhitelist, tag);
+                    redriveCount, sharingMode, startDateTime, studyWhitelist, synapseProjectOverrideMap,
+                    tableWhitelist, tag);
         }
     }
 }

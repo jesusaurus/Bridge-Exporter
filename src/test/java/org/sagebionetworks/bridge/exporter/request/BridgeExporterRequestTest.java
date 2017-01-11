@@ -47,6 +47,9 @@ public class BridgeExporterRequestTest {
         assertEquals(request.getDate(), TEST_DATE);
         assertEquals(request.getSharingMode(), BridgeExporterSharingMode.SHARED);
 
+        // test toString
+        assertEquals(request.toString(), "date=" + TEST_DATE + ", redriveCount=0, tag=null");
+
         // test copy
         BridgeExporterRequest copy = new BridgeExporterRequest.Builder().copyOf(request).build();
         assertEquals(copy, request);
@@ -61,6 +64,10 @@ public class BridgeExporterRequestTest {
         assertEquals(request.getSharingMode(), BridgeExporterSharingMode.SHARED);
         assertEquals(request.getStudyWhitelist(), STUDY_WHITELIST);
 
+        // test toString
+        assertEquals(request.toString(), "startDateTime=" + START_DATE_TIME + ", endDateTime=" + END_DATE_TIME
+                + ", redriveCount=0, tag=null");
+
         // test copy
         BridgeExporterRequest copy = new BridgeExporterRequest.Builder().copyOf(request).build();
         assertEquals(copy, request);
@@ -72,6 +79,9 @@ public class BridgeExporterRequestTest {
                 .withRecordIdS3Override(TEST_RECORD_OVERRIDE).build();
         assertEquals(request.getRecordIdS3Override(), TEST_RECORD_OVERRIDE);
         assertEquals(request.getSharingMode(), BridgeExporterSharingMode.SHARED);
+
+        // test toString
+        assertEquals(request.toString(), "recordIdS3Override=" + TEST_RECORD_OVERRIDE + ", redriveCount=0, tag=null");
 
         // test copy
         BridgeExporterRequest copy = new BridgeExporterRequest.Builder().copyOf(request).build();
@@ -96,7 +106,7 @@ public class BridgeExporterRequestTest {
 
         // make request
         BridgeExporterRequest request = new BridgeExporterRequest.Builder().withDate(TEST_DATE)
-                .withExporterDdbPrefixOverride(TEST_DDB_PREFIX_OVERRIDE)
+                .withExporterDdbPrefixOverride(TEST_DDB_PREFIX_OVERRIDE).withRedriveCount(1)
                 .withSharingMode(BridgeExporterSharingMode.PUBLIC_ONLY).withStudyWhitelist(originalStudyWhitelist)
                 .withSynapseProjectOverrideMap(originalProjectOverrideMap).withTableWhitelist(originalTableWhitelist)
                 .withTag(TEST_TAG).build();
@@ -105,6 +115,7 @@ public class BridgeExporterRequestTest {
         assertEquals(request.getDate(), TEST_DATE);
         assertEquals(request.getExporterDdbPrefixOverride(), TEST_DDB_PREFIX_OVERRIDE);
         assertNull(request.getRecordIdS3Override());
+        assertEquals(request.getRedriveCount(), 1);
         assertEquals(request.getSharingMode(), BridgeExporterSharingMode.PUBLIC_ONLY);
         assertEquals(request.getStudyWhitelist(), originalStudyWhitelist);
         assertEquals(request.getSynapseProjectOverrideMap(), originalProjectOverrideMap);
@@ -120,6 +131,9 @@ public class BridgeExporterRequestTest {
 
         originalTableWhitelist.add(TEST_SCHEMA_KEY);
         assertFalse(request.getTableWhitelist().contains(TEST_SCHEMA_KEY));
+
+        // test toString
+        assertEquals(request.toString(), "date=" + TEST_DATE + ", redriveCount=1, tag=" + TEST_TAG);
 
         // test copy
         BridgeExporterRequest copy = new BridgeExporterRequest.Builder().copyOf(request).build();
@@ -306,6 +320,7 @@ public class BridgeExporterRequestTest {
         String jsonText = "{\n" +
                 "   \"exporterDdbPrefixOverride\":\"" + TEST_DDB_PREFIX_OVERRIDE + "\",\n" +
                 "   \"recordIdS3Override\":\"" + TEST_RECORD_OVERRIDE + "\",\n" +
+                "   \"redriveCount\":2,\n" +
                 "   \"sharingMode\":\"PUBLIC_ONLY\",\n" +
                 "   \"studyWhitelist\":[\"test-study\"],\n" +
                 "   \"synapseProjectOverrideMap\":{\n" +
@@ -324,6 +339,7 @@ public class BridgeExporterRequestTest {
         assertNull(request.getDate());
         assertEquals(request.getExporterDdbPrefixOverride(), TEST_DDB_PREFIX_OVERRIDE);
         assertEquals(request.getRecordIdS3Override(), TEST_RECORD_OVERRIDE);
+        assertEquals(request.getRedriveCount(), 2);
         assertEquals(request.getSharingMode(), BridgeExporterSharingMode.PUBLIC_ONLY);
         assertEquals(request.getStudyWhitelist(), ImmutableSet.of("test-study"));
         assertEquals(request.getSynapseProjectOverrideMap(), TEST_PROJECT_OVERRIDE_MAP);
@@ -335,6 +351,7 @@ public class BridgeExporterRequestTest {
         assertFalse(jsonNode.has("date"));
         assertEquals(jsonNode.get("exporterDdbPrefixOverride").textValue(), TEST_DDB_PREFIX_OVERRIDE);
         assertEquals(jsonNode.get("recordIdS3Override").textValue(), TEST_RECORD_OVERRIDE);
+        assertEquals(jsonNode.get("redriveCount").intValue(), 2);
         assertEquals(jsonNode.get("sharingMode").textValue(), BridgeExporterSharingMode.PUBLIC_ONLY.name());
         assertEquals(jsonNode.get("tag").textValue(), TEST_TAG);
 
