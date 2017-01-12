@@ -2,6 +2,7 @@ package org.sagebionetworks.bridge.exporter.synapse;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.google.common.base.Joiner;
+import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.exporter.worker.ExportTask;
 
 import java.util.ArrayList;
@@ -21,8 +22,6 @@ public enum TransferMethod {
         }
     },
     STRINGSET {
-        private final Joiner STRING_SET_JOINER = Joiner.on(',').useForNull("");
-
         @Override
         public String transfer(String ddbName, Item record, ExportTask task) {
             String valueToAdd = "";
@@ -31,7 +30,7 @@ public enum TransferMethod {
                 List<String> stringSetList = new ArrayList<>();
                 stringSetList.addAll(stringSet);
                 Collections.sort(stringSetList);
-                valueToAdd = STRING_SET_JOINER.join(stringSetList);
+                valueToAdd = BridgeExporterUtil.STRING_SET_JOINER.join(stringSetList);
             }
             return valueToAdd;
         }

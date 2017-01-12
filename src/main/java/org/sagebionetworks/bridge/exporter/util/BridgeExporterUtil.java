@@ -26,6 +26,8 @@ import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 public class BridgeExporterUtil {
     private static final Logger LOG = LoggerFactory.getLogger(BridgeExporterUtil.class);
 
+    public static final Joiner STRING_SET_JOINER = Joiner.on(',').useForNull("");
+
     public static final Joiner COMMA_SPACE_JOINER = Joiner.on(", ").useForNull("");
     public static final String CONFIG_KEY_ATTACHMENT_S3_BUCKET = "attachment.bucket";
     public static final String CONFIG_KEY_TIME_ZONE_NAME = "time.zone.name";

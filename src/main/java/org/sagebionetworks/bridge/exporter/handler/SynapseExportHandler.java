@@ -50,9 +50,9 @@ public abstract class SynapseExportHandler extends ExportHandler {
     private static final Logger LOG = LoggerFactory.getLogger(SynapseExportHandler.class);
 
     // Package-scoped to be available to unit tests.
-    static List<ColumnModel> COMMON_COLUMN_LIST;
+    List<ColumnModel> COMMON_COLUMN_LIST;
 
-    private static List<ColumnDefinition> COLUMN_DEFINITION;
+    private List<ColumnDefinition> COLUMN_DEFINITION;
 
     @Resource(name = "synapseColumnDefinitions")
     public final void setSynapseColumnDefinitionsAndList(List<ColumnDefinition> synapseColumnDefinitions) {

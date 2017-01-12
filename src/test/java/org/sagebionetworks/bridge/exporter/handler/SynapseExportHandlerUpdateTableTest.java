@@ -359,10 +359,10 @@ public class SynapseExportHandlerUpdateTableTest extends AbstractTestNGSpringCon
         verify(mockSynapseHelper).createColumnModelsWithRetry(submittedColumnListCaptor.capture());
 
         List<ColumnModel> submittedColumnList = submittedColumnListCaptor.getValue();
-        assertEquals(submittedColumnList.size(), SynapseExportHandler.COMMON_COLUMN_LIST.size() + 4);
+        assertEquals(submittedColumnList.size(), MOCK_COLUMN_LIST.size() + 4);
 
         ColumnModel submittedModifyThisColumn = submittedColumnList.get(
-                SynapseExportHandler.COMMON_COLUMN_LIST.size());
+                MOCK_COLUMN_LIST.size());
         assertEquals(submittedModifyThisColumn.getName(), "modify-this");
         assertEquals(submittedModifyThisColumn.getMaximumSize().longValue(), oldColumnSize);
 
