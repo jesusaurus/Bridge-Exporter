@@ -1,0 +1,44 @@
+[
+  {
+    "name": "healthCode",
+    "columnType": "STRING",
+    "maximumSize": "36",
+    "transferMethod": "STRING",
+    "ddbName": "healthCode"
+  },
+  {
+    "name": "externalId",
+    "columnType": "STRING",
+    "maximumSize": "128",
+    "transferMethod": "STRING",
+    "ddbName": "userExternalId",
+    "sanitize": true
+  },
+  {
+    "name": "dataGroups",
+    "columnType": "STRING",
+    "maximumSize": "100",
+    "transferMethod": "STRINGSET",
+    "ddbName": "userDataGroups"
+  },
+  {
+    "name": "uploadDate",
+    "columnType": "STRING",
+    "maximumSize": "10",
+    "transferMethod": "EXPORTERDATE",
+    "ddbName": "uploadDate"
+  },
+  {
+    "name": "createdOn",
+    "columnType": "DATE",
+    "transferMethod": "DATE",
+    "ddbName": "createdOn"
+  },
+  {
+    "name": "userSharingScope",
+    "columnType": "STRING",
+    "maximumSize": "48",
+    "transferMethod": "STRING",
+    "ddbName": "userSharingScope"
+  }
+]

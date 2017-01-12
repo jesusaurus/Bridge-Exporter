@@ -20,6 +20,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
 
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterNonRetryableException;
+import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
 import org.sagebionetworks.client.exceptions.SynapseException;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
@@ -38,6 +39,8 @@ import org.sagebionetworks.bridge.exporter.worker.TsvInfo;
 import org.sagebionetworks.bridge.file.FileHelper;
 import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
 
+import javax.annotation.Resource;
+
 /**
  * This is a handler who's solely responsible for a single table in Synapse. This handler is assigned a stream of DDB
  * records to create a TSV, then uploads the TSV to the Synapse table. If the Synapse Table doesn't exist, this handler
@@ -47,8 +50,14 @@ public abstract class SynapseExportHandler extends ExportHandler {
     private static final Logger LOG = LoggerFactory.getLogger(SynapseExportHandler.class);
 
     // Package-scoped to be available to unit tests.
-    static final List<ColumnModel> COMMON_COLUMN_LIST;
-    static {
+    static List<ColumnModel> COMMON_COLUMN_LIST;
+
+    private static List<ColumnDefinition> COLUMN_DEFINITION;
+
+    @Resource(name = "synapseColumnDefinitions")
+    public final void setSynapseColumnDefinitionsAndList(List<ColumnDefinition> synapseColumnDefinitions) {
+        COLUMN_DEFINITION = synapseColumnDefinitions;
+
         ImmutableList.Builder<ColumnModel> columnListBuilder = ImmutableList.builder();
 
         ColumnModel recordIdColumn = new ColumnModel();
@@ -56,36 +65,6 @@ public abstract class SynapseExportHandler extends ExportHandler {
         recordIdColumn.setColumnType(ColumnType.STRING);
         recordIdColumn.setMaximumSize(36L);
         columnListBuilder.add(recordIdColumn);
-
-        ColumnModel healthCodeColumn = new ColumnModel();
-        healthCodeColumn.setName("healthCode");
-        healthCodeColumn.setColumnType(ColumnType.STRING);
-        healthCodeColumn.setMaximumSize(36L);
-        columnListBuilder.add(healthCodeColumn);
-
-        ColumnModel externalIdColumn = new ColumnModel();
-        externalIdColumn.setName("externalId");
-        externalIdColumn.setColumnType(ColumnType.STRING);
-        externalIdColumn.setMaximumSize(128L);
-        columnListBuilder.add(externalIdColumn);
-
-        ColumnModel dataGroupsColumn = new ColumnModel();
-        dataGroupsColumn.setName("dataGroups");
-        dataGroupsColumn.setColumnType(ColumnType.STRING);
-        dataGroupsColumn.setMaximumSize(100L);
-        columnListBuilder.add(dataGroupsColumn);
-
-        // NOTE: ColumnType.DATE is actually a timestamp. There is no calendar date type.
-        ColumnModel uploadDateColumn = new ColumnModel();
-        uploadDateColumn.setName("uploadDate");
-        uploadDateColumn.setColumnType(ColumnType.STRING);
-        uploadDateColumn.setMaximumSize(10L);
-        columnListBuilder.add(uploadDateColumn);
-
-        ColumnModel createdOnColumn = new ColumnModel();
-        createdOnColumn.setName("createdOn");
-        createdOnColumn.setColumnType(ColumnType.DATE);
-        columnListBuilder.add(createdOnColumn);
 
         ColumnModel appVersionColumn = new ColumnModel();
         appVersionColumn.setName("appVersion");
@@ -99,14 +78,76 @@ public abstract class SynapseExportHandler extends ExportHandler {
         phoneInfoColumn.setMaximumSize(48L);
         columnListBuilder.add(phoneInfoColumn);
 
-        ColumnModel userSharingScopeColumn = new ColumnModel();
-        userSharingScopeColumn.setName("userSharingScope");
-        userSharingScopeColumn.setColumnType(ColumnType.STRING);
-        userSharingScopeColumn.setMaximumSize(48L);
-        columnListBuilder.add(userSharingScopeColumn);
+        final List<ColumnModel> tempList = BridgeExporterUtil.convertToColumnList(COLUMN_DEFINITION);
+        columnListBuilder.addAll(tempList);
 
         COMMON_COLUMN_LIST = columnListBuilder.build();
     }
+
+//    static {
+//        ImmutableList.Builder<ColumnModel> columnListBuilder = ImmutableList.builder();
+//
+//        ColumnModel recordIdColumn = new ColumnModel();
+//        recordIdColumn.setName("recordId");
+//        recordIdColumn.setColumnType(ColumnType.STRING);
+//        recordIdColumn.setMaximumSize(36L);
+//        columnListBuilder.add(recordIdColumn);
+//
+//        ColumnModel appVersionColumn = new ColumnModel();
+//        appVersionColumn.setName("appVersion");
+//        appVersionColumn.setColumnType(ColumnType.STRING);
+//        appVersionColumn.setMaximumSize(48L);
+//        columnListBuilder.add(appVersionColumn);
+//
+//        ColumnModel phoneInfoColumn = new ColumnModel();
+//        phoneInfoColumn.setName("phoneInfo");
+//        phoneInfoColumn.setColumnType(ColumnType.STRING);
+//        phoneInfoColumn.setMaximumSize(48L);
+//        columnListBuilder.add(phoneInfoColumn);
+
+//        ColumnModel healthCodeColumn = new ColumnModel();
+//        healthCodeColumn.setName("healthCode");
+//        healthCodeColumn.setColumnType(ColumnType.STRING);
+//        healthCodeColumn.setMaximumSize(36L);
+//        columnListBuilder.add(healthCodeColumn);
+//
+//        ColumnModel externalIdColumn = new ColumnModel();
+//        externalIdColumn.setName("externalId");
+//        externalIdColumn.setColumnType(ColumnType.STRING);
+//        externalIdColumn.setMaximumSize(128L);
+//        columnListBuilder.add(externalIdColumn);
+//
+//        ColumnModel dataGroupsColumn = new ColumnModel();
+//        dataGroupsColumn.setName("dataGroups");
+//        dataGroupsColumn.setColumnType(ColumnType.STRING);
+//        dataGroupsColumn.setMaximumSize(100L);
+//        columnListBuilder.add(dataGroupsColumn);
+//
+//        // NOTE: ColumnType.DATE is actually a timestamp. There is no calendar date type.
+//        ColumnModel uploadDateColumn = new ColumnModel();
+//        uploadDateColumn.setName("uploadDate");
+//        uploadDateColumn.setColumnType(ColumnType.STRING);
+//        uploadDateColumn.setMaximumSize(10L);
+//        columnListBuilder.add(uploadDateColumn);
+//
+//        ColumnModel createdOnColumn = new ColumnModel();
+//        createdOnColumn.setName("createdOn");
+//        createdOnColumn.setColumnType(ColumnType.DATE);
+//        columnListBuilder.add(createdOnColumn);
+
+
+//
+//        ColumnModel userSharingScopeColumn = new ColumnModel();
+//        userSharingScopeColumn.setName("userSharingScope");
+//        userSharingScopeColumn.setColumnType(ColumnType.STRING);
+//        userSharingScopeColumn.setMaximumSize(48L);
+//        columnListBuilder.add(userSharingScopeColumn);
+
+//        final List<ColumnModel> tempList = BridgeExporterUtil.convertToColumnList(COLUMN_DEFINITION);
+//        columnListBuilder.addAll(tempList);
+//
+//        COMMON_COLUMN_LIST = columnListBuilder.build();
+//    }
 
     private static final Joiner DATA_GROUP_JOINER = Joiner.on(',').useForNull("");
 
@@ -318,27 +359,10 @@ public abstract class SynapseExportHandler extends ExportHandler {
         // construct row
         Map<String, String> rowValueMap = new HashMap<>();
         rowValueMap.put("recordId", recordId);
-        rowValueMap.put("healthCode", record.getString("healthCode"));
-        rowValueMap.put("externalId", BridgeExporterUtil.sanitizeDdbValue(record, "userExternalId", 128, recordId));
-
-        // Data groups, if present. Sort them in alphabetical order, so they appear consistently in Synapse.
-        Set<String> dataGroupSet = record.getStringSet("userDataGroups");
-        if (dataGroupSet != null) {
-            List<String> dataGroupList = new ArrayList<>();
-            dataGroupList.addAll(dataGroupSet);
-            Collections.sort(dataGroupList);
-            rowValueMap.put("dataGroups", DATA_GROUP_JOINER.join(dataGroupList));
-        }
-
-        rowValueMap.put("uploadDate", task.getExporterDate().toString());
-
-        // createdOn as a long epoch millis
-        rowValueMap.put("createdOn", String.valueOf(record.getLong("createdOn")));
-
         rowValueMap.put("appVersion", appVersion);
         rowValueMap.put("phoneInfo", phoneInfo);
 
-        rowValueMap.put("userSharingScope", record.getString("userSharingScope"));
+        rowValueMap.putAll(BridgeExporterUtil.getRowValuesFromRecordBasedOnColumnDefinition(rowValueMap,record, COLUMN_DEFINITION, recordId, task));
 
         return rowValueMap;
     }

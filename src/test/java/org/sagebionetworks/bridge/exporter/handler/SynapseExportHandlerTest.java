@@ -15,7 +15,11 @@ import com.google.common.collect.Multiset;
 import com.google.common.collect.SetMultimap;
 import org.joda.time.DateTime;
 import org.joda.time.LocalDate;
+import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
 import org.sagebionetworks.repo.model.table.ColumnModel;
+import org.sagebionetworks.repo.model.table.ColumnType;
+import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.testng.AbstractTestNGSpringContextTests;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -39,6 +43,8 @@ import org.sagebionetworks.bridge.rest.model.UploadFieldType;
 import org.sagebionetworks.bridge.rest.model.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
+import javax.annotation.Resource;
+
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Matchers.notNull;
@@ -55,7 +61,42 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
-public class SynapseExportHandlerTest {
+@ContextConfiguration("classpath:test-context.xml")
+public class SynapseExportHandlerTest extends AbstractTestNGSpringContextTests {
+    private static List<ColumnModel> MOCK_COLUMN_LIST;
+
+    private static List<ColumnDefinition> MOCK_COLUMN_DEFINITION;
+
+    @Resource(name = "synapseColumnDefinitions")
+    public final void setSynapseColumnDefinitionsAndList(List<ColumnDefinition> synapseColumnDefinitions) {
+        MOCK_COLUMN_DEFINITION = synapseColumnDefinitions;
+
+        ImmutableList.Builder<ColumnModel> columnListBuilder = ImmutableList.builder();
+
+        ColumnModel recordIdColumn = new ColumnModel();
+        recordIdColumn.setName("recordId");
+        recordIdColumn.setColumnType(ColumnType.STRING);
+        recordIdColumn.setMaximumSize(36L);
+        columnListBuilder.add(recordIdColumn);
+
+        ColumnModel appVersionColumn = new ColumnModel();
+        appVersionColumn.setName("appVersion");
+        appVersionColumn.setColumnType(ColumnType.STRING);
+        appVersionColumn.setMaximumSize(48L);
+        columnListBuilder.add(appVersionColumn);
+
+        ColumnModel phoneInfoColumn = new ColumnModel();
+        phoneInfoColumn.setName("phoneInfo");
+        phoneInfoColumn.setColumnType(ColumnType.STRING);
+        phoneInfoColumn.setMaximumSize(48L);
+        columnListBuilder.add(phoneInfoColumn);
+
+        final List<ColumnModel> tempList = BridgeExporterUtil.convertToColumnList(MOCK_COLUMN_DEFINITION);
+        columnListBuilder.addAll(tempList);
+
+        MOCK_COLUMN_LIST = columnListBuilder.build();
+    }
+
     // Constants needed to create metadata (phone info, app version)
     private static final String DUMMY_USER_SHARING_SCOPE = "ALL_QUALIFIED_RESEARCHERS";
     private static final String DUMMY_APP_VERSION = "Bridge-EX 2.0";
@@ -120,6 +161,7 @@ public class SynapseExportHandlerTest {
 
     private void setupWithSchema(SynapseExportHandler handler, UploadSchemaKey schemaKey, UploadSchema schema)
     throws Exception {
+        handler.setSynapseColumnDefinitionsAndList(MOCK_COLUMN_DEFINITION);
         // This needs to be done first, because lots of stuff reference this, even while we're setting up mocks.
         handler.setStudyId(TEST_STUDY_ID);
 
@@ -156,7 +198,7 @@ public class SynapseExportHandlerTest {
 
         // mock Synapse helper
         List<ColumnModel> columnModelList = new ArrayList<>();
-        columnModelList.addAll(SynapseExportHandler.COMMON_COLUMN_LIST);
+        columnModelList.addAll(MOCK_COLUMN_LIST);
         columnModelList.addAll(handler.getSynapseTableColumnList(task));
         when(mockSynapseHelper.getColumnModelsForTableWithRetry(TEST_SYNAPSE_TABLE_ID)).thenReturn(columnModelList);
 
@@ -453,8 +495,8 @@ public class SynapseExportHandlerTest {
     }
 
     public static void validateTsvHeaders(String line, String... extraColumnNameVarargs) {
-        StringBuilder expectedLineBuilder = new StringBuilder("recordId\thealthCode\texternalId\tdataGroups\t" +
-                "uploadDate\tcreatedOn\tappVersion\tphoneInfo\tuserSharingScope");
+        StringBuilder expectedLineBuilder = new StringBuilder("recordId\tappVersion\tphoneInfo\thealthCode\texternalId\tdataGroups\t" +
+                "uploadDate\tcreatedOn\tuserSharingScope");
         for (String oneExtraColumnName : extraColumnNameVarargs) {
             expectedLineBuilder.append('\t');
             expectedLineBuilder.append(oneExtraColumnName);
@@ -463,9 +505,9 @@ public class SynapseExportHandlerTest {
     }
 
     public static void validateTsvRow(String line, String... extraValueVarargs) {
-        StringBuilder expectedLineBuilder = new StringBuilder(DUMMY_RECORD_ID + '\t' + DUMMY_HEALTH_CODE + '\t' +
+        StringBuilder expectedLineBuilder = new StringBuilder(DUMMY_RECORD_ID + '\t' + DUMMY_APP_VERSION + '\t' + DUMMY_PHONE_INFO + '\t' + DUMMY_HEALTH_CODE + '\t' +
                 DUMMY_EXTERNAL_ID + '\t' + DUMMY_DATA_GROUPS_FLATTENED + '\t' + DUMMY_REQUEST_DATE + '\t' +
-                DUMMY_CREATED_ON + '\t' + DUMMY_APP_VERSION + '\t' + DUMMY_PHONE_INFO + '\t' + DUMMY_USER_SHARING_SCOPE);
+                DUMMY_CREATED_ON + '\t' + DUMMY_USER_SHARING_SCOPE);
         for (String oneExtraValue : extraValueVarargs) {
             expectedLineBuilder.append('\t');
             expectedLineBuilder.append(oneExtraValue);

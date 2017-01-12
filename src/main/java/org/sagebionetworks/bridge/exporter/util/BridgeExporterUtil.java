@@ -1,15 +1,20 @@
 package org.sagebionetworks.bridge.exporter.util;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Joiner;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSetMultimap;
 import org.jsoup.Jsoup;
 import org.jsoup.safety.Whitelist;
+import org.omg.PortableInterceptor.SYSTEM_EXCEPTION;
+import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
+import org.sagebionetworks.bridge.exporter.synapse.TransferMethod;
+import org.sagebionetworks.bridge.exporter.worker.ExportTask;
+import org.sagebionetworks.repo.model.table.ColumnModel;
+import org.sagebionetworks.repo.model.table.ColumnType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -184,5 +189,45 @@ public class BridgeExporterUtil {
     public static boolean shouldConvertFreeformTextToAttachment(UploadSchemaKey schemaKey, String fieldName) {
         Set<String> fieldsToConvert = SCHEMA_FIELDS_TO_CONVERT.get(schemaKey);
         return fieldsToConvert != null && fieldsToConvert.contains(fieldName);
+    }
+
+    /**
+     * Helper method to convert a list of ColumnDefinition to a ColumnModel list.
+     * @param columnDefinitions
+     * @return
+     */
+    public static List<ColumnModel> convertToColumnList(final List<ColumnDefinition> columnDefinitions) {
+        ImmutableList.Builder<ColumnModel> columnListBuilder = ImmutableList.builder();
+
+        for (ColumnDefinition columnDefinition : columnDefinitions) {
+            ColumnModel columnModel = new ColumnModel();
+            columnModel.setName(columnDefinition.getName());
+            columnModel.setColumnType(columnDefinition.getColumnType());
+            columnModel.setMaximumSize(columnDefinition.getMaximumSize());
+            columnListBuilder.add(columnModel);
+        }
+
+        return columnListBuilder.build();
+    }
+
+    public static Map<String, String> getRowValuesFromRecordBasedOnColumnDefinition(final Map<String, String> rowMap, final Item record, final List<ColumnDefinition> columnDefinitions, final String recordId, final ExportTask task) {
+        Map<String, String> retMap = new HashMap<>();
+        retMap.putAll(rowMap);
+
+        for (ColumnDefinition columnDefinition : columnDefinitions) {
+            final String ddbName = columnDefinition.getDdbName();
+
+            String valueToAdd = "";
+            if (columnDefinition.getSanitize() != null && columnDefinition.getSanitize()) {
+                valueToAdd = sanitizeDdbValue(record, ddbName, columnDefinition.getMaximumSize().intValue(), recordId);
+            } else {
+                TransferMethod transferMethod = columnDefinition.getTransferMethod();
+                valueToAdd = transferMethod.transfer(ddbName, record, task);
+            }
+
+            retMap.put(columnDefinition.getName(), valueToAdd);
+        }
+
+        return retMap;
     }
 }

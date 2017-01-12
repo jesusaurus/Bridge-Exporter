@@ -1,9 +1,11 @@
 package org.sagebionetworks.bridge.exporter.config;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -14,6 +16,10 @@ import com.amazonaws.services.dynamodbv2.document.Table;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.sqs.AmazonSQSClient;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
+import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
@@ -193,5 +199,16 @@ public class SpringConfig {
     @Bean(name = "workerExecutorService")
     public ExecutorService workerExecutorService() {
         return Executors.newFixedThreadPool(bridgeConfig().getInt("threadpool.worker.count"));
+    }
+
+    @Bean(name = "synapseColumnDefinitions")
+    public List<ColumnDefinition> synapseColumnDefinitions() throws IOException {
+        final ClassLoader classLoader = getClass().getClassLoader();
+        final File file = new File(classLoader.getResource("ColumnDefinition.json").getFile());
+        final ObjectMapper mapper = new ObjectMapper();
+
+        List<ColumnDefinition> value = mapper.readValue(file, new TypeReference<List<ColumnDefinition>>(){});
+
+        return value;
     }
 }

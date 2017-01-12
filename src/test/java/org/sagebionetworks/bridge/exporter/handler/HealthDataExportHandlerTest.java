@@ -24,7 +24,12 @@ import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import com.google.common.collect.ImmutableList;
 import org.joda.time.DateTime;
+import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
+import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.repo.model.table.ColumnModel;
+import org.sagebionetworks.repo.model.table.ColumnType;
+import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.testng.AbstractTestNGSpringContextTests;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -42,7 +47,14 @@ import org.sagebionetworks.bridge.json.DefaultObjectMapper;
 import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
 import org.sagebionetworks.bridge.rest.model.UploadFieldType;
 
-public class HealthDataExportHandlerTest {
+import javax.annotation.Resource;
+
+@ContextConfiguration("classpath:test-context.xml")
+public class HealthDataExportHandlerTest extends AbstractTestNGSpringContextTests {
+    private static List<ColumnModel> MOCK_COLUMN_LIST;
+
+    private static List<ColumnDefinition> MOCK_COLUMN_DEFINITION;
+
     private static final String FIELD_NAME = "foo-field";
     private static final String FIELD_NAME_TIMEZONE = FIELD_NAME + ".timezone";
     private static final String FIELD_VALUE = "asdf jkl;";
@@ -53,6 +65,36 @@ public class HealthDataExportHandlerTest {
     private static final UploadFieldDefinition OTHER_CHOICE_FIELD_DEF = new UploadFieldDefinition()
             .allowOtherChoices(true).name(FIELD_NAME).type(UploadFieldType.MULTI_CHOICE)
             .multiChoiceAnswerList(ImmutableList.of("one", "two"));
+
+    @Resource(name = "synapseColumnDefinitions")
+    public final void setSynapseColumnDefinitionsAndList(List<ColumnDefinition> synapseColumnDefinitions) {
+        MOCK_COLUMN_DEFINITION = synapseColumnDefinitions;
+
+        ImmutableList.Builder<ColumnModel> columnListBuilder = ImmutableList.builder();
+
+        ColumnModel recordIdColumn = new ColumnModel();
+        recordIdColumn.setName("recordId");
+        recordIdColumn.setColumnType(ColumnType.STRING);
+        recordIdColumn.setMaximumSize(36L);
+        columnListBuilder.add(recordIdColumn);
+
+        ColumnModel appVersionColumn = new ColumnModel();
+        appVersionColumn.setName("appVersion");
+        appVersionColumn.setColumnType(ColumnType.STRING);
+        appVersionColumn.setMaximumSize(48L);
+        columnListBuilder.add(appVersionColumn);
+
+        ColumnModel phoneInfoColumn = new ColumnModel();
+        phoneInfoColumn.setName("phoneInfo");
+        phoneInfoColumn.setColumnType(ColumnType.STRING);
+        phoneInfoColumn.setMaximumSize(48L);
+        columnListBuilder.add(phoneInfoColumn);
+
+        final List<ColumnModel> tempList = BridgeExporterUtil.convertToColumnList(MOCK_COLUMN_DEFINITION);
+        columnListBuilder.addAll(tempList);
+
+        MOCK_COLUMN_LIST = columnListBuilder.build();
+    }
 
     // branch coverage
     @Test
@@ -229,6 +271,7 @@ public class HealthDataExportHandlerTest {
         HealthDataExportHandler handler = new HealthDataExportHandler();
         handler.setSchemaKey(BridgeHelperTest.TEST_SCHEMA_KEY);
         handler.setStudyId(BridgeHelperTest.TEST_STUDY_ID);
+        handler.setSynapseColumnDefinitionsAndList(MOCK_COLUMN_DEFINITION);
 
         // mock BridgeHelper
         BridgeHelper mockBridgeHelper = mock(BridgeHelper.class);
@@ -246,7 +289,7 @@ public class HealthDataExportHandlerTest {
         // mock Synapse helper
         SynapseHelper mockSynapseHelper = mock(SynapseHelper.class);
         List<ColumnModel> columnModelList = new ArrayList<>();
-        columnModelList.addAll(SynapseExportHandler.COMMON_COLUMN_LIST);
+        columnModelList.addAll(MOCK_COLUMN_LIST);
         columnModelList.add(BridgeHelperTest.TEST_SYNAPSE_COLUMN);
         when(mockSynapseHelper.getColumnModelsForTableWithRetry(SynapseExportHandlerTest.TEST_SYNAPSE_TABLE_ID))
                 .thenReturn(columnModelList);

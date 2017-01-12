@@ -18,7 +18,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.google.common.collect.ImmutableList;
+import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
 import org.sagebionetworks.repo.model.table.ColumnModel;
+import org.sagebionetworks.repo.model.table.ColumnType;
+import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.testng.AbstractTestNGSpringContextTests;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -38,12 +42,49 @@ import org.sagebionetworks.bridge.rest.model.UploadFieldType;
 import org.sagebionetworks.bridge.rest.model.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
-public class SynapseExportHandlerNewTableTest {
+import javax.annotation.Resource;
+
+@ContextConfiguration("classpath:test-context.xml")
+public class SynapseExportHandlerNewTableTest extends AbstractTestNGSpringContextTests {
+    private static List<ColumnModel> MOCK_COLUMN_LIST;
+
+    private static List<ColumnDefinition> MOCK_COLUMN_DEFINITION;
+
     private String ddbSynapseTableId;
     private ExportWorkerManager manager;
     private SynapseHelper mockSynapseHelper;
     private ExportTask task;
     private byte[] tsvBytes;
+
+    @Resource(name = "synapseColumnDefinitions")
+    public final void setSynapseColumnDefinitionsAndList(List<ColumnDefinition> synapseColumnDefinitions) {
+        MOCK_COLUMN_DEFINITION = synapseColumnDefinitions;
+
+        ImmutableList.Builder<ColumnModel> columnListBuilder = ImmutableList.builder();
+
+        ColumnModel recordIdColumn = new ColumnModel();
+        recordIdColumn.setName("recordId");
+        recordIdColumn.setColumnType(ColumnType.STRING);
+        recordIdColumn.setMaximumSize(36L);
+        columnListBuilder.add(recordIdColumn);
+
+        ColumnModel appVersionColumn = new ColumnModel();
+        appVersionColumn.setName("appVersion");
+        appVersionColumn.setColumnType(ColumnType.STRING);
+        appVersionColumn.setMaximumSize(48L);
+        columnListBuilder.add(appVersionColumn);
+
+        ColumnModel phoneInfoColumn = new ColumnModel();
+        phoneInfoColumn.setName("phoneInfo");
+        phoneInfoColumn.setColumnType(ColumnType.STRING);
+        phoneInfoColumn.setMaximumSize(48L);
+        columnListBuilder.add(phoneInfoColumn);
+
+        final List<ColumnModel> tempList = BridgeExporterUtil.convertToColumnList(MOCK_COLUMN_DEFINITION);
+        columnListBuilder.addAll(tempList);
+
+        MOCK_COLUMN_LIST = columnListBuilder.build();
+    }
 
     @BeforeMethod
     public void before() {
@@ -58,6 +99,7 @@ public class SynapseExportHandlerNewTableTest {
 
     private void setupWithSchema(SynapseExportHandler handler, UploadSchemaKey schemaKey, UploadSchema schema)
             throws Exception {
+        handler.setSynapseColumnDefinitionsAndList(MOCK_COLUMN_DEFINITION);
         // This needs to be done first, because lots of stuff reference this, even while we're setting up mocks.
         handler.setStudyId(SynapseExportHandlerTest.TEST_STUDY_ID);
 
@@ -96,7 +138,7 @@ public class SynapseExportHandlerNewTableTest {
 
         // mock create columns - all we care about are column names and IDs
         List<ColumnModel> columnModelList = new ArrayList<>();
-        columnModelList.addAll(SynapseExportHandler.COMMON_COLUMN_LIST);
+        columnModelList.addAll(MOCK_COLUMN_LIST);
         columnModelList.addAll(handler.getSynapseTableColumnList(task));
 
         // mock create table with columns and ACLs
