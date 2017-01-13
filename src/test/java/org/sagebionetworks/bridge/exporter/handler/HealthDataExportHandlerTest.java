@@ -25,11 +25,7 @@ import com.fasterxml.jackson.databind.node.TextNode;
 import com.google.common.collect.ImmutableList;
 import org.joda.time.DateTime;
 import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
-import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.repo.model.table.ColumnModel;
-import org.sagebionetworks.repo.model.table.ColumnType;
-import org.springframework.test.context.ContextConfiguration;
-import org.springframework.test.context.testng.AbstractTestNGSpringContextTests;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -47,13 +43,15 @@ import org.sagebionetworks.bridge.json.DefaultObjectMapper;
 import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
 import org.sagebionetworks.bridge.rest.model.UploadFieldType;
 
-import javax.annotation.Resource;
-
-@ContextConfiguration("classpath:test-context.xml")
-public class HealthDataExportHandlerTest extends AbstractTestNGSpringContextTests {
+public class HealthDataExportHandlerTest {
     private static List<ColumnModel> MOCK_COLUMN_LIST;
 
     private static List<ColumnDefinition> MOCK_COLUMN_DEFINITION;
+
+    static {
+        MOCK_COLUMN_DEFINITION = SynapseExportHandlerTest.createTestSynapseColumnDefinitions();
+        MOCK_COLUMN_LIST = SynapseExportHandlerTest.createTestSynapseColumnList(MOCK_COLUMN_DEFINITION);
+    }
 
     private static final String FIELD_NAME = "foo-field";
     private static final String FIELD_NAME_TIMEZONE = FIELD_NAME + ".timezone";
@@ -65,36 +63,6 @@ public class HealthDataExportHandlerTest extends AbstractTestNGSpringContextTest
     private static final UploadFieldDefinition OTHER_CHOICE_FIELD_DEF = new UploadFieldDefinition()
             .allowOtherChoices(true).name(FIELD_NAME).type(UploadFieldType.MULTI_CHOICE)
             .multiChoiceAnswerList(ImmutableList.of("one", "two"));
-
-    @Resource(name = "synapseColumnDefinitions")
-    public final void setSynapseColumnDefinitionsAndList(List<ColumnDefinition> synapseColumnDefinitions) {
-        MOCK_COLUMN_DEFINITION = synapseColumnDefinitions;
-
-        ImmutableList.Builder<ColumnModel> columnListBuilder = ImmutableList.builder();
-
-        ColumnModel recordIdColumn = new ColumnModel();
-        recordIdColumn.setName("recordId");
-        recordIdColumn.setColumnType(ColumnType.STRING);
-        recordIdColumn.setMaximumSize(36L);
-        columnListBuilder.add(recordIdColumn);
-
-        ColumnModel appVersionColumn = new ColumnModel();
-        appVersionColumn.setName("appVersion");
-        appVersionColumn.setColumnType(ColumnType.STRING);
-        appVersionColumn.setMaximumSize(48L);
-        columnListBuilder.add(appVersionColumn);
-
-        ColumnModel phoneInfoColumn = new ColumnModel();
-        phoneInfoColumn.setName("phoneInfo");
-        phoneInfoColumn.setColumnType(ColumnType.STRING);
-        phoneInfoColumn.setMaximumSize(48L);
-        columnListBuilder.add(phoneInfoColumn);
-
-        final List<ColumnModel> tempList = BridgeExporterUtil.convertToColumnList(MOCK_COLUMN_DEFINITION);
-        columnListBuilder.addAll(tempList);
-
-        MOCK_COLUMN_LIST = columnListBuilder.build();
-    }
 
     // branch coverage
     @Test

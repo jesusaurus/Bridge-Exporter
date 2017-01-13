@@ -1,9 +1,11 @@
 package org.sagebionetworks.bridge.exporter.synapse;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
+import com.amazonaws.services.s3.transfer.Transfer;
 import com.google.common.base.Joiner;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.exporter.worker.ExportTask;
+import org.sagebionetworks.repo.model.table.ColumnType;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -17,13 +19,18 @@ import java.util.Set;
 public enum TransferMethod {
     STRING {
         @Override
-        public String transfer(String ddbName, Item record, ExportTask task) {
+        public String transfer(String ddbName, Item record) {
             return record.getString(ddbName);
+        }
+
+        @Override
+        public ColumnType getColumnType() {
+            return ColumnType.STRING;
         }
     },
     STRINGSET {
         @Override
-        public String transfer(String ddbName, Item record, ExportTask task) {
+        public String transfer(String ddbName, Item record) {
             String valueToAdd = "";
             Set<String> stringSet = record.getStringSet(ddbName);
             if (stringSet != null) {
@@ -34,19 +41,26 @@ public enum TransferMethod {
             }
             return valueToAdd;
         }
+
+        @Override
+        public ColumnType getColumnType() {
+            return ColumnType.STRING;
+        }
     },
     DATE {
         @Override
-        public String transfer(String ddbName, Item record, ExportTask task) {
+        public String transfer(String ddbName, Item record) {
             return String.valueOf(record.getLong(ddbName));
         }
-    },
-    EXPORTERDATE {
+
         @Override
-        public String transfer(String ddbName, Item record, ExportTask task) {
-            return task.getExporterDate().toString();
+        public ColumnType getColumnType() {
+            return ColumnType.DATE;
         }
     };
 
-    public abstract String transfer(final String ddbName, final Item record, final ExportTask task);
+    public abstract String transfer(final String ddbName, final Item record);
+
+    // helper method to get column type from transfer method -- since they share same value in exporter
+    public abstract ColumnType getColumnType();
 }

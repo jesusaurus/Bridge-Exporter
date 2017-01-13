@@ -20,9 +20,6 @@ import java.util.List;
 import com.google.common.collect.ImmutableList;
 import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
 import org.sagebionetworks.repo.model.table.ColumnModel;
-import org.sagebionetworks.repo.model.table.ColumnType;
-import org.springframework.test.context.ContextConfiguration;
-import org.springframework.test.context.testng.AbstractTestNGSpringContextTests;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -42,49 +39,21 @@ import org.sagebionetworks.bridge.rest.model.UploadFieldType;
 import org.sagebionetworks.bridge.rest.model.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
-import javax.annotation.Resource;
-
-@ContextConfiguration("classpath:test-context.xml")
-public class SynapseExportHandlerNewTableTest extends AbstractTestNGSpringContextTests {
+public class SynapseExportHandlerNewTableTest {
     private static List<ColumnModel> MOCK_COLUMN_LIST;
 
     private static List<ColumnDefinition> MOCK_COLUMN_DEFINITION;
+
+    static {
+        MOCK_COLUMN_DEFINITION = SynapseExportHandlerTest.createTestSynapseColumnDefinitions();
+        MOCK_COLUMN_LIST = SynapseExportHandlerTest.createTestSynapseColumnList(MOCK_COLUMN_DEFINITION);
+    }
 
     private String ddbSynapseTableId;
     private ExportWorkerManager manager;
     private SynapseHelper mockSynapseHelper;
     private ExportTask task;
     private byte[] tsvBytes;
-
-    @Resource(name = "synapseColumnDefinitions")
-    public final void setSynapseColumnDefinitionsAndList(List<ColumnDefinition> synapseColumnDefinitions) {
-        MOCK_COLUMN_DEFINITION = synapseColumnDefinitions;
-
-        ImmutableList.Builder<ColumnModel> columnListBuilder = ImmutableList.builder();
-
-        ColumnModel recordIdColumn = new ColumnModel();
-        recordIdColumn.setName("recordId");
-        recordIdColumn.setColumnType(ColumnType.STRING);
-        recordIdColumn.setMaximumSize(36L);
-        columnListBuilder.add(recordIdColumn);
-
-        ColumnModel appVersionColumn = new ColumnModel();
-        appVersionColumn.setName("appVersion");
-        appVersionColumn.setColumnType(ColumnType.STRING);
-        appVersionColumn.setMaximumSize(48L);
-        columnListBuilder.add(appVersionColumn);
-
-        ColumnModel phoneInfoColumn = new ColumnModel();
-        phoneInfoColumn.setName("phoneInfo");
-        phoneInfoColumn.setColumnType(ColumnType.STRING);
-        phoneInfoColumn.setMaximumSize(48L);
-        columnListBuilder.add(phoneInfoColumn);
-
-        final List<ColumnModel> tempList = BridgeExporterUtil.convertToColumnList(MOCK_COLUMN_DEFINITION);
-        columnListBuilder.addAll(tempList);
-
-        MOCK_COLUMN_LIST = columnListBuilder.build();
-    }
 
     @BeforeMethod
     public void before() {

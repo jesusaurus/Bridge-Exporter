@@ -5,7 +5,6 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -50,13 +49,13 @@ public abstract class SynapseExportHandler extends ExportHandler {
     private static final Logger LOG = LoggerFactory.getLogger(SynapseExportHandler.class);
 
     // Package-scoped to be available to unit tests.
-    List<ColumnModel> COMMON_COLUMN_LIST;
+    List<ColumnModel> commonColumnList;
 
-    private List<ColumnDefinition> COLUMN_DEFINITION;
+    private List<ColumnDefinition> columnDefinition;
 
     @Resource(name = "synapseColumnDefinitions")
     public final void setSynapseColumnDefinitionsAndList(List<ColumnDefinition> synapseColumnDefinitions) {
-        COLUMN_DEFINITION = synapseColumnDefinitions;
+        columnDefinition = synapseColumnDefinitions;
 
         ImmutableList.Builder<ColumnModel> columnListBuilder = ImmutableList.builder();
 
@@ -78,13 +77,17 @@ public abstract class SynapseExportHandler extends ExportHandler {
         phoneInfoColumn.setMaximumSize(48L);
         columnListBuilder.add(phoneInfoColumn);
 
-        final List<ColumnModel> tempList = BridgeExporterUtil.convertToColumnList(COLUMN_DEFINITION);
+        ColumnModel uploadDateColumn = new ColumnModel();
+        uploadDateColumn.setName("uploadDate");
+        uploadDateColumn.setColumnType(ColumnType.STRING);
+        uploadDateColumn.setMaximumSize(10L);
+        columnListBuilder.add(uploadDateColumn);
+
+        final List<ColumnModel> tempList = BridgeExporterUtil.convertToColumnList(columnDefinition);
         columnListBuilder.addAll(tempList);
 
-        COMMON_COLUMN_LIST = columnListBuilder.build();
+        commonColumnList = columnListBuilder.build();
     }
-
-    private static final Joiner DATA_GROUP_JOINER = Joiner.on(',').useForNull("");
 
     /**
      * Given the record (contained in the subtask), serialize the results and write to a TSV. If a TSV hasn't been
@@ -156,9 +159,9 @@ public abstract class SynapseExportHandler extends ExportHandler {
     // when initializing the TSV for a task.
     private List<String> getColumnNameList(ExportTask task) throws BridgeExporterException, SchemaNotFoundException,
             SynapseException {
-        // Construct column definition list. Merge COMMON_COLUMN_LIST with getSynapseTableColumnList.
+        // Construct column definition list. Merge commonColumnList with getSynapseTableColumnList.
         List<ColumnModel> columnDefList = new ArrayList<>();
-        columnDefList.addAll(COMMON_COLUMN_LIST);
+        columnDefList.addAll(commonColumnList);
         columnDefList.addAll(getSynapseTableColumnList(task));
 
         // Create or update table if necessary.
@@ -296,8 +299,9 @@ public abstract class SynapseExportHandler extends ExportHandler {
         rowValueMap.put("recordId", recordId);
         rowValueMap.put("appVersion", appVersion);
         rowValueMap.put("phoneInfo", phoneInfo);
+        rowValueMap.put("uploadDate", task.getExporterDate().toString());
 
-        rowValueMap.putAll(BridgeExporterUtil.getRowValuesFromRecordBasedOnColumnDefinition(rowValueMap,record, COLUMN_DEFINITION, recordId, task));
+        BridgeExporterUtil.getRowValuesFromRecordBasedOnColumnDefinition(rowValueMap,record, columnDefinition, recordId);
 
         return rowValueMap;
     }
@@ -353,7 +357,7 @@ public abstract class SynapseExportHandler extends ExportHandler {
 
     /**
      * List of Synapse table column model objects, to be used to create both the column models and the Synapse table.
-     * This excludes columns common to all Bridge tables defined in COMMON_COLUMN_LIST.
+     * This excludes columns common to all Bridge tables defined in commonColumnList.
      */
     protected abstract List<ColumnModel> getSynapseTableColumnList(ExportTask task) throws SchemaNotFoundException;
 

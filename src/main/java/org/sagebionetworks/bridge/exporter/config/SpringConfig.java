@@ -18,7 +18,9 @@ import com.amazonaws.services.sqs.AmazonSQSClient;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.ImmutableList;
 import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
+import org.sagebionetworks.bridge.json.DefaultObjectMapper;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
@@ -205,9 +207,9 @@ public class SpringConfig {
     public List<ColumnDefinition> synapseColumnDefinitions() throws IOException {
         final ClassLoader classLoader = getClass().getClassLoader();
         final File file = new File(classLoader.getResource("ColumnDefinition.json").getFile());
-        final ObjectMapper mapper = new ObjectMapper();
+        final ObjectMapper mapper = DefaultObjectMapper.INSTANCE;
 
-        List<ColumnDefinition> value = mapper.readValue(file, new TypeReference<List<ColumnDefinition>>(){});
+        ImmutableList<ColumnDefinition> value = mapper.readValue(file, new TypeReference<List<ColumnDefinition>>(){});
 
         return value;
     }

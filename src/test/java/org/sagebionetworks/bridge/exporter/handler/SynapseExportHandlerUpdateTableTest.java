@@ -26,12 +26,9 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Multiset;
 import org.mockito.ArgumentCaptor;
 import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
-import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 import org.sagebionetworks.repo.model.table.TableEntity;
-import org.springframework.test.context.ContextConfiguration;
-import org.springframework.test.context.testng.AbstractTestNGSpringContextTests;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -48,50 +45,22 @@ import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
 import org.sagebionetworks.bridge.exporter.worker.TsvInfo;
 import org.sagebionetworks.bridge.file.InMemoryFileHelper;
 
-import javax.annotation.Resource;
-
 @SuppressWarnings({ "rawtypes", "unchecked" })
-@ContextConfiguration("classpath:test-context.xml")
-public class SynapseExportHandlerUpdateTableTest extends AbstractTestNGSpringContextTests {
+public class SynapseExportHandlerUpdateTableTest {
     private static List<ColumnModel> MOCK_COLUMN_LIST;
 
     private static List<ColumnDefinition> MOCK_COLUMN_DEFINITION;
+
+    static {
+        MOCK_COLUMN_DEFINITION = SynapseExportHandlerTest.createTestSynapseColumnDefinitions();
+        MOCK_COLUMN_LIST = SynapseExportHandlerTest.createTestSynapseColumnList(MOCK_COLUMN_DEFINITION);
+    }
 
     private List<ColumnModel> expectedColDefList;
     private List<String> expectedColIdList;
     private SynapseHelper mockSynapseHelper;
     private ExportTask task;
     private byte[] tsvBytes;
-
-    @Resource(name = "synapseColumnDefinitions")
-    public final void setSynapseColumnDefinitionsAndList(List<ColumnDefinition> synapseColumnDefinitions) {
-        MOCK_COLUMN_DEFINITION = synapseColumnDefinitions;
-
-        ImmutableList.Builder<ColumnModel> columnListBuilder = ImmutableList.builder();
-
-        ColumnModel recordIdColumn = new ColumnModel();
-        recordIdColumn.setName("recordId");
-        recordIdColumn.setColumnType(ColumnType.STRING);
-        recordIdColumn.setMaximumSize(36L);
-        columnListBuilder.add(recordIdColumn);
-
-        ColumnModel appVersionColumn = new ColumnModel();
-        appVersionColumn.setName("appVersion");
-        appVersionColumn.setColumnType(ColumnType.STRING);
-        appVersionColumn.setMaximumSize(48L);
-        columnListBuilder.add(appVersionColumn);
-
-        ColumnModel phoneInfoColumn = new ColumnModel();
-        phoneInfoColumn.setName("phoneInfo");
-        phoneInfoColumn.setColumnType(ColumnType.STRING);
-        phoneInfoColumn.setMaximumSize(48L);
-        columnListBuilder.add(phoneInfoColumn);
-
-        final List<ColumnModel> tempList = BridgeExporterUtil.convertToColumnList(MOCK_COLUMN_DEFINITION);
-        columnListBuilder.addAll(tempList);
-
-        MOCK_COLUMN_LIST = columnListBuilder.build();
-    }
 
     @BeforeMethod
     public void before() {
@@ -325,6 +294,25 @@ public class SynapseExportHandlerUpdateTableTest extends AbstractTestNGSpringCon
     }
 
     @Test
+    public void willAddCommonColumnList() throws Exception {
+        // provide an empty existing list and verify if handler will add common column list into it
+        List<ColumnModel> existingColumnList = new ArrayList<>();
+
+        setupAndExecuteSuccessCase(existingColumnList);
+
+        // verify create columns call
+        verify(mockSynapseHelper).createColumnModelsWithRetry(expectedColDefList);
+
+        // verify table update
+        ArgumentCaptor<TableEntity> tableCaptor = ArgumentCaptor.forClass(TableEntity.class);
+        verify(mockSynapseHelper).updateTableWithRetry(tableCaptor.capture());
+
+        TableEntity table = tableCaptor.getValue();
+        assertEquals(table.getColumnIds(), expectedColIdList);
+
+    }
+
+    @Test
     public void ignoreShrinkingColumn() throws Exception {
         // Existing column is larger. Handler will have a column def with a smaller column.
         testIgnoreResizedColumn(1000);
@@ -353,7 +341,7 @@ public class SynapseExportHandlerUpdateTableTest extends AbstractTestNGSpringCon
         setupAndExecuteSuccessCase(existingColumnList);
 
         // verify creating the column has the old column size - We only care about the first one "modify-this".
-        // "modify-this" is the zeroth column after the COMMON_COLUMN_LIST, so do some math to get the sizes and
+        // "modify-this" is the zeroth column after the commonColumnList, so do some math to get the sizes and
         // indices right.
         ArgumentCaptor<List> submittedColumnListCaptor = ArgumentCaptor.forClass(List.class);
         verify(mockSynapseHelper).createColumnModelsWithRetry(submittedColumnListCaptor.capture());

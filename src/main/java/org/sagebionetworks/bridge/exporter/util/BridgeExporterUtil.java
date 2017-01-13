@@ -1,6 +1,5 @@
 package org.sagebionetworks.bridge.exporter.util;
 
-import java.util.*;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -9,18 +8,20 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSetMultimap;
 import org.jsoup.Jsoup;
 import org.jsoup.safety.Whitelist;
-import org.omg.PortableInterceptor.SYSTEM_EXCEPTION;
 import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
 import org.sagebionetworks.bridge.exporter.synapse.TransferMethod;
-import org.sagebionetworks.bridge.exporter.worker.ExportTask;
 import org.sagebionetworks.repo.model.table.ColumnModel;
-import org.sagebionetworks.repo.model.table.ColumnType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
 import org.sagebionetworks.bridge.rest.model.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /** Various static utility methods that don't neatly fit anywhere else. */
 public class BridgeExporterUtil {
@@ -212,24 +213,21 @@ public class BridgeExporterUtil {
         return columnListBuilder.build();
     }
 
-    public static Map<String, String> getRowValuesFromRecordBasedOnColumnDefinition(final Map<String, String> rowMap, final Item record, final List<ColumnDefinition> columnDefinitions, final String recordId, final ExportTask task) {
-        Map<String, String> retMap = new HashMap<>();
-        retMap.putAll(rowMap);
+    public static void getRowValuesFromRecordBasedOnColumnDefinition(Map<String, String> rowMap, final Item record, final List<ColumnDefinition> columnDefinitions, final String recordId) {
 
         for (ColumnDefinition columnDefinition : columnDefinitions) {
-            final String ddbName = columnDefinition.getDdbName();
+            // use name if there is no ddbName
+            final String ddbName = columnDefinition.getDdbName() == null? columnDefinition.getName() : columnDefinition.getDdbName();
 
             String valueToAdd = "";
-            if (columnDefinition.getSanitize() != null && columnDefinition.getSanitize()) {
+            if (columnDefinition.getSanitize()) {
                 valueToAdd = sanitizeDdbValue(record, ddbName, columnDefinition.getMaximumSize().intValue(), recordId);
             } else {
                 TransferMethod transferMethod = columnDefinition.getTransferMethod();
-                valueToAdd = transferMethod.transfer(ddbName, record, task);
+                valueToAdd = transferMethod.transfer(ddbName, record);
             }
 
-            retMap.put(columnDefinition.getName(), valueToAdd);
+            rowMap.put(columnDefinition.getName(), valueToAdd);
         }
-
-        return retMap;
     }
 }

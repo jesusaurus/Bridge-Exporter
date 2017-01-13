@@ -16,10 +16,9 @@ import com.google.common.collect.SetMultimap;
 import org.joda.time.DateTime;
 import org.joda.time.LocalDate;
 import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
+import org.sagebionetworks.bridge.exporter.synapse.TransferMethod;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
-import org.springframework.test.context.ContextConfiguration;
-import org.springframework.test.context.testng.AbstractTestNGSpringContextTests;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -43,8 +42,6 @@ import org.sagebionetworks.bridge.rest.model.UploadFieldType;
 import org.sagebionetworks.bridge.rest.model.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
-import javax.annotation.Resource;
-
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Matchers.notNull;
@@ -61,40 +58,14 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
-@ContextConfiguration("classpath:test-context.xml")
-public class SynapseExportHandlerTest extends AbstractTestNGSpringContextTests {
-    private static List<ColumnModel> MOCK_COLUMN_LIST;
-
+public class SynapseExportHandlerTest {
     private static List<ColumnDefinition> MOCK_COLUMN_DEFINITION;
 
-    @Resource(name = "synapseColumnDefinitions")
-    public final void setSynapseColumnDefinitionsAndList(List<ColumnDefinition> synapseColumnDefinitions) {
-        MOCK_COLUMN_DEFINITION = synapseColumnDefinitions;
+    private static List<ColumnModel> MOCK_COLUMN_LIST;
 
-        ImmutableList.Builder<ColumnModel> columnListBuilder = ImmutableList.builder();
-
-        ColumnModel recordIdColumn = new ColumnModel();
-        recordIdColumn.setName("recordId");
-        recordIdColumn.setColumnType(ColumnType.STRING);
-        recordIdColumn.setMaximumSize(36L);
-        columnListBuilder.add(recordIdColumn);
-
-        ColumnModel appVersionColumn = new ColumnModel();
-        appVersionColumn.setName("appVersion");
-        appVersionColumn.setColumnType(ColumnType.STRING);
-        appVersionColumn.setMaximumSize(48L);
-        columnListBuilder.add(appVersionColumn);
-
-        ColumnModel phoneInfoColumn = new ColumnModel();
-        phoneInfoColumn.setName("phoneInfo");
-        phoneInfoColumn.setColumnType(ColumnType.STRING);
-        phoneInfoColumn.setMaximumSize(48L);
-        columnListBuilder.add(phoneInfoColumn);
-
-        final List<ColumnModel> tempList = BridgeExporterUtil.convertToColumnList(MOCK_COLUMN_DEFINITION);
-        columnListBuilder.addAll(tempList);
-
-        MOCK_COLUMN_LIST = columnListBuilder.build();
+    static {
+        MOCK_COLUMN_DEFINITION = createTestSynapseColumnDefinitions();
+        MOCK_COLUMN_LIST = createTestSynapseColumnList(MOCK_COLUMN_DEFINITION);
     }
 
     // Constants needed to create metadata (phone info, app version)
@@ -495,8 +466,8 @@ public class SynapseExportHandlerTest extends AbstractTestNGSpringContextTests {
     }
 
     public static void validateTsvHeaders(String line, String... extraColumnNameVarargs) {
-        StringBuilder expectedLineBuilder = new StringBuilder("recordId\tappVersion\tphoneInfo\thealthCode\texternalId\tdataGroups\t" +
-                "uploadDate\tcreatedOn\tuserSharingScope");
+        StringBuilder expectedLineBuilder = new StringBuilder("recordId\tappVersion\tphoneInfo\tuploadDate\thealthCode\texternalId\tdataGroups\t" +
+                "createdOn\tuserSharingScope");
         for (String oneExtraColumnName : extraColumnNameVarargs) {
             expectedLineBuilder.append('\t');
             expectedLineBuilder.append(oneExtraColumnName);
@@ -505,8 +476,9 @@ public class SynapseExportHandlerTest extends AbstractTestNGSpringContextTests {
     }
 
     public static void validateTsvRow(String line, String... extraValueVarargs) {
-        StringBuilder expectedLineBuilder = new StringBuilder(DUMMY_RECORD_ID + '\t' + DUMMY_APP_VERSION + '\t' + DUMMY_PHONE_INFO + '\t' + DUMMY_HEALTH_CODE + '\t' +
-                DUMMY_EXTERNAL_ID + '\t' + DUMMY_DATA_GROUPS_FLATTENED + '\t' + DUMMY_REQUEST_DATE + '\t' +
+        StringBuilder expectedLineBuilder = new StringBuilder(DUMMY_RECORD_ID + '\t' + DUMMY_APP_VERSION + '\t' +
+                DUMMY_PHONE_INFO + '\t' + DUMMY_REQUEST_DATE + '\t' + DUMMY_HEALTH_CODE + '\t' +
+                DUMMY_EXTERNAL_ID + '\t' + DUMMY_DATA_GROUPS_FLATTENED + '\t' +
                 DUMMY_CREATED_ON + '\t' + DUMMY_USER_SHARING_SCOPE);
         for (String oneExtraValue : extraValueVarargs) {
             expectedLineBuilder.append('\t');
@@ -514,4 +486,85 @@ public class SynapseExportHandlerTest extends AbstractTestNGSpringContextTests {
         }
         assertEquals(line, expectedLineBuilder.toString());
     }
+
+    public static List<ColumnModel> createTestSynapseColumnList(final List<ColumnDefinition> columnDefinitions) {
+        ImmutableList.Builder<ColumnModel> columnListBuilder = ImmutableList.builder();
+
+        ColumnModel recordIdColumn = new ColumnModel();
+        recordIdColumn.setName("recordId");
+        recordIdColumn.setColumnType(ColumnType.STRING);
+        recordIdColumn.setMaximumSize(36L);
+        columnListBuilder.add(recordIdColumn);
+
+        ColumnModel appVersionColumn = new ColumnModel();
+        appVersionColumn.setName("appVersion");
+        appVersionColumn.setColumnType(ColumnType.STRING);
+        appVersionColumn.setMaximumSize(48L);
+        columnListBuilder.add(appVersionColumn);
+
+        ColumnModel phoneInfoColumn = new ColumnModel();
+        phoneInfoColumn.setName("phoneInfo");
+        phoneInfoColumn.setColumnType(ColumnType.STRING);
+        phoneInfoColumn.setMaximumSize(48L);
+        columnListBuilder.add(phoneInfoColumn);
+
+        ColumnModel uploadDateColumn = new ColumnModel();
+        uploadDateColumn.setName("uploadDate");
+        uploadDateColumn.setColumnType(ColumnType.STRING);
+        uploadDateColumn.setMaximumSize(10L);
+        columnListBuilder.add(uploadDateColumn);
+
+        final List<ColumnModel> tempList = BridgeExporterUtil.convertToColumnList(columnDefinitions);
+        columnListBuilder.addAll(tempList);
+
+        return columnListBuilder.build();
+    }
+
+    public static List<ColumnDefinition> createTestSynapseColumnDefinitions() {
+        // setup column definitions
+        ImmutableList.Builder<ColumnDefinition> columnDefinitionsBuilder = ImmutableList.builder();
+
+        ColumnDefinition healthCodeDefinition = new ColumnDefinition();
+        healthCodeDefinition.setName("healthCode");
+        healthCodeDefinition.setDdbName("healthCode");
+        healthCodeDefinition.setColumnType(ColumnType.STRING);
+        healthCodeDefinition.setMaximumSize(36L);
+        healthCodeDefinition.setTransferMethod(TransferMethod.STRING);
+        columnDefinitionsBuilder.add(healthCodeDefinition);
+
+        ColumnDefinition externalIdDefinition = new ColumnDefinition();
+        externalIdDefinition.setName("externalId");
+        externalIdDefinition.setDdbName("userExternalId");
+        externalIdDefinition.setColumnType(ColumnType.STRING);
+        externalIdDefinition.setMaximumSize(128L);
+        externalIdDefinition.setTransferMethod(TransferMethod.STRING);
+        externalIdDefinition.setSanitize(true);
+        columnDefinitionsBuilder.add(externalIdDefinition);
+
+        ColumnDefinition dataGroupsDefinition = new ColumnDefinition();
+        dataGroupsDefinition.setName("dataGroups");
+        dataGroupsDefinition.setDdbName("userDataGroups");
+        dataGroupsDefinition.setColumnType(ColumnType.STRING);
+        dataGroupsDefinition.setMaximumSize(100L);
+        dataGroupsDefinition.setTransferMethod(TransferMethod.STRINGSET);
+        columnDefinitionsBuilder.add(dataGroupsDefinition);
+
+        ColumnDefinition createdOnDefinition = new ColumnDefinition();
+        createdOnDefinition.setName("createdOn");
+        createdOnDefinition.setDdbName("createdOn");
+        createdOnDefinition.setColumnType(ColumnType.DATE);
+        createdOnDefinition.setTransferMethod(TransferMethod.DATE);
+        columnDefinitionsBuilder.add(createdOnDefinition);
+
+        ColumnDefinition userSharingScopeDefinition = new ColumnDefinition();
+        userSharingScopeDefinition.setName("userSharingScope");
+        userSharingScopeDefinition.setDdbName("userSharingScope");
+        userSharingScopeDefinition.setColumnType(ColumnType.STRING);
+        userSharingScopeDefinition.setMaximumSize(48L);
+        userSharingScopeDefinition.setTransferMethod(TransferMethod.STRING);
+        columnDefinitionsBuilder.add(userSharingScopeDefinition);
+
+        return columnDefinitionsBuilder.build();
+    }
+
 }
