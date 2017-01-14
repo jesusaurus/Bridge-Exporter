@@ -239,7 +239,6 @@ public class HealthDataExportHandlerTest {
         HealthDataExportHandler handler = new HealthDataExportHandler();
         handler.setSchemaKey(BridgeHelperTest.TEST_SCHEMA_KEY);
         handler.setStudyId(BridgeHelperTest.TEST_STUDY_ID);
-        handler.setSynapseColumnDefinitionsAndList(MOCK_COLUMN_DEFINITION);
 
         // mock BridgeHelper
         BridgeHelper mockBridgeHelper = mock(BridgeHelper.class);
@@ -284,6 +283,7 @@ public class HealthDataExportHandlerTest {
         manager.setConfig(mockConfig);
         manager.setFileHelper(mockFileHelper);
         manager.setSynapseHelper(mockSynapseHelper);
+        manager.setSynapseColumnDefinitions(MOCK_COLUMN_DEFINITION);
         handler.setManager(manager);
 
         // spy getSynapseProjectId and getDataAccessTeam

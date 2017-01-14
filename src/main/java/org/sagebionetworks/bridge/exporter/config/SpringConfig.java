@@ -209,8 +209,10 @@ public class SpringConfig {
         final File file = new File(classLoader.getResource("ColumnDefinition.json").getFile());
         final ObjectMapper mapper = DefaultObjectMapper.INSTANCE;
 
-        ImmutableList<ColumnDefinition> value = mapper.readValue(file, new TypeReference<List<ColumnDefinition>>(){});
+        List<ColumnDefinition> value = mapper.readValue(file, new TypeReference<List<ColumnDefinition>>(){});
+        ImmutableList.Builder<ColumnDefinition> columnDefinitionsBuilder = ImmutableList.builder();
+        columnDefinitionsBuilder.addAll(value);
 
-        return value;
+        return columnDefinitionsBuilder.build();
     }
 }

@@ -68,7 +68,6 @@ public class SynapseExportHandlerNewTableTest {
 
     private void setupWithSchema(SynapseExportHandler handler, UploadSchemaKey schemaKey, UploadSchema schema)
             throws Exception {
-        handler.setSynapseColumnDefinitionsAndList(MOCK_COLUMN_DEFINITION);
         // This needs to be done first, because lots of stuff reference this, even while we're setting up mocks.
         handler.setStudyId(SynapseExportHandlerTest.TEST_STUDY_ID);
 
@@ -98,6 +97,7 @@ public class SynapseExportHandlerNewTableTest {
         manager.setConfig(mockConfig);
         manager.setFileHelper(mockFileHelper);
         manager.setSynapseHelper(mockSynapseHelper);
+        manager.setSynapseColumnDefinitions(MOCK_COLUMN_DEFINITION);
         handler.setManager(manager);
 
         // set up task

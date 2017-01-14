@@ -72,7 +72,6 @@ public class SynapseExportHandlerUpdateTableTest {
     private SynapseExportHandler setup(List<ColumnModel> existingColumnList) throws Exception {
         // This needs to be done first, because lots of stuff reference this, even while we're setting up mocks.
         SynapseExportHandler handler = new UpdateTestSynapseHandler();
-        handler.setSynapseColumnDefinitionsAndList(MOCK_COLUMN_DEFINITION);
         handler.setStudyId(SynapseExportHandlerTest.TEST_STUDY_ID);
 
         // mock config
@@ -140,6 +139,7 @@ public class SynapseExportHandlerUpdateTableTest {
         manager.setConfig(mockConfig);
         manager.setFileHelper(mockFileHelper);
         manager.setSynapseHelper(mockSynapseHelper);
+        manager.setSynapseColumnDefinitions(MOCK_COLUMN_DEFINITION);
         handler.setManager(manager);
 
         // spy getSynapseProjectId and getDataAccessTeam

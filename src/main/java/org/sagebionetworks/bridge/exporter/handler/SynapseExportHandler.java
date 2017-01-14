@@ -14,7 +14,6 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
-import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
 
@@ -38,8 +37,6 @@ import org.sagebionetworks.bridge.exporter.worker.TsvInfo;
 import org.sagebionetworks.bridge.file.FileHelper;
 import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
 
-import javax.annotation.Resource;
-
 /**
  * This is a handler who's solely responsible for a single table in Synapse. This handler is assigned a stream of DDB
  * records to create a TSV, then uploads the TSV to the Synapse table. If the Synapse Table doesn't exist, this handler
@@ -49,13 +46,12 @@ public abstract class SynapseExportHandler extends ExportHandler {
     private static final Logger LOG = LoggerFactory.getLogger(SynapseExportHandler.class);
 
     // Package-scoped to be available to unit tests.
-    List<ColumnModel> commonColumnList;
+    private List<ColumnModel> commonColumnList;
 
     private List<ColumnDefinition> columnDefinition;
 
-    @Resource(name = "synapseColumnDefinitions")
-    public final void setSynapseColumnDefinitionsAndList(List<ColumnDefinition> synapseColumnDefinitions) {
-        columnDefinition = synapseColumnDefinitions;
+    private void setSynapseColumnDefinitionsAndColumnList() {
+        this.columnDefinition = getManager().getColumnDefinitions();
 
         ImmutableList.Builder<ColumnModel> columnListBuilder = ImmutableList.builder();
 
@@ -86,7 +82,7 @@ public abstract class SynapseExportHandler extends ExportHandler {
         final List<ColumnModel> tempList = BridgeExporterUtil.convertToColumnList(columnDefinition);
         columnListBuilder.addAll(tempList);
 
-        commonColumnList = columnListBuilder.build();
+        this.commonColumnList = columnListBuilder.build();
     }
 
     /**
@@ -160,6 +156,8 @@ public abstract class SynapseExportHandler extends ExportHandler {
     private List<String> getColumnNameList(ExportTask task) throws BridgeExporterException, SchemaNotFoundException,
             SynapseException {
         // Construct column definition list. Merge commonColumnList with getSynapseTableColumnList.
+        setSynapseColumnDefinitionsAndColumnList();
+
         List<ColumnModel> columnDefList = new ArrayList<>();
         columnDefList.addAll(commonColumnList);
         columnDefList.addAll(getSynapseTableColumnList(task));
