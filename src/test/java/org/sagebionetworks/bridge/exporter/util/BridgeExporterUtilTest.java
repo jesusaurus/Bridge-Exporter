@@ -1,14 +1,25 @@
 package org.sagebionetworks.bridge.exporter.util;
 
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.ImmutableList;
+import org.joda.time.LocalDate;
+import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
+import org.sagebionetworks.bridge.exporter.synapse.TransferMethod;
+import org.sagebionetworks.bridge.exporter.worker.ExportTask;
+import org.sagebionetworks.repo.model.table.ColumnModel;
+import org.sagebionetworks.repo.model.table.ColumnType;
 import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.exporter.helper.BridgeHelperTest;
@@ -19,6 +30,10 @@ import org.sagebionetworks.bridge.rest.model.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
 public class BridgeExporterUtilTest {
+    private static final String TEST_DATE = "2017-01-11";
+    private static final LocalDate TEST_LOCAL_DATE = LocalDate.parse(TEST_DATE);
+
+
     @Test
     public void getFieldDefMapFromSchema() {
         // set up test schema
@@ -201,5 +216,147 @@ public class BridgeExporterUtilTest {
         UploadSchemaKey other = new UploadSchemaKey.Builder().withStudyId("other-study").withSchemaId("other-schema")
                 .withRevision(1).build();
         assertFalse(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(other, "other"));
+    }
+
+    @Test
+    public void canConvertToColumnList() {
+        final String testColumnModelName1 = "test_column_model_1";
+        final String testColumnModelName2 = "test_column_model_2";
+
+        List<ColumnModel> testColumnList;
+
+        ImmutableList.Builder<ColumnModel> columnListBuilder = ImmutableList.builder();
+
+        ColumnModel testModel1 = new ColumnModel();
+        testModel1.setName(testColumnModelName1);
+        testModel1.setColumnType(ColumnType.STRING);
+        testModel1.setMaximumSize(36L);
+        columnListBuilder.add(testModel1);
+
+        ColumnModel testModel2 = new ColumnModel();
+        testModel2.setName(testColumnModelName2);
+        testModel2.setColumnType(ColumnType.STRING);
+        testModel2.setMaximumSize(48L);
+        columnListBuilder.add(testModel2);
+
+        testColumnList = columnListBuilder.build();
+
+        List<ColumnDefinition> testColumnDefinitions;
+
+        ImmutableList.Builder<ColumnDefinition> columnDefinitionBuilder = ImmutableList.builder();
+
+        ColumnDefinition testDefinition1 = new ColumnDefinition();
+        testDefinition1.setName(testColumnModelName1);
+        testDefinition1.setTransferMethod(TransferMethod.STRING);
+        testDefinition1.setMaximumSize(36L);
+        columnDefinitionBuilder.add(testDefinition1);
+
+        ColumnDefinition testDefinition2 = new ColumnDefinition();
+        testDefinition2.setName(testColumnModelName2);
+        testDefinition2.setTransferMethod(TransferMethod.STRING);
+        testDefinition2.setMaximumSize(48L);
+        columnDefinitionBuilder.add(testDefinition2);
+
+        testColumnDefinitions = columnDefinitionBuilder.build();
+
+        assertEquals(BridgeExporterUtil.convertToColumnList(testColumnDefinitions), testColumnList);
+    }
+
+    @Test
+    public void canGetRowValuesFromRecordBasedOnColumnDefinition() {
+        final String testStringName = "test_string";
+        final String testStringSetName = "test_string_set";
+        final String testDateName = "test_date";
+        final String testSanitize = "test_sanitize";
+
+        // create mock record
+        Item testRecord = new Item();
+        testRecord.withString(testStringName, "test_string_value");
+        testRecord.withStringSet(testStringSetName, new String[]{"test_string_set_value_1", "test_string_set_value_2"});
+        testRecord.withLong(testDateName, 1484181511);
+        testRecord.with(testSanitize, "imbalanced</i> <p>tags");
+
+        // create expected map
+        Map<String, String> expectedMap = new HashMap<>();
+        expectedMap.put(testStringName, "test_string_value");
+        expectedMap.put(testStringSetName, "test_string_set_value_1,test_string_set_value_2");
+        expectedMap.put(testDateName, "1484181511");
+        expectedMap.put(testSanitize, "imbalanced tags");
+
+        // create mock column definitions
+        List<ColumnDefinition> testColumnDefinitions;
+
+        ImmutableList.Builder<ColumnDefinition> columnDefinitionBuilder = ImmutableList.builder();
+
+        ColumnDefinition testDefinition1 = new ColumnDefinition();
+        testDefinition1.setName(testStringName);
+        testDefinition1.setMaximumSize(36L);
+        testDefinition1.setTransferMethod(TransferMethod.STRING);
+        testDefinition1.setDdbName(testStringName);
+        columnDefinitionBuilder.add(testDefinition1);
+
+        ColumnDefinition testDefinition2 = new ColumnDefinition();
+        testDefinition2.setName(testStringSetName);
+        testDefinition2.setTransferMethod(TransferMethod.STRINGSET);
+        testDefinition2.setDdbName(testStringSetName);
+        testDefinition2.setMaximumSize(100L);
+        columnDefinitionBuilder.add(testDefinition2);
+
+        ColumnDefinition testDefinition4 = new ColumnDefinition();
+        testDefinition4.setName(testDateName);
+        testDefinition4.setTransferMethod(TransferMethod.DATE);
+        testDefinition4.setDdbName(testDateName);
+        testDefinition4.setMaximumSize(36L);
+        columnDefinitionBuilder.add(testDefinition4);
+
+        ColumnDefinition testDefinition5 = new ColumnDefinition();
+        testDefinition5.setName(testSanitize);
+        testDefinition5.setMaximumSize(36L);
+        testDefinition5.setTransferMethod(TransferMethod.STRING);
+        testDefinition5.setDdbName(testSanitize);
+        testDefinition5.setSanitize(true);
+        columnDefinitionBuilder.add(testDefinition5);
+
+        testColumnDefinitions = columnDefinitionBuilder.build();
+
+        // process
+        Map<String, String> retMap = new HashMap<>();
+        BridgeExporterUtil.getRowValuesFromRecordBasedOnColumnDefinition(retMap, testRecord, testColumnDefinitions, "recordId");
+
+        // verify
+        assertEquals(retMap, expectedMap);
+    }
+
+    @Test
+    public void canGetRowValuesWIthoutDdbName() {
+        final String testStringName = "test_string";
+
+        // create mock record
+        Item testRecord = new Item();
+        testRecord.withString(testStringName, "test_string_value");
+
+        // create expected map
+        Map<String, String> expectedMap = new HashMap<>();
+        expectedMap.put(testStringName, "test_string_value");
+
+        // create mock column definitions
+        List<ColumnDefinition> testColumnDefinitions;
+
+        ImmutableList.Builder<ColumnDefinition> columnDefinitionBuilder = ImmutableList.builder();
+
+        ColumnDefinition testDefinition1 = new ColumnDefinition();
+        testDefinition1.setName(testStringName);
+        testDefinition1.setMaximumSize(36L);
+        testDefinition1.setTransferMethod(TransferMethod.STRING);
+        columnDefinitionBuilder.add(testDefinition1);
+
+        testColumnDefinitions = columnDefinitionBuilder.build();
+
+        // process
+        Map<String, String> retMap = new HashMap<>();
+        BridgeExporterUtil.getRowValuesFromRecordBasedOnColumnDefinition(retMap, testRecord, testColumnDefinitions, "recordId");
+
+        // verify
+        assertEquals(retMap, expectedMap);
     }
 }

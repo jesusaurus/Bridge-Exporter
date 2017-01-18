@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.google.common.collect.ImmutableList;
+import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -39,6 +40,15 @@ import org.sagebionetworks.bridge.rest.model.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
 public class SynapseExportHandlerNewTableTest {
+    private static final List<ColumnModel> MOCK_COLUMN_LIST;
+
+    private static final List<ColumnDefinition> MOCK_COLUMN_DEFINITION;
+
+    static {
+        MOCK_COLUMN_DEFINITION = SynapseExportHandlerTest.createTestSynapseColumnDefinitions();
+        MOCK_COLUMN_LIST = SynapseExportHandlerTest.createTestSynapseColumnList(MOCK_COLUMN_DEFINITION);
+    }
+
     private String ddbSynapseTableId;
     private ExportWorkerManager manager;
     private SynapseHelper mockSynapseHelper;
@@ -87,6 +97,7 @@ public class SynapseExportHandlerNewTableTest {
         manager.setConfig(mockConfig);
         manager.setFileHelper(mockFileHelper);
         manager.setSynapseHelper(mockSynapseHelper);
+        manager.setSynapseColumnDefinitions(MOCK_COLUMN_DEFINITION);
         handler.setManager(manager);
 
         // set up task
@@ -96,7 +107,7 @@ public class SynapseExportHandlerNewTableTest {
 
         // mock create columns - all we care about are column names and IDs
         List<ColumnModel> columnModelList = new ArrayList<>();
-        columnModelList.addAll(SynapseExportHandler.COMMON_COLUMN_LIST);
+        columnModelList.addAll(MOCK_COLUMN_LIST);
         columnModelList.addAll(handler.getSynapseTableColumnList(task));
 
         // mock create table with columns and ACLs

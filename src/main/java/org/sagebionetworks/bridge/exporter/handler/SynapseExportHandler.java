@@ -5,7 +5,6 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,11 +14,11 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
-import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
 
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterNonRetryableException;
+import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
 import org.sagebionetworks.client.exceptions.SynapseException;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
@@ -46,9 +45,13 @@ import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
 public abstract class SynapseExportHandler extends ExportHandler {
     private static final Logger LOG = LoggerFactory.getLogger(SynapseExportHandler.class);
 
-    // Package-scoped to be available to unit tests.
-    static final List<ColumnModel> COMMON_COLUMN_LIST;
-    static {
+    private List<ColumnModel> commonColumnList;
+
+    private List<ColumnDefinition> columnDefinition;
+
+    private void initSynapseColumnDefinitionsAndColumnList() {
+        this.columnDefinition = getManager().getColumnDefinitions();
+
         ImmutableList.Builder<ColumnModel> columnListBuilder = ImmutableList.builder();
 
         ColumnModel recordIdColumn = new ColumnModel();
@@ -56,36 +59,6 @@ public abstract class SynapseExportHandler extends ExportHandler {
         recordIdColumn.setColumnType(ColumnType.STRING);
         recordIdColumn.setMaximumSize(36L);
         columnListBuilder.add(recordIdColumn);
-
-        ColumnModel healthCodeColumn = new ColumnModel();
-        healthCodeColumn.setName("healthCode");
-        healthCodeColumn.setColumnType(ColumnType.STRING);
-        healthCodeColumn.setMaximumSize(36L);
-        columnListBuilder.add(healthCodeColumn);
-
-        ColumnModel externalIdColumn = new ColumnModel();
-        externalIdColumn.setName("externalId");
-        externalIdColumn.setColumnType(ColumnType.STRING);
-        externalIdColumn.setMaximumSize(128L);
-        columnListBuilder.add(externalIdColumn);
-
-        ColumnModel dataGroupsColumn = new ColumnModel();
-        dataGroupsColumn.setName("dataGroups");
-        dataGroupsColumn.setColumnType(ColumnType.STRING);
-        dataGroupsColumn.setMaximumSize(100L);
-        columnListBuilder.add(dataGroupsColumn);
-
-        // NOTE: ColumnType.DATE is actually a timestamp. There is no calendar date type.
-        ColumnModel uploadDateColumn = new ColumnModel();
-        uploadDateColumn.setName("uploadDate");
-        uploadDateColumn.setColumnType(ColumnType.STRING);
-        uploadDateColumn.setMaximumSize(10L);
-        columnListBuilder.add(uploadDateColumn);
-
-        ColumnModel createdOnColumn = new ColumnModel();
-        createdOnColumn.setName("createdOn");
-        createdOnColumn.setColumnType(ColumnType.DATE);
-        columnListBuilder.add(createdOnColumn);
 
         ColumnModel appVersionColumn = new ColumnModel();
         appVersionColumn.setName("appVersion");
@@ -99,10 +72,17 @@ public abstract class SynapseExportHandler extends ExportHandler {
         phoneInfoColumn.setMaximumSize(48L);
         columnListBuilder.add(phoneInfoColumn);
 
-        COMMON_COLUMN_LIST = columnListBuilder.build();
-    }
+        ColumnModel uploadDateColumn = new ColumnModel();
+        uploadDateColumn.setName("uploadDate");
+        uploadDateColumn.setColumnType(ColumnType.STRING);
+        uploadDateColumn.setMaximumSize(10L);
+        columnListBuilder.add(uploadDateColumn);
 
-    private static final Joiner DATA_GROUP_JOINER = Joiner.on(',').useForNull("");
+        final List<ColumnModel> tempList = BridgeExporterUtil.convertToColumnList(columnDefinition);
+        columnListBuilder.addAll(tempList);
+
+        this.commonColumnList = columnListBuilder.build();
+    }
 
     /**
      * Given the record (contained in the subtask), serialize the results and write to a TSV. If a TSV hasn't been
@@ -174,9 +154,11 @@ public abstract class SynapseExportHandler extends ExportHandler {
     // when initializing the TSV for a task.
     private List<String> getColumnNameList(ExportTask task) throws BridgeExporterException, SchemaNotFoundException,
             SynapseException {
-        // Construct column definition list. Merge COMMON_COLUMN_LIST with getSynapseTableColumnList.
+        // Construct column definition list. Merge commonColumnList with getSynapseTableColumnList.
+        initSynapseColumnDefinitionsAndColumnList();
+
         List<ColumnModel> columnDefList = new ArrayList<>();
-        columnDefList.addAll(COMMON_COLUMN_LIST);
+        columnDefList.addAll(commonColumnList);
         columnDefList.addAll(getSynapseTableColumnList(task));
 
         // Create or update table if necessary.
@@ -312,25 +294,11 @@ public abstract class SynapseExportHandler extends ExportHandler {
         // construct row
         Map<String, String> rowValueMap = new HashMap<>();
         rowValueMap.put("recordId", recordId);
-        rowValueMap.put("healthCode", record.getString("healthCode"));
-        rowValueMap.put("externalId", BridgeExporterUtil.sanitizeDdbValue(record, "userExternalId", 128, recordId));
-
-        // Data groups, if present. Sort them in alphabetical order, so they appear consistently in Synapse.
-        Set<String> dataGroupSet = record.getStringSet("userDataGroups");
-        if (dataGroupSet != null) {
-            List<String> dataGroupList = new ArrayList<>();
-            dataGroupList.addAll(dataGroupSet);
-            Collections.sort(dataGroupList);
-            rowValueMap.put("dataGroups", DATA_GROUP_JOINER.join(dataGroupList));
-        }
-
-        rowValueMap.put("uploadDate", task.getExporterDate().toString());
-
-        // createdOn as a long epoch millis
-        rowValueMap.put("createdOn", String.valueOf(record.getLong("createdOn")));
-
         rowValueMap.put("appVersion", appVersion);
         rowValueMap.put("phoneInfo", phoneInfo);
+        rowValueMap.put("uploadDate", task.getExporterDate().toString());
+
+        BridgeExporterUtil.getRowValuesFromRecordBasedOnColumnDefinition(rowValueMap,record, columnDefinition, recordId);
 
         return rowValueMap;
     }
@@ -386,7 +354,7 @@ public abstract class SynapseExportHandler extends ExportHandler {
 
     /**
      * List of Synapse table column model objects, to be used to create both the column models and the Synapse table.
-     * This excludes columns common to all Bridge tables defined in COMMON_COLUMN_LIST.
+     * This excludes columns common to all Bridge tables defined in commonColumnList.
      */
     protected abstract List<ColumnModel> getSynapseTableColumnList(ExportTask task) throws SchemaNotFoundException;
 

@@ -24,6 +24,7 @@ import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import com.google.common.collect.ImmutableList;
 import org.joda.time.DateTime;
+import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -43,6 +44,15 @@ import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
 import org.sagebionetworks.bridge.rest.model.UploadFieldType;
 
 public class HealthDataExportHandlerTest {
+    private static final List<ColumnModel> MOCK_COLUMN_LIST;
+
+    private static final List<ColumnDefinition> MOCK_COLUMN_DEFINITION;
+
+    static {
+        MOCK_COLUMN_DEFINITION = SynapseExportHandlerTest.createTestSynapseColumnDefinitions();
+        MOCK_COLUMN_LIST = SynapseExportHandlerTest.createTestSynapseColumnList(MOCK_COLUMN_DEFINITION);
+    }
+
     private static final String FIELD_NAME = "foo-field";
     private static final String FIELD_NAME_TIMEZONE = FIELD_NAME + ".timezone";
     private static final String FIELD_VALUE = "asdf jkl;";
@@ -246,7 +256,7 @@ public class HealthDataExportHandlerTest {
         // mock Synapse helper
         SynapseHelper mockSynapseHelper = mock(SynapseHelper.class);
         List<ColumnModel> columnModelList = new ArrayList<>();
-        columnModelList.addAll(SynapseExportHandler.COMMON_COLUMN_LIST);
+        columnModelList.addAll(MOCK_COLUMN_LIST);
         columnModelList.add(BridgeHelperTest.TEST_SYNAPSE_COLUMN);
         when(mockSynapseHelper.getColumnModelsForTableWithRetry(SynapseExportHandlerTest.TEST_SYNAPSE_TABLE_ID))
                 .thenReturn(columnModelList);
@@ -273,6 +283,7 @@ public class HealthDataExportHandlerTest {
         manager.setConfig(mockConfig);
         manager.setFileHelper(mockFileHelper);
         manager.setSynapseHelper(mockSynapseHelper);
+        manager.setSynapseColumnDefinitions(MOCK_COLUMN_DEFINITION);
         handler.setManager(manager);
 
         // spy getSynapseProjectId and getDataAccessTeam

@@ -1,0 +1,29 @@
+[
+  {
+    "name": "healthCode",
+    "maximumSize": "36",
+    "transferMethod": "STRING"
+  },
+  {
+    "name": "externalId",
+    "maximumSize": "128",
+    "transferMethod": "STRING",
+    "ddbName": "userExternalId",
+    "sanitize": true
+  },
+  {
+    "name": "dataGroups",
+    "maximumSize": "100",
+    "transferMethod": "STRINGSET",
+    "ddbName": "userDataGroups"
+  },
+  {
+    "name": "createdOn",
+    "transferMethod": "DATE"
+  },
+  {
+    "name": "userSharingScope",
+    "maximumSize": "48",
+    "transferMethod": "STRING"
+  }
+]

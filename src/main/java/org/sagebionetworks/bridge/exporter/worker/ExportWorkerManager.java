@@ -3,6 +3,7 @@ package org.sagebionetworks.bridge.exporter.worker;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
@@ -25,6 +26,7 @@ import com.google.gson.stream.MalformedJsonException;
 import org.apache.commons.lang.StringUtils;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
+import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
 import org.sagebionetworks.client.exceptions.SynapseException;
 import org.sagebionetworks.client.exceptions.SynapseServerException;
 import org.slf4j.Logger;
@@ -200,9 +202,21 @@ public class ExportWorkerManager {
     private SynapseHelper synapseHelper;
     private SynapseStatusTableHelper synapseStatusTableHelper;
 
+    // column definition list from conf file
+    private List<ColumnDefinition> columnDefinitions;
+
     /** BridgeHelper, calls Bridge to get schemas and other data the exporter needs. */
     public final BridgeHelper getBridgeHelper() {
         return bridgeHelper;
+    }
+
+    @Resource(name = "synapseColumnDefinitions")
+    public final void setSynapseColumnDefinitions(List<ColumnDefinition> columnDefinitions) {
+        this.columnDefinitions = columnDefinitions;
+    }
+
+    public final List<ColumnDefinition> getColumnDefinitions() {
+        return this.columnDefinitions;
     }
 
     /** @see #getBridgeHelper */

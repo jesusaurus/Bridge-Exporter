@@ -15,7 +15,10 @@ import com.google.common.collect.Multiset;
 import com.google.common.collect.SetMultimap;
 import org.joda.time.DateTime;
 import org.joda.time.LocalDate;
+import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
+import org.sagebionetworks.bridge.exporter.synapse.TransferMethod;
 import org.sagebionetworks.repo.model.table.ColumnModel;
+import org.sagebionetworks.repo.model.table.ColumnType;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -56,7 +59,17 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 public class SynapseExportHandlerTest {
+    private static final List<ColumnDefinition> MOCK_COLUMN_DEFINITION;
+
+    private static final List<ColumnModel> MOCK_COLUMN_LIST;
+
+    static {
+        MOCK_COLUMN_DEFINITION = createTestSynapseColumnDefinitions();
+        MOCK_COLUMN_LIST = createTestSynapseColumnList(MOCK_COLUMN_DEFINITION);
+    }
+
     // Constants needed to create metadata (phone info, app version)
+    private static final String DUMMY_USER_SHARING_SCOPE = "ALL_QUALIFIED_RESEARCHERS";
     private static final String DUMMY_APP_VERSION = "Bridge-EX 2.0";
     private static final String DUMMY_PHONE_INFO = "My Debugger";
     private static final String DUMMY_METADATA_JSON_TEXT = "{\n" +
@@ -73,7 +86,8 @@ public class SynapseExportHandlerTest {
     public static final Item DUMMY_RECORD = new Item().withLong("createdOn", DUMMY_CREATED_ON)
             .withString("healthCode", DUMMY_HEALTH_CODE).withString("id", DUMMY_RECORD_ID)
             .withString("metadata", DUMMY_METADATA_JSON_TEXT).withStringSet("userDataGroups", DUMMY_DATA_GROUPS)
-            .withString("userExternalId", "unsanitized\t\texternal\t\tid");
+            .withString("userExternalId", "unsanitized\t\texternal\t\tid")
+            .withString("userSharingScope", DUMMY_USER_SHARING_SCOPE);
 
     // Constants to make a request.
     public static final LocalDate DUMMY_REQUEST_DATE = LocalDate.parse("2015-10-31");
@@ -146,6 +160,7 @@ public class SynapseExportHandlerTest {
         manager.setConfig(mockConfig);
         manager.setFileHelper(mockFileHelper);
         manager.setSynapseHelper(mockSynapseHelper);
+        manager.setSynapseColumnDefinitions(MOCK_COLUMN_DEFINITION);
         handler.setManager(manager);
 
         // set up task
@@ -154,7 +169,7 @@ public class SynapseExportHandlerTest {
 
         // mock Synapse helper
         List<ColumnModel> columnModelList = new ArrayList<>();
-        columnModelList.addAll(SynapseExportHandler.COMMON_COLUMN_LIST);
+        columnModelList.addAll(MOCK_COLUMN_LIST);
         columnModelList.addAll(handler.getSynapseTableColumnList(task));
         when(mockSynapseHelper.getColumnModelsForTableWithRetry(TEST_SYNAPSE_TABLE_ID)).thenReturn(columnModelList);
 
@@ -451,8 +466,8 @@ public class SynapseExportHandlerTest {
     }
 
     public static void validateTsvHeaders(String line, String... extraColumnNameVarargs) {
-        StringBuilder expectedLineBuilder = new StringBuilder("recordId\thealthCode\texternalId\tdataGroups\t" +
-                "uploadDate\tcreatedOn\tappVersion\tphoneInfo");
+        StringBuilder expectedLineBuilder = new StringBuilder("recordId\tappVersion\tphoneInfo\tuploadDate\thealthCode\texternalId\tdataGroups\t" +
+                "createdOn\tuserSharingScope");
         for (String oneExtraColumnName : extraColumnNameVarargs) {
             expectedLineBuilder.append('\t');
             expectedLineBuilder.append(oneExtraColumnName);
@@ -461,13 +476,87 @@ public class SynapseExportHandlerTest {
     }
 
     public static void validateTsvRow(String line, String... extraValueVarargs) {
-        StringBuilder expectedLineBuilder = new StringBuilder(DUMMY_RECORD_ID + '\t' + DUMMY_HEALTH_CODE + '\t' +
-                DUMMY_EXTERNAL_ID + '\t' + DUMMY_DATA_GROUPS_FLATTENED + '\t' + DUMMY_REQUEST_DATE + '\t' +
-                DUMMY_CREATED_ON + '\t' + DUMMY_APP_VERSION + '\t' + DUMMY_PHONE_INFO);
+        StringBuilder expectedLineBuilder = new StringBuilder(DUMMY_RECORD_ID + '\t' + DUMMY_APP_VERSION + '\t' +
+                DUMMY_PHONE_INFO + '\t' + DUMMY_REQUEST_DATE + '\t' + DUMMY_HEALTH_CODE + '\t' +
+                DUMMY_EXTERNAL_ID + '\t' + DUMMY_DATA_GROUPS_FLATTENED + '\t' +
+                DUMMY_CREATED_ON + '\t' + DUMMY_USER_SHARING_SCOPE);
         for (String oneExtraValue : extraValueVarargs) {
             expectedLineBuilder.append('\t');
             expectedLineBuilder.append(oneExtraValue);
         }
         assertEquals(line, expectedLineBuilder.toString());
     }
+
+    public static List<ColumnModel> createTestSynapseColumnList(final List<ColumnDefinition> columnDefinitions) {
+        ImmutableList.Builder<ColumnModel> columnListBuilder = ImmutableList.builder();
+
+        ColumnModel recordIdColumn = new ColumnModel();
+        recordIdColumn.setName("recordId");
+        recordIdColumn.setColumnType(ColumnType.STRING);
+        recordIdColumn.setMaximumSize(36L);
+        columnListBuilder.add(recordIdColumn);
+
+        ColumnModel appVersionColumn = new ColumnModel();
+        appVersionColumn.setName("appVersion");
+        appVersionColumn.setColumnType(ColumnType.STRING);
+        appVersionColumn.setMaximumSize(48L);
+        columnListBuilder.add(appVersionColumn);
+
+        ColumnModel phoneInfoColumn = new ColumnModel();
+        phoneInfoColumn.setName("phoneInfo");
+        phoneInfoColumn.setColumnType(ColumnType.STRING);
+        phoneInfoColumn.setMaximumSize(48L);
+        columnListBuilder.add(phoneInfoColumn);
+
+        ColumnModel uploadDateColumn = new ColumnModel();
+        uploadDateColumn.setName("uploadDate");
+        uploadDateColumn.setColumnType(ColumnType.STRING);
+        uploadDateColumn.setMaximumSize(10L);
+        columnListBuilder.add(uploadDateColumn);
+
+        final List<ColumnModel> tempList = BridgeExporterUtil.convertToColumnList(columnDefinitions);
+        columnListBuilder.addAll(tempList);
+
+        return columnListBuilder.build();
+    }
+
+    public static List<ColumnDefinition> createTestSynapseColumnDefinitions() {
+        // setup column definitions
+        ImmutableList.Builder<ColumnDefinition> columnDefinitionsBuilder = ImmutableList.builder();
+
+        ColumnDefinition healthCodeDefinition = new ColumnDefinition();
+        healthCodeDefinition.setName("healthCode");
+        healthCodeDefinition.setMaximumSize(36L);
+        healthCodeDefinition.setTransferMethod(TransferMethod.STRING);
+        columnDefinitionsBuilder.add(healthCodeDefinition);
+
+        ColumnDefinition externalIdDefinition = new ColumnDefinition();
+        externalIdDefinition.setName("externalId");
+        externalIdDefinition.setDdbName("userExternalId");
+        externalIdDefinition.setMaximumSize(128L);
+        externalIdDefinition.setTransferMethod(TransferMethod.STRING);
+        externalIdDefinition.setSanitize(true);
+        columnDefinitionsBuilder.add(externalIdDefinition);
+
+        ColumnDefinition dataGroupsDefinition = new ColumnDefinition();
+        dataGroupsDefinition.setName("dataGroups");
+        dataGroupsDefinition.setDdbName("userDataGroups");
+        dataGroupsDefinition.setMaximumSize(100L);
+        dataGroupsDefinition.setTransferMethod(TransferMethod.STRINGSET);
+        columnDefinitionsBuilder.add(dataGroupsDefinition);
+
+        ColumnDefinition createdOnDefinition = new ColumnDefinition();
+        createdOnDefinition.setName("createdOn");
+        createdOnDefinition.setTransferMethod(TransferMethod.DATE);
+        columnDefinitionsBuilder.add(createdOnDefinition);
+
+        ColumnDefinition userSharingScopeDefinition = new ColumnDefinition();
+        userSharingScopeDefinition.setName("userSharingScope");
+        userSharingScopeDefinition.setMaximumSize(48L);
+        userSharingScopeDefinition.setTransferMethod(TransferMethod.STRING);
+        columnDefinitionsBuilder.add(userSharingScopeDefinition);
+
+        return columnDefinitionsBuilder.build();
+    }
+
 }
