@@ -59,9 +59,9 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 public class SynapseExportHandlerTest {
-    private static List<ColumnDefinition> MOCK_COLUMN_DEFINITION;
+    private static final List<ColumnDefinition> MOCK_COLUMN_DEFINITION;
 
-    private static List<ColumnModel> MOCK_COLUMN_LIST;
+    private static final List<ColumnModel> MOCK_COLUMN_LIST;
 
     static {
         MOCK_COLUMN_DEFINITION = createTestSynapseColumnDefinitions();
@@ -526,8 +526,6 @@ public class SynapseExportHandlerTest {
 
         ColumnDefinition healthCodeDefinition = new ColumnDefinition();
         healthCodeDefinition.setName("healthCode");
-        healthCodeDefinition.setDdbName("healthCode");
-        healthCodeDefinition.setColumnType(ColumnType.STRING);
         healthCodeDefinition.setMaximumSize(36L);
         healthCodeDefinition.setTransferMethod(TransferMethod.STRING);
         columnDefinitionsBuilder.add(healthCodeDefinition);
@@ -535,7 +533,6 @@ public class SynapseExportHandlerTest {
         ColumnDefinition externalIdDefinition = new ColumnDefinition();
         externalIdDefinition.setName("externalId");
         externalIdDefinition.setDdbName("userExternalId");
-        externalIdDefinition.setColumnType(ColumnType.STRING);
         externalIdDefinition.setMaximumSize(128L);
         externalIdDefinition.setTransferMethod(TransferMethod.STRING);
         externalIdDefinition.setSanitize(true);
@@ -544,22 +541,17 @@ public class SynapseExportHandlerTest {
         ColumnDefinition dataGroupsDefinition = new ColumnDefinition();
         dataGroupsDefinition.setName("dataGroups");
         dataGroupsDefinition.setDdbName("userDataGroups");
-        dataGroupsDefinition.setColumnType(ColumnType.STRING);
         dataGroupsDefinition.setMaximumSize(100L);
         dataGroupsDefinition.setTransferMethod(TransferMethod.STRINGSET);
         columnDefinitionsBuilder.add(dataGroupsDefinition);
 
         ColumnDefinition createdOnDefinition = new ColumnDefinition();
         createdOnDefinition.setName("createdOn");
-        createdOnDefinition.setDdbName("createdOn");
-        createdOnDefinition.setColumnType(ColumnType.DATE);
         createdOnDefinition.setTransferMethod(TransferMethod.DATE);
         columnDefinitionsBuilder.add(createdOnDefinition);
 
         ColumnDefinition userSharingScopeDefinition = new ColumnDefinition();
         userSharingScopeDefinition.setName("userSharingScope");
-        userSharingScopeDefinition.setDdbName("userSharingScope");
-        userSharingScopeDefinition.setColumnType(ColumnType.STRING);
         userSharingScopeDefinition.setMaximumSize(48L);
         userSharingScopeDefinition.setTransferMethod(TransferMethod.STRING);
         columnDefinitionsBuilder.add(userSharingScopeDefinition);

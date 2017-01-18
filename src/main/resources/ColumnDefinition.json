@@ -1,13 +1,11 @@
 [
   {
     "name": "healthCode",
-    "columnType": "STRING",
     "maximumSize": "36",
     "transferMethod": "STRING"
   },
   {
     "name": "externalId",
-    "columnType": "STRING",
     "maximumSize": "128",
     "transferMethod": "STRING",
     "ddbName": "userExternalId",
@@ -15,19 +13,16 @@
   },
   {
     "name": "dataGroups",
-    "columnType": "STRING",
     "maximumSize": "100",
     "transferMethod": "STRINGSET",
     "ddbName": "userDataGroups"
   },
   {
     "name": "createdOn",
-    "columnType": "DATE",
     "transferMethod": "DATE"
   },
   {
     "name": "userSharingScope",
-    "columnType": "STRING",
     "maximumSize": "48",
     "transferMethod": "STRING"
   }

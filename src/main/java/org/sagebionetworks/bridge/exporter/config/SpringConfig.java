@@ -210,9 +210,7 @@ public class SpringConfig {
         final ObjectMapper mapper = DefaultObjectMapper.INSTANCE;
 
         List<ColumnDefinition> value = mapper.readValue(file, new TypeReference<List<ColumnDefinition>>(){});
-        ImmutableList.Builder<ColumnDefinition> columnDefinitionsBuilder = ImmutableList.builder();
-        columnDefinitionsBuilder.addAll(value);
 
-        return columnDefinitionsBuilder.build();
+        return ImmutableList.copyOf(value);
     }
 }

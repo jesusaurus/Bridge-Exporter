@@ -45,12 +45,11 @@ import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
 public abstract class SynapseExportHandler extends ExportHandler {
     private static final Logger LOG = LoggerFactory.getLogger(SynapseExportHandler.class);
 
-    // Package-scoped to be available to unit tests.
     private List<ColumnModel> commonColumnList;
 
     private List<ColumnDefinition> columnDefinition;
 
-    private void setSynapseColumnDefinitionsAndColumnList() {
+    private void initSynapseColumnDefinitionsAndColumnList() {
         this.columnDefinition = getManager().getColumnDefinitions();
 
         ImmutableList.Builder<ColumnModel> columnListBuilder = ImmutableList.builder();
@@ -156,7 +155,7 @@ public abstract class SynapseExportHandler extends ExportHandler {
     private List<String> getColumnNameList(ExportTask task) throws BridgeExporterException, SchemaNotFoundException,
             SynapseException {
         // Construct column definition list. Merge commonColumnList with getSynapseTableColumnList.
-        setSynapseColumnDefinitionsAndColumnList();
+        initSynapseColumnDefinitionsAndColumnList();
 
         List<ColumnModel> columnDefList = new ArrayList<>();
         columnDefList.addAll(commonColumnList);

@@ -247,13 +247,13 @@ public class BridgeExporterUtilTest {
 
         ColumnDefinition testDefinition1 = new ColumnDefinition();
         testDefinition1.setName(testColumnModelName1);
-        testDefinition1.setColumnType(ColumnType.STRING);
+        testDefinition1.setTransferMethod(TransferMethod.STRING);
         testDefinition1.setMaximumSize(36L);
         columnDefinitionBuilder.add(testDefinition1);
 
         ColumnDefinition testDefinition2 = new ColumnDefinition();
         testDefinition2.setName(testColumnModelName2);
-        testDefinition2.setColumnType(ColumnType.STRING);
+        testDefinition2.setTransferMethod(TransferMethod.STRING);
         testDefinition2.setMaximumSize(48L);
         columnDefinitionBuilder.add(testDefinition2);
 
@@ -267,19 +267,13 @@ public class BridgeExporterUtilTest {
         final String testStringName = "test_string";
         final String testStringSetName = "test_string_set";
         final String testDateName = "test_date";
-        final String testExporterDateName = "test_exporter_date";
         final String testSanitize = "test_sanitize";
-
-        // setup mock
-        ExportTask mockTask = mock(ExportTask.class);
-        when(mockTask.getExporterDate()).thenReturn(TEST_LOCAL_DATE);
 
         // create mock record
         Item testRecord = new Item();
         testRecord.withString(testStringName, "test_string_value");
         testRecord.withStringSet(testStringSetName, new String[]{"test_string_set_value_1", "test_string_set_value_2"});
         testRecord.withLong(testDateName, 1484181511);
-        testRecord.withString(testExporterDateName, "test_exporter_date_value");
         testRecord.with(testSanitize, "imbalanced</i> <p>tags");
 
         // create expected map
@@ -296,7 +290,6 @@ public class BridgeExporterUtilTest {
 
         ColumnDefinition testDefinition1 = new ColumnDefinition();
         testDefinition1.setName(testStringName);
-        testDefinition1.setColumnType(ColumnType.STRING);
         testDefinition1.setMaximumSize(36L);
         testDefinition1.setTransferMethod(TransferMethod.STRING);
         testDefinition1.setDdbName(testStringName);
@@ -304,7 +297,6 @@ public class BridgeExporterUtilTest {
 
         ColumnDefinition testDefinition2 = new ColumnDefinition();
         testDefinition2.setName(testStringSetName);
-        testDefinition2.setColumnType(ColumnType.STRING);
         testDefinition2.setTransferMethod(TransferMethod.STRINGSET);
         testDefinition2.setDdbName(testStringSetName);
         testDefinition2.setMaximumSize(100L);
@@ -312,7 +304,6 @@ public class BridgeExporterUtilTest {
 
         ColumnDefinition testDefinition4 = new ColumnDefinition();
         testDefinition4.setName(testDateName);
-        testDefinition4.setColumnType(ColumnType.DATE);
         testDefinition4.setTransferMethod(TransferMethod.DATE);
         testDefinition4.setDdbName(testDateName);
         testDefinition4.setMaximumSize(36L);
@@ -320,12 +311,44 @@ public class BridgeExporterUtilTest {
 
         ColumnDefinition testDefinition5 = new ColumnDefinition();
         testDefinition5.setName(testSanitize);
-        testDefinition5.setColumnType(ColumnType.STRING);
         testDefinition5.setMaximumSize(36L);
         testDefinition5.setTransferMethod(TransferMethod.STRING);
         testDefinition5.setDdbName(testSanitize);
         testDefinition5.setSanitize(true);
         columnDefinitionBuilder.add(testDefinition5);
+
+        testColumnDefinitions = columnDefinitionBuilder.build();
+
+        // process
+        Map<String, String> retMap = new HashMap<>();
+        BridgeExporterUtil.getRowValuesFromRecordBasedOnColumnDefinition(retMap, testRecord, testColumnDefinitions, "recordId");
+
+        // verify
+        assertEquals(retMap, expectedMap);
+    }
+
+    @Test
+    public void canGetRowValuesWIthoutDdbName() {
+        final String testStringName = "test_string";
+
+        // create mock record
+        Item testRecord = new Item();
+        testRecord.withString(testStringName, "test_string_value");
+
+        // create expected map
+        Map<String, String> expectedMap = new HashMap<>();
+        expectedMap.put(testStringName, "test_string_value");
+
+        // create mock column definitions
+        List<ColumnDefinition> testColumnDefinitions;
+
+        ImmutableList.Builder<ColumnDefinition> columnDefinitionBuilder = ImmutableList.builder();
+
+        ColumnDefinition testDefinition1 = new ColumnDefinition();
+        testDefinition1.setName(testStringName);
+        testDefinition1.setMaximumSize(36L);
+        testDefinition1.setTransferMethod(TransferMethod.STRING);
+        columnDefinitionBuilder.add(testDefinition1);
 
         testColumnDefinitions = columnDefinitionBuilder.build();
 

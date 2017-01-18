@@ -40,9 +40,9 @@ import org.sagebionetworks.bridge.rest.model.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
 public class SynapseExportHandlerNewTableTest {
-    private static List<ColumnModel> MOCK_COLUMN_LIST;
+    private static final List<ColumnModel> MOCK_COLUMN_LIST;
 
-    private static List<ColumnDefinition> MOCK_COLUMN_DEFINITION;
+    private static final List<ColumnDefinition> MOCK_COLUMN_DEFINITION;
 
     static {
         MOCK_COLUMN_DEFINITION = SynapseExportHandlerTest.createTestSynapseColumnDefinitions();

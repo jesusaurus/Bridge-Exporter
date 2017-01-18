@@ -4,7 +4,6 @@ import org.sagebionetworks.repo.model.table.ColumnType;
 
 public class ColumnDefinition  {
     private String name;
-    private ColumnType columnType;
     private Long maximumSize;
     private TransferMethod transferMethod;
     private String ddbName;
@@ -16,14 +15,6 @@ public class ColumnDefinition  {
 
     public void setName(String name) {
         this.name = name;
-    }
-
-    public ColumnType getColumnType() {
-        return columnType;
-    }
-
-    public void setColumnType(ColumnType columnType) {
-        this.columnType = columnType;
     }
 
     public Long getMaximumSize() {

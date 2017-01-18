@@ -44,9 +44,9 @@ import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
 import org.sagebionetworks.bridge.rest.model.UploadFieldType;
 
 public class HealthDataExportHandlerTest {
-    private static List<ColumnModel> MOCK_COLUMN_LIST;
+    private static final List<ColumnModel> MOCK_COLUMN_LIST;
 
-    private static List<ColumnDefinition> MOCK_COLUMN_DEFINITION;
+    private static final List<ColumnDefinition> MOCK_COLUMN_DEFINITION;
 
     static {
         MOCK_COLUMN_DEFINITION = SynapseExportHandlerTest.createTestSynapseColumnDefinitions();

@@ -25,7 +25,6 @@ public class ColumnDefinitionTest {
 
     private static final String TEST_JSON = "{\n" +
             "   \"name\":\"healthCode\",\n" +
-            "   \"columnType\":\"STRING\",\n" +
             "   \"maximumSize\":\"36\",\n" +
             "   \"transferMethod\":\"STRING\",\n" +
             "   \"ddbName\":\"healthCode\",\n" +
@@ -40,7 +39,7 @@ public class ColumnDefinitionTest {
 
         assertEquals(value.getName(), TEST_NAME);
         assertEquals(value.getDdbName(), TEST_DDB_NAME);
-        assertEquals(value.getColumnType(), TEST_COLUMN_TYPE);
+        assertEquals(value.getTransferMethod().getColumnType(), TEST_COLUMN_TYPE);
         assertEquals(value.getMaximumSize(), TEST_MAXIMUM_SIZE);
         assertEquals(value.getSanitize(), TEST_SANITIZE);
         assertEquals(value.getTransferMethod(), TEST_TRANSFER_METHOD);
@@ -54,7 +53,6 @@ public class ColumnDefinitionTest {
         value.setSanitize(TEST_SANITIZE);
         value.setMaximumSize(TEST_MAXIMUM_SIZE);
         value.setTransferMethod(TEST_TRANSFER_METHOD);
-        value.setColumnType(TEST_COLUMN_TYPE);
 
         final ObjectMapper mapper = DefaultObjectMapper.INSTANCE;
 
@@ -63,7 +61,6 @@ public class ColumnDefinitionTest {
 
         assertEquals(node.get("name").asText(), TEST_NAME);
         assertEquals(node.get("ddbName").asText(), TEST_DDB_NAME);
-        assertEquals(node.get("columnType").asText(), TEST_COLUMN_TYPE.toString());
         assertEquals(node.get("maximumSize").asText(), TEST_MAXIMUM_SIZE.toString());
         assertEquals(node.get("sanitize").asText(), String.valueOf(TEST_SANITIZE));
         assertEquals(node.get("transferMethod").asText(), TEST_TRANSFER_METHOD.toString());

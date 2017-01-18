@@ -11,6 +11,7 @@ import org.jsoup.safety.Whitelist;
 import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
 import org.sagebionetworks.bridge.exporter.synapse.TransferMethod;
 import org.sagebionetworks.repo.model.table.ColumnModel;
+import org.sagebionetworks.repo.model.table.ColumnType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -205,7 +206,7 @@ public class BridgeExporterUtil {
         for (ColumnDefinition columnDefinition : columnDefinitions) {
             ColumnModel columnModel = new ColumnModel();
             columnModel.setName(columnDefinition.getName());
-            columnModel.setColumnType(columnDefinition.getColumnType());
+            columnModel.setColumnType(columnDefinition.getTransferMethod().getColumnType());
             columnModel.setMaximumSize(columnDefinition.getMaximumSize());
             columnListBuilder.add(columnModel);
         }

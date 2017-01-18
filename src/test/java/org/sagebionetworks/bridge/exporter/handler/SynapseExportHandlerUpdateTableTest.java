@@ -47,9 +47,9 @@ import org.sagebionetworks.bridge.file.InMemoryFileHelper;
 
 @SuppressWarnings({ "rawtypes", "unchecked" })
 public class SynapseExportHandlerUpdateTableTest {
-    private static List<ColumnModel> MOCK_COLUMN_LIST;
+    private static final List<ColumnModel> MOCK_COLUMN_LIST;
 
-    private static List<ColumnDefinition> MOCK_COLUMN_DEFINITION;
+    private static final List<ColumnDefinition> MOCK_COLUMN_DEFINITION;
 
     static {
         MOCK_COLUMN_DEFINITION = SynapseExportHandlerTest.createTestSynapseColumnDefinitions();

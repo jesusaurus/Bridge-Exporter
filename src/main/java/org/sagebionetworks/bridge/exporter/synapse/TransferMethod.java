@@ -1,10 +1,7 @@
 package org.sagebionetworks.bridge.exporter.synapse;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
-import com.amazonaws.services.s3.transfer.Transfer;
-import com.google.common.base.Joiner;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
-import org.sagebionetworks.bridge.exporter.worker.ExportTask;
 import org.sagebionetworks.repo.model.table.ColumnType;
 
 import java.util.ArrayList;
