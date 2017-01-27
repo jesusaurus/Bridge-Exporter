@@ -1,6 +1,5 @@
 package org.sagebionetworks.bridge.exporter.synapse;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
@@ -8,7 +7,6 @@ import org.sagebionetworks.repo.model.table.ColumnType;
 import org.testng.annotations.Test;
 
 import java.io.IOException;
-import java.util.List;
 
 import static org.testng.Assert.assertEquals;
 
@@ -25,7 +23,7 @@ public class ColumnDefinitionTest {
 
     private static final String TEST_JSON = "{\n" +
             "   \"name\":\"healthCode\",\n" +
-            "   \"maximumSize\":\"36\",\n" +
+            "   \"maximumSize\":36,\n" +
             "   \"transferMethod\":\"STRING\",\n" +
             "   \"ddbName\":\"healthCode\",\n" +
             "   \"sanitize\":true\n" +
@@ -59,11 +57,11 @@ public class ColumnDefinitionTest {
         String json = mapper.writeValueAsString(value);
         JsonNode node = mapper.readTree(json);
 
-        assertEquals(node.get("name").asText(), TEST_NAME);
-        assertEquals(node.get("ddbName").asText(), TEST_DDB_NAME);
-        assertEquals(node.get("maximumSize").asText(), TEST_MAXIMUM_SIZE.toString());
-        assertEquals(node.get("sanitize").asText(), String.valueOf(TEST_SANITIZE));
-        assertEquals(node.get("transferMethod").asText(), TEST_TRANSFER_METHOD.toString());
+        assertEquals(node.get("name").textValue(), TEST_NAME);
+        assertEquals(node.get("ddbName").textValue(), TEST_DDB_NAME);
+        assertEquals(node.get("maximumSize").longValue(), TEST_MAXIMUM_SIZE.longValue());
+        assertEquals(node.get("sanitize").booleanValue(), TEST_SANITIZE);
+        assertEquals(node.get("transferMethod").textValue(), TEST_TRANSFER_METHOD.toString());
 
     }
 }
