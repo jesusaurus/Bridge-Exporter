@@ -1,7 +1,5 @@
 package org.sagebionetworks.bridge.exporter.util;
 
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNull;
@@ -14,10 +12,8 @@ import java.util.Map;
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
-import org.joda.time.LocalDate;
 import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
 import org.sagebionetworks.bridge.exporter.synapse.TransferMethod;
-import org.sagebionetworks.bridge.exporter.worker.ExportTask;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 import org.testng.annotations.Test;
@@ -30,10 +26,6 @@ import org.sagebionetworks.bridge.rest.model.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
 public class BridgeExporterUtilTest {
-    private static final String TEST_DATE = "2017-01-11";
-    private static final LocalDate TEST_LOCAL_DATE = LocalDate.parse(TEST_DATE);
-
-
     @Test
     public void getFieldDefMapFromSchema() {
         // set up test schema
@@ -135,30 +127,30 @@ public class BridgeExporterUtilTest {
 
     @Test
     public void sanitizeStringNull() {
-        assertNull(BridgeExporterUtil.sanitizeString(null, 100, "dummy-record"));
+        assertNull(BridgeExporterUtil.sanitizeString(null, "key", 100, "dummy-record"));
     }
 
     @Test
     public void sanitizeStringEmpty() {
-        String out = BridgeExporterUtil.sanitizeString("", 100, "dummy-record");
+        String out = BridgeExporterUtil.sanitizeString("", "key", 100, "dummy-record");
         assertEquals(out, "");
     }
 
     @Test
     public void sanitizeStringPassthrough() {
-        String out = BridgeExporterUtil.sanitizeString("lorem ipsum", 100, "dummy-record");
+        String out = BridgeExporterUtil.sanitizeString("lorem ipsum", "key", 100, "dummy-record");
         assertEquals(out, "lorem ipsum");
     }
 
     @Test
     public void sanitizeStringRemoveHtml() {
-        String out = BridgeExporterUtil.sanitizeString("<b>bold text</b>", 100, "dummy-record");
+        String out = BridgeExporterUtil.sanitizeString("<b>bold text</b>", "key", 100, "dummy-record");
         assertEquals(out, "bold text");
     }
 
     @Test
     public void sanitizeStringRemovePartialHtml() {
-        String out = BridgeExporterUtil.sanitizeString("imbalanced</i> <p>tags", 100, "dummy-record");
+        String out = BridgeExporterUtil.sanitizeString("imbalanced</i> <p>tags", "key", 100, "dummy-record");
         assertEquals(out, "imbalanced tags");
     }
 
@@ -167,20 +159,20 @@ public class BridgeExporterUtilTest {
         String in = "newlines\n\n\n" +
                 "CRLF\r\n" +
                 "tabs\t\ttabs";
-        String out = BridgeExporterUtil.sanitizeString(in, 1000, "dummy-record");
+        String out = BridgeExporterUtil.sanitizeString(in, "key", 1000, "dummy-record");
         assertEquals(out, "newlines CRLF tabs tabs");
     }
 
     @Test
     public void sanitizeStringTooLong() {
-        String out = BridgeExporterUtil.sanitizeString("1234567890", 4, "dummy-record");
+        String out = BridgeExporterUtil.sanitizeString("1234567890", "key", 4, "dummy-record");
         assertEquals(out, "1234");
     }
 
     // branch coverage
     @Test
     public void sanitizeStringNullMaxLength() {
-        String out = BridgeExporterUtil.sanitizeString("stuff", null, "dummy-record");
+        String out = BridgeExporterUtil.sanitizeString("stuff", "key", null, "dummy-record");
         assertEquals(out, "stuff");
     }
 
@@ -272,7 +264,7 @@ public class BridgeExporterUtilTest {
         // create mock record
         Item testRecord = new Item();
         testRecord.withString(testStringName, "test_string_value");
-        testRecord.withStringSet(testStringSetName, new String[]{"test_string_set_value_1", "test_string_set_value_2"});
+        testRecord.withStringSet(testStringSetName, "test_string_set_value_1", "test_string_set_value_2");
         testRecord.withLong(testDateName, 1484181511);
         testRecord.with(testSanitize, "imbalanced</i> <p>tags");
 

@@ -237,7 +237,8 @@ public class SynapseHelper {
                     maxLength = getMaxLengthForFieldDef(fieldDef);
                 }
 
-                String sanitizedValue = BridgeExporterUtil.sanitizeString(nodeValue, maxLength, recordId);
+                String sanitizedValue = BridgeExporterUtil.sanitizeString(nodeValue, fieldDef.getName(), maxLength,
+                        recordId);
                 return sanitizedValue;
             }
             case FLOAT: {

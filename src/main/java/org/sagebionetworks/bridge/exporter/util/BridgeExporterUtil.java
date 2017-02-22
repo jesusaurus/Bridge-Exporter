@@ -11,7 +11,6 @@ import org.jsoup.safety.Whitelist;
 import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
 import org.sagebionetworks.bridge.exporter.synapse.TransferMethod;
 import org.sagebionetworks.repo.model.table.ColumnModel;
-import org.sagebionetworks.repo.model.table.ColumnType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -117,7 +116,7 @@ public class BridgeExporterUtil {
      */
     public static String sanitizeDdbValue(Item item, String fieldName, int maxLength, String recordId) {
         String value = item.getString(fieldName);
-        return sanitizeString(value, maxLength, recordId);
+        return sanitizeString(value, fieldName, maxLength, recordId);
     }
 
     /**
@@ -137,7 +136,7 @@ public class BridgeExporterUtil {
         if (!node.hasNonNull(fieldName)) {
             return null;
         }
-        return sanitizeString(node.get(fieldName).textValue(), maxLength, recordId);
+        return sanitizeString(node.get(fieldName).textValue(), fieldName, maxLength, recordId);
     }
 
     /**
@@ -152,13 +151,15 @@ public class BridgeExporterUtil {
      *
      * @param in
      *         value to sanitize
+     * @param fieldName
+     *         name of the field we're sanitizing, for logging purposes
      * @param maxLength
      *         max length of the column, null if the string can be unbounded
      * @param recordId
      *         record ID, for logging purposes
      * @return sanitized string
      */
-    public static String sanitizeString(String in, Integer maxLength, String recordId) {
+    public static String sanitizeString(String in, String fieldName, Integer maxLength, String recordId) {
         if (in == null) {
             return null;
         }
@@ -171,7 +172,8 @@ public class BridgeExporterUtil {
 
         // Check against max length, truncating and warning as necessary.
         if (maxLength != null && in.length() > maxLength) {
-            LOG.error("Truncating string " + in + " to length " + maxLength + " for record " + recordId);
+            LOG.error("Truncating string for field " + fieldName + " in record " + recordId + ", original length " +
+                    in.length() + " to max length " + maxLength);
             in = in.substring(0, maxLength);
         }
 
@@ -197,8 +199,6 @@ public class BridgeExporterUtil {
 
     /**
      * Helper method to convert a list of ColumnDefinition to a ColumnModel list.
-     * @param columnDefinitions
-     * @return
      */
     public static List<ColumnModel> convertToColumnList(final List<ColumnDefinition> columnDefinitions) {
         ImmutableList.Builder<ColumnModel> columnListBuilder = ImmutableList.builder();
@@ -220,7 +220,7 @@ public class BridgeExporterUtil {
             // use name if there is no ddbName
             final String ddbName = columnDefinition.getDdbName() == null? columnDefinition.getName() : columnDefinition.getDdbName();
 
-            String valueToAdd = "";
+            String valueToAdd;
             if (columnDefinition.getSanitize()) {
                 valueToAdd = sanitizeDdbValue(record, ddbName, columnDefinition.getMaximumSize().intValue(), recordId);
             } else {
