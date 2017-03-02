@@ -91,7 +91,6 @@ public abstract class SynapseExportHandler extends ExportHandler {
     public void handle(ExportSubtask subtask) throws BridgeExporterException, IOException, SchemaNotFoundException,
             SynapseException {
         String tableKey = getDdbTableKeyValue();
-        subtask.getSchemaKey().getSchemaId();
         ExportTask task = subtask.getParentTask();
         Metrics metrics = task.getMetrics();
         String recordId = subtask.getRecordId();
