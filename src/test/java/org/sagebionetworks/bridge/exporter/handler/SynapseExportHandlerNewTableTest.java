@@ -1,6 +1,15 @@
 package org.sagebionetworks.bridge.exporter.handler;
 
+import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
+
 import com.google.common.collect.ImmutableList;
+import org.sagebionetworks.client.exceptions.SynapseNotFoundException;
+import org.sagebionetworks.repo.model.table.ColumnModel;
+import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.Test;
+
 import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.exporter.helper.BridgeHelper;
 import org.sagebionetworks.bridge.exporter.helper.BridgeHelperTest;
@@ -17,14 +26,6 @@ import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
 import org.sagebionetworks.bridge.rest.model.UploadFieldType;
 import org.sagebionetworks.bridge.rest.model.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
-import org.sagebionetworks.client.exceptions.SynapseNotFoundException;
-import org.sagebionetworks.repo.model.table.ColumnModel;
-import org.testng.annotations.BeforeMethod;
-import org.testng.annotations.Test;
-
-import java.io.File;
-import java.util.ArrayList;
-import java.util.List;
 
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyString;

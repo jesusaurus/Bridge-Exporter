@@ -1,10 +1,11 @@
 package org.sagebionetworks.bridge.exporter.synapse;
 
+import java.util.List;
+import java.util.Map;
+
 import com.google.common.collect.ImmutableList;
 import org.joda.time.LocalDate;
 import org.mockito.ArgumentCaptor;
-import org.sagebionetworks.bridge.exporter.worker.ExportTask;
-import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.PartialRow;
 import org.sagebionetworks.repo.model.table.PartialRowSet;
@@ -12,8 +13,8 @@ import org.sagebionetworks.repo.model.table.TableEntity;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import java.util.List;
-import java.util.Map;
+import org.sagebionetworks.bridge.exporter.worker.ExportTask;
+import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
 
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyListOf;
