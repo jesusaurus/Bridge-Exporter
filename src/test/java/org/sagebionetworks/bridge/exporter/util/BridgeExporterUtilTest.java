@@ -143,7 +143,7 @@ public class BridgeExporterUtilTest {
         };
     }
 
-    @Test
+    @Test(dataProvider = "sanitizeStringDataProvider")
     public void sanitizeString(String in, Integer maxLength, String expected) {
         assertEquals(BridgeExporterUtil.sanitizeString(in, "key", maxLength, "dummy-record"), expected);
     }
