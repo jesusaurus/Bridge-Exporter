@@ -16,6 +16,7 @@ import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
 import org.sagebionetworks.bridge.exporter.synapse.TransferMethod;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.exporter.helper.BridgeHelperTest;
@@ -125,55 +126,26 @@ public class BridgeExporterUtilTest {
         assertEquals(out, "123 4");
     }
 
-    @Test
-    public void sanitizeStringNull() {
-        assertNull(BridgeExporterUtil.sanitizeString(null, "key", 100, "dummy-record"));
+    @DataProvider(name = "sanitizeStringDataProvider")
+    public Object[][] sanitizeStringDataProvider() {
+        return new Object[][] {
+                { null, 100, null },
+                { "", 100, "" },
+                { "lorem ipsum", 100, "lorem ipsum" },
+                { "<b>bold text</b>", 100, "bold text" },
+                { "imbalanced</i> <p>tags", 100, "imbalanced tags" },
+                { "newlines\n\n\nCRLF\r\ntabs\t\ttabs", 1000, "newlines CRLF tabs tabs" },
+                { "quote\"quote", 100, "quote\\\"quote" },
+                { "escaped\\\"quote", 100, "escaped\\\\\\\"quote" },
+                { "[ \"inline\", \"json\", \"blob\" ]", 100, "[ \\\"inline\\\", \\\"json\\\", \\\"blob\\\" ]" },
+                { "1234567890", 4, "1234" },
+                { "stuff", null, "stuff" },
+        };
     }
 
     @Test
-    public void sanitizeStringEmpty() {
-        String out = BridgeExporterUtil.sanitizeString("", "key", 100, "dummy-record");
-        assertEquals(out, "");
-    }
-
-    @Test
-    public void sanitizeStringPassthrough() {
-        String out = BridgeExporterUtil.sanitizeString("lorem ipsum", "key", 100, "dummy-record");
-        assertEquals(out, "lorem ipsum");
-    }
-
-    @Test
-    public void sanitizeStringRemoveHtml() {
-        String out = BridgeExporterUtil.sanitizeString("<b>bold text</b>", "key", 100, "dummy-record");
-        assertEquals(out, "bold text");
-    }
-
-    @Test
-    public void sanitizeStringRemovePartialHtml() {
-        String out = BridgeExporterUtil.sanitizeString("imbalanced</i> <p>tags", "key", 100, "dummy-record");
-        assertEquals(out, "imbalanced tags");
-    }
-
-    @Test
-    public void sanitizeStringRemoveBadChars() {
-        String in = "newlines\n\n\n" +
-                "CRLF\r\n" +
-                "tabs\t\ttabs";
-        String out = BridgeExporterUtil.sanitizeString(in, "key", 1000, "dummy-record");
-        assertEquals(out, "newlines CRLF tabs tabs");
-    }
-
-    @Test
-    public void sanitizeStringTooLong() {
-        String out = BridgeExporterUtil.sanitizeString("1234567890", "key", 4, "dummy-record");
-        assertEquals(out, "1234");
-    }
-
-    // branch coverage
-    @Test
-    public void sanitizeStringNullMaxLength() {
-        String out = BridgeExporterUtil.sanitizeString("stuff", "key", null, "dummy-record");
-        assertEquals(out, "stuff");
+    public void sanitizeString(String in, Integer maxLength, String expected) {
+        assertEquals(BridgeExporterUtil.sanitizeString(in, "key", maxLength, "dummy-record"), expected);
     }
 
     @Test
