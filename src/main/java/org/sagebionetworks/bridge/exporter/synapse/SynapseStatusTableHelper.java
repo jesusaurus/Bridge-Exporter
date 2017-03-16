@@ -1,10 +1,9 @@
 package org.sagebionetworks.bridge.exporter.synapse;
 
+import java.util.List;
+
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
-import org.sagebionetworks.bridge.exporter.worker.ExportTask;
-import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
 import org.sagebionetworks.client.exceptions.SynapseException;
 import org.sagebionetworks.client.exceptions.SynapseNotFoundException;
 import org.sagebionetworks.repo.model.table.ColumnModel;
@@ -14,7 +13,9 @@ import org.sagebionetworks.repo.model.table.PartialRowSet;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.util.List;
+import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
+import org.sagebionetworks.bridge.exporter.worker.ExportTask;
+import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
 
 /**
  * Highly specialized helper, which writes the status row to the Synapse status table, creating it if it doesn't
@@ -79,10 +80,12 @@ public class SynapseStatusTableHelper {
         // check if the status table exists in synapse
         SynapseHelper synapseHelper = manager.getSynapseHelper();
         boolean isExisted = true;
-        try {
-            synapseHelper.getTableWithRetry(synapseTableId);
-        } catch (SynapseNotFoundException e) {
-            isExisted = false;
+        if (synapseTableId != null) {
+            try {
+                synapseHelper.getTableWithRetry(synapseTableId);
+            } catch (SynapseNotFoundException e) {
+                isExisted = false;
+            }
         }
 
         if (synapseTableId == null || !isExisted) {

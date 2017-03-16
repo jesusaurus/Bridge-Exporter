@@ -1,28 +1,5 @@
 package org.sagebionetworks.bridge.exporter.handler;
 
-import com.amazonaws.services.dynamodbv2.document.Item;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Sets;
-import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
-import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterNonRetryableException;
-import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
-import org.sagebionetworks.bridge.exporter.metrics.Metrics;
-import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
-import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
-import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
-import org.sagebionetworks.bridge.exporter.worker.ExportSubtask;
-import org.sagebionetworks.bridge.exporter.worker.ExportTask;
-import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
-import org.sagebionetworks.bridge.exporter.worker.TsvInfo;
-import org.sagebionetworks.bridge.file.FileHelper;
-import org.sagebionetworks.client.exceptions.SynapseException;
-import org.sagebionetworks.client.exceptions.SynapseNotFoundException;
-import org.sagebionetworks.repo.model.table.ColumnModel;
-import org.sagebionetworks.repo.model.table.ColumnType;
-import org.sagebionetworks.repo.model.table.TableEntity;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -35,6 +12,30 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+
+import com.amazonaws.services.dynamodbv2.document.Item;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Sets;
+import org.sagebionetworks.client.exceptions.SynapseException;
+import org.sagebionetworks.client.exceptions.SynapseNotFoundException;
+import org.sagebionetworks.repo.model.table.ColumnModel;
+import org.sagebionetworks.repo.model.table.ColumnType;
+import org.sagebionetworks.repo.model.table.TableEntity;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
+import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterNonRetryableException;
+import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
+import org.sagebionetworks.bridge.exporter.metrics.Metrics;
+import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
+import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
+import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
+import org.sagebionetworks.bridge.exporter.worker.ExportSubtask;
+import org.sagebionetworks.bridge.exporter.worker.ExportTask;
+import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
+import org.sagebionetworks.bridge.exporter.worker.TsvInfo;
+import org.sagebionetworks.bridge.file.FileHelper;
 
 /**
  * This is a handler who's solely responsible for a single table in Synapse. This handler is assigned a stream of DDB
@@ -124,8 +125,6 @@ public abstract class SynapseExportHandler extends ExportHandler {
     private synchronized TsvInfo initTsvForTask(ExportTask task) {
         // check if the TSV is already saved in the task
         TsvInfo savedTsvInfo = getTsvInfoForTask(task);
-        String tableId = getManager().getSynapseTableIdFromDdb(task, getDdbTableName(), getDdbTableKeyName(),
-                getDdbTableKeyValue());
 
         if (savedTsvInfo != null) {
             return savedTsvInfo;
@@ -172,10 +171,12 @@ public abstract class SynapseExportHandler extends ExportHandler {
         // check if the table in synapse currently
         ExportWorkerManager manager = getManager();
         SynapseHelper synapseHelper = manager.getSynapseHelper();
-        try {
-            synapseHelper.getTableWithRetry(synapseTableId);
-        } catch (SynapseNotFoundException e) {
-            isExisted = false;
+        if (synapseTableId != null) {
+            try {
+                synapseHelper.getTableWithRetry(synapseTableId);
+            } catch (SynapseNotFoundException e) {
+                isExisted = false;
+            }
         }
 
         if (synapseTableId == null || !isExisted) {
