@@ -19,9 +19,11 @@ import java.util.Map;
 import com.google.common.collect.ImmutableList;
 import org.joda.time.LocalDate;
 import org.mockito.ArgumentCaptor;
+import org.sagebionetworks.client.exceptions.SynapseNotFoundException;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.PartialRow;
 import org.sagebionetworks.repo.model.table.PartialRowSet;
+import org.sagebionetworks.repo.model.table.TableEntity;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -40,6 +42,9 @@ public class SynapseStatusTableHelperTest {
     private static final String SYNAPSE_TABLE_NAME = "test-study-status";
 
     private String synapseTableId;
+    private ExportWorkerManager mockManager;
+    private SynapseHelper mockSynapseHelper;
+    private SynapseStatusTableHelper statusTableHelper;
 
     @BeforeMethod
     public void before() {
@@ -47,10 +52,9 @@ public class SynapseStatusTableHelperTest {
         synapseTableId = null;
     }
 
-    @Test
-    public void test() throws Exception {
+    private void setup() throws Exception {
         // mock manager
-        ExportWorkerManager mockManager = mock(ExportWorkerManager.class);
+        mockManager = mock(ExportWorkerManager.class);
         when(mockManager.getDataAccessTeamIdForStudy(STUDY_ID)).thenReturn(DATA_ACCESS_TEAM_ID);
         when(mockManager.getSynapsePrincipalId()).thenReturn(SYNAPSE_PRINCIPAL_ID);
         when(mockManager.getSynapseProjectIdForStudyAndTask(eq(STUDY_ID), notNull(ExportTask.class))).thenReturn(
@@ -65,7 +69,8 @@ public class SynapseStatusTableHelperTest {
                         eq(SynapseHelper.DDB_KEY_TABLE_NAME), eq(SYNAPSE_TABLE_NAME), anyString());
 
         // mock Synapse Helper
-        SynapseHelper mockSynapseHelper = mock(SynapseHelper.class);
+        mockSynapseHelper = mock(SynapseHelper.class);
+        mockManager.setSynapseHelper(mockSynapseHelper);
         when(mockSynapseHelper.createTableWithColumnsAndAcls(SynapseStatusTableHelper.COLUMN_LIST, DATA_ACCESS_TEAM_ID,
                 SYNAPSE_PRINCIPAL_ID, SYNAPSE_PROJECT_ID, SYNAPSE_TABLE_NAME)).thenReturn(SYNAPSE_TABLE_ID);
 
@@ -75,11 +80,17 @@ public class SynapseStatusTableHelperTest {
         serverSideColumn.setId(COLUMN_ID);
         when(mockSynapseHelper.getColumnModelsForTableWithRetry(SYNAPSE_TABLE_ID)).thenReturn(ImmutableList.of(
                 serverSideColumn));
+        when(mockSynapseHelper.getTableWithRetry(SYNAPSE_TABLE_ID)).thenReturn(new TableEntity());
 
         // set up helper
-        SynapseStatusTableHelper statusTableHelper = new SynapseStatusTableHelper();
+        statusTableHelper = new SynapseStatusTableHelper();
         statusTableHelper.setManager(mockManager);
         statusTableHelper.setSynapseHelper(mockSynapseHelper);
+    }
+
+    @Test
+    public void test() throws Exception {
+        setup();
 
         // execute
         // initial call creates the table
@@ -88,6 +99,8 @@ public class SynapseStatusTableHelperTest {
         statusTableHelper.initTableAndWriteStatus(task1, STUDY_ID);
 
         // verify we created the table
+        // since the table id is null, we will not call this method
+        verify(mockSynapseHelper, times(0)).getTableWithRetry(any());
         verify(mockSynapseHelper, times(1)).createTableWithColumnsAndAcls(SynapseStatusTableHelper.COLUMN_LIST,
                 DATA_ACCESS_TEAM_ID, SYNAPSE_PRINCIPAL_ID, SYNAPSE_PROJECT_ID, SYNAPSE_TABLE_NAME);
         verify(mockManager, times(1)).setSynapseTableIdToDdb(task1, SynapseHelper.DDB_TABLE_SYNAPSE_META_TABLES,
@@ -134,5 +147,45 @@ public class SynapseStatusTableHelperTest {
         Map<String, String> rowValueMap2 = row2.getValues();
         assertEquals(rowValueMap2.size(), 1);
         assertEquals(rowValueMap2.get(COLUMN_ID), "2016-03-07");
+    }
+
+    @Test
+    public void testWithNoTable() throws Exception {
+        // create a not-null synapse table id
+        synapseTableId = SYNAPSE_TABLE_ID;
+
+        setup();
+
+        // throw exception to mock situation when we have synapse table id but no table in synapse
+        when(mockSynapseHelper.getTableWithRetry(SYNAPSE_TABLE_ID)).thenThrow(
+                new SynapseNotFoundException());
+
+        // execute
+        // initial call creates the table
+        ExportTask task1 = mock(ExportTask.class);
+        when(task1.getExporterDate()).thenReturn(LocalDate.parse("2016-03-06"));
+        statusTableHelper.initTableAndWriteStatus(task1, STUDY_ID);
+
+        // verify we created the table
+        verify(mockSynapseHelper).getTableWithRetry(any());
+        verify(mockSynapseHelper, times(1)).createTableWithColumnsAndAcls(SynapseStatusTableHelper.COLUMN_LIST,
+                DATA_ACCESS_TEAM_ID, SYNAPSE_PRINCIPAL_ID, SYNAPSE_PROJECT_ID, SYNAPSE_TABLE_NAME);
+        verify(mockManager, times(1)).setSynapseTableIdToDdb(task1, SynapseHelper.DDB_TABLE_SYNAPSE_META_TABLES,
+                SynapseHelper.DDB_KEY_TABLE_NAME, SYNAPSE_TABLE_NAME, SYNAPSE_TABLE_ID);
+
+        // verify write to Synapse
+        ArgumentCaptor<PartialRowSet> rowSetCaptor1 = ArgumentCaptor.forClass(PartialRowSet.class);
+        verify(mockSynapseHelper, times(1)).appendRowsToTableWithRetry(rowSetCaptor1.capture(), eq(SYNAPSE_TABLE_ID));
+
+        PartialRowSet rowSet1 = rowSetCaptor1.getValue();
+        assertEquals(rowSet1.getTableId(), SYNAPSE_TABLE_ID);
+
+        List<PartialRow> rowList1 = rowSet1.getRows();
+        assertEquals(rowList1.size(), 1);
+
+        PartialRow row1 = rowList1.get(0);
+        Map<String, String> rowValueMap1 = row1.getValues();
+        assertEquals(rowValueMap1.size(), 1);
+        assertEquals(rowValueMap1.get(COLUMN_ID), "2016-03-06");
     }
 }
