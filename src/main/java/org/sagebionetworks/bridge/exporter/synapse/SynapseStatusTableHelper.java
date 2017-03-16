@@ -80,6 +80,7 @@ public class SynapseStatusTableHelper {
         // check if the status table exists in synapse
         SynapseHelper synapseHelper = manager.getSynapseHelper();
         boolean isExisted = true;
+
         if (synapseTableId != null) {
             try {
                 synapseHelper.getTableWithRetry(synapseTableId);
