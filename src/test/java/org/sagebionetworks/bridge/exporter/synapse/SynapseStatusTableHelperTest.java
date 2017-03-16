@@ -53,6 +53,7 @@ public class SynapseStatusTableHelperTest {
     }
 
     private void setup() throws Exception {
+        // mock manager
         mockManager = mock(ExportWorkerManager.class);
         when(mockManager.getDataAccessTeamIdForStudy(STUDY_ID)).thenReturn(DATA_ACCESS_TEAM_ID);
         when(mockManager.getSynapsePrincipalId()).thenReturn(SYNAPSE_PRINCIPAL_ID);
@@ -67,6 +68,7 @@ public class SynapseStatusTableHelperTest {
                 .setSynapseTableIdToDdb(notNull(ExportTask.class), eq(SynapseHelper.DDB_TABLE_SYNAPSE_META_TABLES),
                         eq(SynapseHelper.DDB_KEY_TABLE_NAME), eq(SYNAPSE_TABLE_NAME), anyString());
 
+        // mock Synapse Helper
         mockSynapseHelper = mock(SynapseHelper.class);
         mockManager.setSynapseHelper(mockSynapseHelper);
         when(mockSynapseHelper.createTableWithColumnsAndAcls(SynapseStatusTableHelper.COLUMN_LIST, DATA_ACCESS_TEAM_ID,
@@ -80,6 +82,7 @@ public class SynapseStatusTableHelperTest {
                 serverSideColumn));
         when(mockSynapseHelper.getTableWithRetry(SYNAPSE_TABLE_ID)).thenReturn(new TableEntity());
 
+        // set up helper
         statusTableHelper = new SynapseStatusTableHelper();
         statusTableHelper.setManager(mockManager);
         statusTableHelper.setSynapseHelper(mockSynapseHelper);
