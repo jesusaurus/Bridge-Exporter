@@ -117,27 +117,7 @@ public class DynamoHelperTest {
         assertEquals(studyInfo.getDataAccessTeamId().longValue(), 1337);
         assertEquals(studyInfo.getSynapseProjectId(), "test-synapse-table");
         assertFalse(studyInfo.getUsesCustomExportSchedule());
-    }
-
-    @Test
-    public void getStudyInfoNullDisableExport() {
-        // without disable export field, just proceeds as normal
-        // mock DDB Study table - only include relevant attributes
-        Item studyItem = new Item().withLong("synapseDataAccessTeamId", 1337)
-                .withString("synapseProjectId", "test-synapse-table");
-
-        Table mockStudyTable = mock(Table.class);
-        when(mockStudyTable.getItem("identifier", "test-study")).thenReturn(studyItem);
-
-        // set up Dynamo Helper
-        DynamoHelper helper = new DynamoHelper();
-        helper.setDdbStudyTable(mockStudyTable);
-
-        // execute and validate
-        StudyInfo studyInfo = helper.getStudyInfo("test-study");
-        assertEquals(studyInfo.getDataAccessTeamId().longValue(), 1337);
-        assertEquals(studyInfo.getSynapseProjectId(), "test-synapse-table");
-        assertFalse(studyInfo.getUsesCustomExportSchedule());
+        assertFalse(studyInfo.getDisableExport());
     }
 
     @Test
@@ -159,6 +139,7 @@ public class DynamoHelperTest {
         assertEquals(studyInfo.getDataAccessTeamId().longValue(), 1337);
         assertEquals(studyInfo.getSynapseProjectId(), "test-synapse-table");
         assertFalse(studyInfo.getUsesCustomExportSchedule());
+        assertFalse(studyInfo.getDisableExport());
     }
 
     @Test
@@ -177,7 +158,10 @@ public class DynamoHelperTest {
 
         // execute and validate
         StudyInfo studyInfo = helper.getStudyInfo("test-study");
-        assertNull(studyInfo);
+        assertEquals(studyInfo.getDataAccessTeamId().longValue(), 1337);
+        assertEquals(studyInfo.getSynapseProjectId(), "test-synapse-table");
+        assertFalse(studyInfo.getUsesCustomExportSchedule());
+        assertTrue(studyInfo.getDisableExport());
     }
 
     @Test
