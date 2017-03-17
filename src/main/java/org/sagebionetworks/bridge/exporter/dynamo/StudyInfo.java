@@ -10,12 +10,14 @@ public class StudyInfo {
     private final Long dataAccessTeamId;
     private final String synapseProjectId;
     private final boolean usesCustomExportSchedule;
+    private final boolean disableExport;
 
     /** Private constructor. To construct, see builder. */
-    private StudyInfo(Long dataAccessTeamId, String synapseProjectId, boolean usesCustomExportSchedule) {
+    private StudyInfo(Long dataAccessTeamId, String synapseProjectId, boolean usesCustomExportSchedule, boolean disableExport) {
         this.dataAccessTeamId = dataAccessTeamId;
         this.synapseProjectId = synapseProjectId;
         this.usesCustomExportSchedule = usesCustomExportSchedule;
+        this.disableExport = disableExport;
     }
 
     /** The team ID of the team that is granted read access to exported data. */
@@ -36,11 +38,18 @@ public class StudyInfo {
         return usesCustomExportSchedule;
     }
 
+    /** Flag indicating if this study should be excluded from exporting. */
+    public boolean getDisableExport() {
+        return disableExport;
+    }
+
+
     /** StudyInfo Builder. */
     public static class Builder {
         private Long dataAccessTeamId;
         private String synapseProjectId;
         private Boolean usesCustomExportSchedule;
+        private boolean disableExport;
 
         /** @see StudyInfo#getDataAccessTeamId */
         public Builder withDataAccessTeamId(Long dataAccessTeamId) {
@@ -60,6 +69,12 @@ public class StudyInfo {
             return this;
         }
 
+        /** @see StudyInfo#getUsesCustomExportSchedule */
+        public Builder withDisableExport(boolean disableExport) {
+            this.disableExport = disableExport;
+            return this;
+        }
+
         /**
          * Builds the study info object. The study may not have been configured for Bridge-EX yet (that is, no
          * dataAccessTeamId and no synapseProjectId). If that's the case, return null instead of returning an
@@ -74,7 +89,7 @@ public class StudyInfo {
             boolean finalUsesCustomExportSchedule = usesCustomExportSchedule != null ? usesCustomExportSchedule :
                     false;
 
-            return new StudyInfo(dataAccessTeamId, synapseProjectId, finalUsesCustomExportSchedule);
+            return new StudyInfo(dataAccessTeamId, synapseProjectId, finalUsesCustomExportSchedule, disableExport);
         }
     }
 }

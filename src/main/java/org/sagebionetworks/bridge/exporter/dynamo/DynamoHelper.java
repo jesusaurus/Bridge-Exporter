@@ -3,7 +3,6 @@ package org.sagebionetworks.bridge.exporter.dynamo;
 import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-
 import javax.annotation.Resource;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
@@ -27,6 +26,7 @@ public class DynamoHelper {
     private static final String STUDY_INFO_KEY_DATA_ACCESS_TEAM = "synapseDataAccessTeamId";
     private static final String STUDY_INFO_KEY_PROJECT_ID = "synapseProjectId";
     private static final String STUDY_INFO_KEY_USES_CUSTOM_EXPORT_SCHEDULE = "usesCustomExportSchedule";
+    static final String STUDY_DISABLE_EXPORT = "disableExport";
 
     private Table ddbParticipantOptionsTable;
     private Table ddbStudyTable;
@@ -95,6 +95,10 @@ public class DynamoHelper {
         // it's not null. (This should cover both cases where the attribute doesn't exist and cases where the attribute
         // exists and is null.
         StudyInfo.Builder studyInfoBuilder = new StudyInfo.Builder();
+
+        // we need to check at first if the study is disabled exporting or not
+        // treat null as false
+
         if (studyItem.get(STUDY_INFO_KEY_DATA_ACCESS_TEAM) != null) {
             studyInfoBuilder.withDataAccessTeamId(studyItem.getLong(STUDY_INFO_KEY_DATA_ACCESS_TEAM));
         }
@@ -105,10 +109,23 @@ public class DynamoHelper {
 
         if (studyItem.get(STUDY_INFO_KEY_USES_CUSTOM_EXPORT_SCHEDULE) != null) {
             // For some reason, the mapper saves the value as an int, not as a boolean.
-            boolean usesCustomExportSchedule = studyItem.getInt(STUDY_INFO_KEY_USES_CUSTOM_EXPORT_SCHEDULE) != 0;
+            boolean usesCustomExportSchedule = parseDdbBoolean(studyItem, STUDY_INFO_KEY_USES_CUSTOM_EXPORT_SCHEDULE);
             studyInfoBuilder.withUsesCustomExportSchedule(usesCustomExportSchedule);
         }
 
+        if (studyItem.get(STUDY_DISABLE_EXPORT) != null) {
+            boolean disableExport = parseDdbBoolean(studyItem, STUDY_DISABLE_EXPORT);
+            studyInfoBuilder.withDisableExport(disableExport);
+        }
+
         return studyInfoBuilder.build();
+    }
+
+    /**
+     * Helper function to parse ddb boolean value into boolean
+     * @return
+     */
+    private boolean parseDdbBoolean(Item item, String attributeName) {
+        return item.getInt(attributeName) != 0;
     }
 }
