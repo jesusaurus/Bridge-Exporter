@@ -2,13 +2,14 @@ package org.sagebionetworks.bridge.exporter.record;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
-
 import javax.annotation.Resource;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
 import com.google.common.base.Stopwatch;
+import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
 import org.joda.time.LocalDate;
 import org.sagebionetworks.client.exceptions.SynapseException;
@@ -22,6 +23,7 @@ import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.exporter.exceptions.RestartBridgeExporterException;
 import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
 import org.sagebionetworks.bridge.exporter.exceptions.SynapseUnavailableException;
+import org.sagebionetworks.bridge.exporter.helper.ExportHelper;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.metrics.MetricsHelper;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
@@ -43,6 +45,8 @@ public class BridgeExporterRecordProcessor {
     // package-scoped to be available to unit tests
     static final String CONFIG_KEY_RECORD_LOOP_DELAY_MILLIS = "record.loop.delay.millis";
     static final String CONFIG_KEY_RECORD_LOOP_PROGRESS_REPORT_PERIOD = "record.loop.progress.report.period";
+    static final String STUDY_ID = "studyId";
+    static final String LAST_EXPORT_DATE_TIME = "lastExportDateTime";
 
     // config attributes
     private int delayMillis;
@@ -51,12 +55,14 @@ public class BridgeExporterRecordProcessor {
 
     // Spring helpers
     private Table ddbRecordTable;
+    private Table ddbExportTimeTable;
     private FileHelper fileHelper;
     private MetricsHelper metricsHelper;
     private RecordFilterHelper recordFilterHelper;
     private RecordIdSourceFactory recordIdSourceFactory;
     private SynapseHelper synapseHelper;
     private ExportWorkerManager workerManager;
+    private ExportHelper exportHelper;
 
     /** Config, used to get attributes for loop control and time zone. */
     @Autowired
@@ -70,6 +76,12 @@ public class BridgeExporterRecordProcessor {
     @Resource(name = "ddbRecordTable")
     public final void setDdbRecordTable(Table ddbRecordTable) {
         this.ddbRecordTable = ddbRecordTable;
+    }
+
+    /** DDB Export Time Table. */
+    @Resource(name = "ddbExportTimeTable")
+    final void setDdbExportTimeTable(Table ddbExportTimeTable) {
+        this.ddbExportTimeTable = ddbExportTimeTable;
     }
 
     /** File helper, used for creating and cleaning up the temp dir used to store the request's temporary files. */
@@ -111,6 +123,11 @@ public class BridgeExporterRecordProcessor {
     @Autowired
     public final void setWorkerManager(ExportWorkerManager workerManager) {
         this.workerManager = workerManager;
+    }
+
+    @Autowired
+    public final void setExportHelper(ExportHelper exportHelper) {
+        this.exportHelper = exportHelper;
     }
 
     /**
@@ -193,6 +210,15 @@ public class BridgeExporterRecordProcessor {
 
             // We made it to the end. Set the success flag on the task.
             setTaskSuccess(task);
+
+            // finally modify export time table in ddb
+            List<String> studyIdsToUpdate = exportHelper.bootstrapStudyIdsToQuery(request);
+            DateTime endDateTime = exportHelper.getEndDateTime(request);
+            if (!studyIdsToUpdate.isEmpty() && endDateTime != null) {
+                for (String studyId: studyIdsToUpdate) {
+                    ddbExportTimeTable.putItem(new Item().withPrimaryKey(STUDY_ID, studyId).withNumber(LAST_EXPORT_DATE_TIME, endDateTime.getMillis()));
+                }
+            }
         } finally {
             long elapsedTime = stopwatch.elapsed(TimeUnit.SECONDS);
             if (task.isSuccess()) {
