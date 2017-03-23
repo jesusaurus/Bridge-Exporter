@@ -159,6 +159,11 @@ public class RecordFilterHelper {
             return true;
         }
 
+        if (studyInfo.getDisableExport()) {
+            metrics.incrementCounter("disabled-export study[" + studyId + "]");
+            return true;
+        }
+
         // If the study doesn't have a custom export schedule, it's included.
         if (!studyInfo.getUsesCustomExportSchedule()) {
             metrics.incrementCounter("configured[" + studyId + "]");

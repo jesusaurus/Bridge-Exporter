@@ -39,6 +39,7 @@ public class StudyInfoTest {
         assertEquals(studyInfo.getDataAccessTeamId().longValue(), 23);
         assertEquals(studyInfo.getSynapseProjectId(), "test-synapse-project");
         assertFalse(studyInfo.getUsesCustomExportSchedule());
+        assertFalse(studyInfo.getDisableExport());
     }
 
     @Test
@@ -53,5 +54,19 @@ public class StudyInfoTest {
         StudyInfo studyInfo = new StudyInfo.Builder().withDataAccessTeamId(23L)
                 .withSynapseProjectId("test-synapse-project").withUsesCustomExportSchedule(true).build();
         assertTrue(studyInfo.getUsesCustomExportSchedule());
+    }
+
+    @Test
+    public void disableExportFalse() {
+        StudyInfo studyInfo = new StudyInfo.Builder().withDataAccessTeamId(23L)
+                .withSynapseProjectId("test-synapse-project").withDisableExport(false).build();
+        assertFalse(studyInfo.getDisableExport());
+    }
+
+    @Test
+    public void disableExportTrue() {
+        StudyInfo studyInfo = new StudyInfo.Builder().withDataAccessTeamId(23L)
+                .withSynapseProjectId("test-synapse-project").withDisableExport(true).build();
+        assertTrue(studyInfo.getDisableExport());
     }
 }

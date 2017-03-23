@@ -125,8 +125,6 @@ public abstract class SynapseExportHandler extends ExportHandler {
     private synchronized TsvInfo initTsvForTask(ExportTask task) {
         // check if the TSV is already saved in the task
         TsvInfo savedTsvInfo = getTsvInfoForTask(task);
-        String tableId = getManager().getSynapseTableIdFromDdb(task, getDdbTableName(), getDdbTableKeyName(),
-                getDdbTableKeyValue());
 
         if (savedTsvInfo != null) {
             return savedTsvInfo;
@@ -173,10 +171,12 @@ public abstract class SynapseExportHandler extends ExportHandler {
         // check if the table in synapse currently
         ExportWorkerManager manager = getManager();
         SynapseHelper synapseHelper = manager.getSynapseHelper();
-        try {
-            synapseHelper.getTableWithRetry(synapseTableId);
-        } catch (SynapseNotFoundException e) {
-            isExisted = false;
+        if (synapseTableId != null) {
+            try {
+                synapseHelper.getTableWithRetry(synapseTableId);
+            } catch (SynapseNotFoundException e) {
+                isExisted = false;
+            }
         }
 
         if (synapseTableId == null || !isExisted) {

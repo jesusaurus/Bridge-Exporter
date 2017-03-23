@@ -345,6 +345,36 @@ public class RecordFilterHelperTest {
         assertEquals(counterMap.count("custom-export-excluded[test-study]"), 1);
     }
 
+    @Test
+    public void disableExport() {
+        // set up inputs
+        Metrics metrics = new Metrics();
+        BridgeExporterRequest request = makeRequestBuilder().build();
+        Item record = makeRecord(SharingScope.ALL_QUALIFIED_RESEARCHERS, TEST_STUDY);
+
+        // mock DynamoHelper
+        DynamoHelper mockDynamoHelper = mock(DynamoHelper.class);
+        when(mockDynamoHelper.getSharingScopeForUser(DUMMY_HEALTH_CODE)).thenReturn(
+                SharingScope.ALL_QUALIFIED_RESEARCHERS);
+
+        StudyInfo studyInfo = new StudyInfo.Builder().withDataAccessTeamId(1234L).withSynapseProjectId("test-project")
+                .withDisableExport(true).build();
+
+        when(mockDynamoHelper.getStudyInfo(TEST_STUDY)).thenReturn(studyInfo);
+
+        // set up record filter helper
+        RecordFilterHelper helper = new RecordFilterHelper();
+        helper.setDynamoHelper(mockDynamoHelper);
+
+        // execute and validate
+        assertTrue(helper.shouldExcludeRecord(metrics, request, record));
+
+        Multiset<String> counterMap = metrics.getCounterMap();
+
+        assertEquals(counterMap.count("disabled-export study[test-study]"), 1);
+        //assertEquals(counterMap.count("custom-export-excluded[test-study]"), 1);
+    }
+
     private static Item makeRecord(SharingScope recordSharingScope, String studyId) {
         Item record = new Item().with("healthCode", DUMMY_HEALTH_CODE);
 

@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSetMultimap;
+import org.apache.commons.lang.StringEscapeUtils;
 import org.jsoup.Jsoup;
 import org.jsoup.safety.Whitelist;
 import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
@@ -168,7 +169,11 @@ public class BridgeExporterUtil {
         in = Jsoup.clean(in, Whitelist.none());
 
         // Remove tabs and newlines and carriage returns. This is needed to serialize strings into TSVs.
+        // We can't just escape these because Synapse will turn an escaped \n into n, and so forth.
         in = in.replaceAll("[\n\r\t]+", " ");
+
+        // Finally, escape the string. Unescaped quotes lead to weird stuff happening in Synapse.
+        in = StringEscapeUtils.escapeJava(in);
 
         // Check against max length, truncating and warning as necessary.
         if (maxLength != null && in.length() > maxLength) {

@@ -98,30 +98,34 @@ public class DynamoHelper {
 
         // we need to check at first if the study is disabled exporting or not
         // treat null as false
-        boolean disableExport = false;
 
-        if (studyItem.get(STUDY_DISABLE_EXPORT) != null) {
-            if (studyItem.getInt(STUDY_DISABLE_EXPORT) != 0) {
-                disableExport = true;
-            }
+        if (studyItem.get(STUDY_INFO_KEY_DATA_ACCESS_TEAM) != null) {
+            studyInfoBuilder.withDataAccessTeamId(studyItem.getLong(STUDY_INFO_KEY_DATA_ACCESS_TEAM));
         }
 
-        if (!disableExport) {
-            if (studyItem.get(STUDY_INFO_KEY_DATA_ACCESS_TEAM) != null) {
-                studyInfoBuilder.withDataAccessTeamId(studyItem.getLong(STUDY_INFO_KEY_DATA_ACCESS_TEAM));
-            }
+        if (studyItem.get(STUDY_INFO_KEY_PROJECT_ID) != null) {
+            studyInfoBuilder.withSynapseProjectId(studyItem.getString(STUDY_INFO_KEY_PROJECT_ID));
+        }
 
-            if (studyItem.get(STUDY_INFO_KEY_PROJECT_ID) != null) {
-                studyInfoBuilder.withSynapseProjectId(studyItem.getString(STUDY_INFO_KEY_PROJECT_ID));
-            }
+        if (studyItem.get(STUDY_INFO_KEY_USES_CUSTOM_EXPORT_SCHEDULE) != null) {
+            // For some reason, the mapper saves the value as an int, not as a boolean.
+            boolean usesCustomExportSchedule = parseDdbBoolean(studyItem, STUDY_INFO_KEY_USES_CUSTOM_EXPORT_SCHEDULE);
+            studyInfoBuilder.withUsesCustomExportSchedule(usesCustomExportSchedule);
+        }
 
-            if (studyItem.get(STUDY_INFO_KEY_USES_CUSTOM_EXPORT_SCHEDULE) != null) {
-                // For some reason, the mapper saves the value as an int, not as a boolean.
-                boolean usesCustomExportSchedule = studyItem.getInt(STUDY_INFO_KEY_USES_CUSTOM_EXPORT_SCHEDULE) != 0;
-                studyInfoBuilder.withUsesCustomExportSchedule(usesCustomExportSchedule);
-            }
+        if (studyItem.get(STUDY_DISABLE_EXPORT) != null) {
+            boolean disableExport = parseDdbBoolean(studyItem, STUDY_DISABLE_EXPORT);
+            studyInfoBuilder.withDisableExport(disableExport);
         }
 
         return studyInfoBuilder.build();
+    }
+
+    /**
+     * Helper function to parse ddb boolean value into boolean
+     * @return
+     */
+    private boolean parseDdbBoolean(Item item, String attributeName) {
+        return item.getInt(attributeName) != 0;
     }
 }
