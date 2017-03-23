@@ -139,6 +139,7 @@ public class DynamoHelperTest {
         assertEquals(studyInfo.getDataAccessTeamId().longValue(), 1337);
         assertEquals(studyInfo.getSynapseProjectId(), "test-synapse-table");
         assertFalse(studyInfo.getUsesCustomExportSchedule());
+        assertFalse(studyInfo.getDisableExport());
     }
 
     @Test
@@ -157,7 +158,10 @@ public class DynamoHelperTest {
 
         // execute and validate
         StudyInfo studyInfo = helper.getStudyInfo("test-study");
-        assertNull(studyInfo);
+        assertEquals(studyInfo.getDataAccessTeamId().longValue(), 1337);
+        assertEquals(studyInfo.getSynapseProjectId(), "test-synapse-table");
+        assertFalse(studyInfo.getUsesCustomExportSchedule());
+        assertTrue(studyInfo.getDisableExport());
     }
 
     @Test
