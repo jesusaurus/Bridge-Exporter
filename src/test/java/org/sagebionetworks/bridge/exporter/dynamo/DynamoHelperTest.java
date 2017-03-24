@@ -299,8 +299,8 @@ public class DynamoHelperTest {
         studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request);
 
         assertEquals(studyIdsToUpdate.size(), 2);
-        assertEquals(studyIdsToUpdate.get(0), studyIdList.get(0).get(IDENTIFIER).getS());
-        assertEquals(studyIdsToUpdate.get(1), studyIdList.get(1).get(IDENTIFIER).getS());
+        assertEquals(studyIdsToUpdate.get(0), "ddb-foo");
+        assertEquals(studyIdsToUpdate.get(1), "ddb-bar");
 
         // with whitelist
         request = new BridgeExporterRequest.Builder().withStartDateTime(UPLOAD_START_DATE_TIME_OBJ)
