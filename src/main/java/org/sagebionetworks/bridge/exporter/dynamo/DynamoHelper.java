@@ -7,18 +7,16 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import javax.annotation.Resource;
 
-import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClient;
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
-import com.amazonaws.services.dynamodbv2.model.AttributeValue;
-import com.amazonaws.services.dynamodbv2.model.ScanRequest;
-import com.amazonaws.services.dynamodbv2.model.ScanResult;
 import com.jcabi.aspects.Cacheable;
 import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import org.sagebionetworks.bridge.dynamodb.DynamoScanHelper;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
 
@@ -43,7 +41,7 @@ public class DynamoHelper {
     private Table ddbParticipantOptionsTable;
     private Table ddbStudyTable;
     private Table ddbExportTimeTable;
-    private AmazonDynamoDBClient ddbClientScan;
+    private DynamoScanHelper ddbScanHelper;
 
     /** Participant options table, used to get user sharing scope. */
     @Resource(name = "ddbParticipantOptionsTable")
@@ -63,9 +61,9 @@ public class DynamoHelper {
         this.ddbExportTimeTable = ddbExportTimeTable;
     }
 
-    @Resource(name = "ddbClientScan")
-    final void setDdbClientScan(AmazonDynamoDBClient ddbClientScan) {
-        this.ddbClientScan = ddbClientScan;
+    @Autowired
+    final void setDdbScanHelper(DynamoScanHelper ddbScanHelper) {
+        this.ddbScanHelper = ddbScanHelper;
     }
 
     /**
@@ -156,13 +154,9 @@ public class DynamoHelper {
 
         if (request.getStudyWhitelist() == null) {
             // get the study id list from ddb table
-            ScanRequest scanRequest = new ScanRequest()
-                    .withTableName(ddbStudyTable.getTableName());
-
-            ScanResult result = ddbClientScan.scan(scanRequest);
-
-            for (Map<String, AttributeValue> item : result.getItems()) {
-                studyIdList.add(item.get(IDENTIFIER).getS());
+            Iterable<Item> scanOutcomes = ddbScanHelper.scan(ddbStudyTable, null, IDENTIFIER, null, null);
+            for (Item item: scanOutcomes) {
+                studyIdList.add(item.getString(IDENTIFIER));
             }
         } else {
             studyIdList.addAll(request.getStudyWhitelist());

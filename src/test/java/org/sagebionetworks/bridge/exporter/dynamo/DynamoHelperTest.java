@@ -1,5 +1,6 @@
 package org.sagebionetworks.bridge.exporter.dynamo;
 
+import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -17,23 +18,18 @@ import static org.testng.Assert.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 import com.amazonaws.AmazonClientException;
-import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClient;
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
-import com.amazonaws.services.dynamodbv2.model.AttributeValue;
-import com.amazonaws.services.dynamodbv2.model.ScanRequest;
-import com.amazonaws.services.dynamodbv2.model.ScanResult;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import org.joda.time.DateTime;
 import org.joda.time.LocalDate;
 import org.mockito.ArgumentCaptor;
 import org.testng.annotations.Test;
 
+import org.sagebionetworks.bridge.dynamodb.DynamoScanHelper;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
 
 @SuppressWarnings("unchecked")
@@ -270,26 +266,18 @@ public class DynamoHelperTest {
 
     @Test
     public void bootstrapStudyIdsToQueryTest() {
-        // mock ddb client with scan result as last export date time
-        AmazonDynamoDBClient mockDdbClient = mock(AmazonDynamoDBClient.class);
-
         // mock study table and study id list
         Table mockStudyTable = mock(Table.class);
-        when(mockStudyTable.getTableName()).thenReturn(STUDY_TABLE_NAME);
+        DynamoScanHelper mockDdbScanHelper = mock(DynamoScanHelper.class);
 
-        List<Map<String, AttributeValue>> studyIdList = ImmutableList.of(
-                ImmutableMap.of(IDENTIFIER, new AttributeValue().withS("ddb-foo")),
-                ImmutableMap.of(IDENTIFIER, new AttributeValue().withS("ddb-bar"))
-        );
-
-        ScanResult scanResult = new ScanResult();
-        scanResult.setItems(studyIdList);
-        ScanRequest scanRequest = new ScanRequest().withTableName(STUDY_TABLE_NAME);
-        when(mockDdbClient.scan(eq(scanRequest))).thenReturn(scanResult);
+        Item item1 = new Item().withString(IDENTIFIER, "ddb-foo");
+        Item item2 = new Item().withString(IDENTIFIER, "ddb-bar");
+        List<Item> studyIdList = ImmutableList.of(item1, item2);
+        when(mockDdbScanHelper.scan(any(), any(), eq(IDENTIFIER), any(), any())).thenReturn(studyIdList);
 
         DynamoHelper dynamoHelper = new DynamoHelper();
-        dynamoHelper.setDdbClientScan(mockDdbClient);
         dynamoHelper.setDdbStudyTable(mockStudyTable);
+        dynamoHelper.setDdbScanHelper(mockDdbScanHelper);
 
         // mock request
         BridgeExporterRequest request;

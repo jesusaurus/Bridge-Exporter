@@ -216,10 +216,4 @@ public class SpringConfig {
 
         return ImmutableList.copyOf(value);
     }
-
-    @Bean(name = "ddbClientScan")
-    public AmazonDynamoDBClient ddbClientScan() {
-        return new AmazonDynamoDBClient();
-    }
-
 }
