@@ -177,8 +177,6 @@ public class DynamoHelper {
      * @param endDateTime
      */
     public void updateExportTimeTable(List<String> studyIdsToUpdate, DateTime endDateTime) {
-        System.out.println(studyIdsToUpdate);
-        System.out.println(endDateTime);
         if (!studyIdsToUpdate.isEmpty() && endDateTime != null) {
             for (String studyId: studyIdsToUpdate) {
                 try {

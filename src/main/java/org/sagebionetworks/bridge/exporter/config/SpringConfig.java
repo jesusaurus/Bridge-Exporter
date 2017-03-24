@@ -9,7 +9,6 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import com.amazonaws.auth.profile.ProfileCredentialsProvider;
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClient;
 import com.amazonaws.services.dynamodbv2.document.DynamoDB;
 import com.amazonaws.services.dynamodbv2.document.Index;
@@ -220,7 +219,7 @@ public class SpringConfig {
 
     @Bean(name = "ddbClientScan")
     public AmazonDynamoDBClient ddbClientScan() {
-        return new AmazonDynamoDBClient(new ProfileCredentialsProvider());
+        return new AmazonDynamoDBClient();
     }
 
 }
