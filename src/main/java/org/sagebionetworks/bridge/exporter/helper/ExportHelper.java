@@ -1,18 +1,11 @@
 package org.sagebionetworks.bridge.exporter.helper;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import javax.annotation.Resource;
 
-import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClient;
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
-import com.amazonaws.services.dynamodbv2.model.AttributeValue;
-import com.amazonaws.services.dynamodbv2.model.ScanRequest;
-import com.amazonaws.services.dynamodbv2.model.ScanResult;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Charsets;
@@ -59,9 +52,6 @@ public class ExportHelper {
             .put("TimeOfDay", "dateComponentsAnswer")
             .build();
 
-    static final String IDENTIFIER = "identifier";
-    static final String LAST_EXPORT_DATE_TIME = "lastExportDateTime";
-
     // config attributes
     private String attachmentBucket;
     private DateTimeZone timeZone;
@@ -69,10 +59,6 @@ public class ExportHelper {
     // Spring helpers
     private Table ddbAttachmentTable;
     private S3Helper s3Helper;
-
-    private Table ddbExportTimeTable;
-    private Table ddbStudyTable;
-    private AmazonDynamoDBClient ddbClientScan;
 
     /** Config, used to get the S3 attachments bucket. */
     @Autowired
@@ -91,22 +77,6 @@ public class ExportHelper {
     @Autowired
     public final void setS3Helper(S3Helper s3Helper) {
         this.s3Helper = s3Helper;
-    }
-
-    /** DDB Export Time Table. */
-    @Resource(name = "ddbExportTimeTable")
-    final void setDdbExportTimeTable(Table ddbExportTimeTable) {
-        this.ddbExportTimeTable = ddbExportTimeTable;
-    }
-
-    @Resource(name = "ddbStudyTable")
-    public final void setDdbStudyTable(Table ddbStudyTable) {
-        this.ddbStudyTable = ddbStudyTable;
-    }
-
-    @Resource(name = "ddbClientScan")
-    final void setDdbClientScan(AmazonDynamoDBClient ddbClientScan) {
-        this.ddbClientScan = ddbClientScan;
     }
 
     /**
@@ -260,7 +230,8 @@ public class ExportHelper {
     public DateTime getEndDateTime(BridgeExporterRequest request) {
         DateTime endDateTime;
         if (request.getDate() != null) {
-            endDateTime = request.getDate().toDateTimeAtStartOfDay(timeZone).plusDays(1).minusMillis(1);
+            endDateTime = request.getDate().toDateTimeAtStartOfDay(timeZone)
+                    .withHourOfDay(23).withMinuteOfHour(59).withSecondOfMinute(59).withMillisOfSecond(999);
         } else if (request.getEndDateTime() != null) {
             endDateTime = request.getEndDateTime();
         } else {
@@ -269,30 +240,5 @@ public class ExportHelper {
         }
 
         return endDateTime;
-    }
-
-    /**
-     * Helper method to generate study ids for query
-     * @param request
-     * @return
-     */
-    public List<String> bootstrapStudyIdsToQuery(BridgeExporterRequest request) {
-        List<String> studyIdList = new ArrayList<>();
-
-        if (request.getStudyWhitelist() == null) {
-            // get the study id list from ddb table
-            ScanRequest scanRequest = new ScanRequest()
-                    .withTableName(ddbStudyTable.getTableName());
-
-            ScanResult result = ddbClientScan.scan(scanRequest);
-
-            for (Map<String, AttributeValue> item : result.getItems()) {
-                studyIdList.add(item.get(IDENTIFIER).getS());
-            }
-        } else {
-            studyIdList.addAll(request.getStudyWhitelist());
-        }
-
-        return studyIdList;
     }
 }

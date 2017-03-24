@@ -1,17 +1,25 @@
 package org.sagebionetworks.bridge.exporter.dynamo;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import javax.annotation.Resource;
 
+import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClient;
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
+import com.amazonaws.services.dynamodbv2.model.AttributeValue;
+import com.amazonaws.services.dynamodbv2.model.ScanRequest;
+import com.amazonaws.services.dynamodbv2.model.ScanResult;
 import com.jcabi.aspects.Cacheable;
+import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
 
 /**
@@ -28,8 +36,14 @@ public class DynamoHelper {
     private static final String STUDY_INFO_KEY_USES_CUSTOM_EXPORT_SCHEDULE = "usesCustomExportSchedule";
     static final String STUDY_DISABLE_EXPORT = "disableExport";
 
+    static final String IDENTIFIER = "identifier";
+    static final String LAST_EXPORT_DATE_TIME = "lastExportDateTime";
+    static final String STUDY_ID = "studyId";
+
     private Table ddbParticipantOptionsTable;
     private Table ddbStudyTable;
+    private Table ddbExportTimeTable;
+    private AmazonDynamoDBClient ddbClientScan;
 
     /** Participant options table, used to get user sharing scope. */
     @Resource(name = "ddbParticipantOptionsTable")
@@ -41,6 +55,17 @@ public class DynamoHelper {
     @Resource(name = "ddbStudyTable")
     public final void setDdbStudyTable(Table ddbStudyTable) {
         this.ddbStudyTable = ddbStudyTable;
+    }
+
+    /** DDB Export Time Table. */
+    @Resource(name = "ddbExportTimeTable")
+    final void setDdbExportTimeTable(Table ddbExportTimeTable) {
+        this.ddbExportTimeTable = ddbExportTimeTable;
+    }
+
+    @Resource(name = "ddbClientScan")
+    final void setDdbClientScan(AmazonDynamoDBClient ddbClientScan) {
+        this.ddbClientScan = ddbClientScan;
     }
 
     /**
@@ -119,6 +144,51 @@ public class DynamoHelper {
         }
 
         return studyInfoBuilder.build();
+    }
+
+    /**
+     * Helper method to generate study ids for query
+     * @param request
+     * @return
+     */
+    public List<String> bootstrapStudyIdsToQuery(BridgeExporterRequest request) {
+        List<String> studyIdList = new ArrayList<>();
+
+        if (request.getStudyWhitelist() == null) {
+            // get the study id list from ddb table
+            ScanRequest scanRequest = new ScanRequest()
+                    .withTableName(ddbStudyTable.getTableName());
+
+            ScanResult result = ddbClientScan.scan(scanRequest);
+
+            for (Map<String, AttributeValue> item : result.getItems()) {
+                studyIdList.add(item.get(IDENTIFIER).getS());
+            }
+        } else {
+            studyIdList.addAll(request.getStudyWhitelist());
+        }
+
+        return studyIdList;
+    }
+
+    /**
+     * Helper method to update ddb exportTimeTable
+     * @param studyIdsToUpdate
+     * @param endDateTime
+     */
+    public void updateExportTimeTable(List<String> studyIdsToUpdate, DateTime endDateTime) {
+        System.out.println(studyIdsToUpdate);
+        System.out.println(endDateTime);
+        if (!studyIdsToUpdate.isEmpty() && endDateTime != null) {
+            for (String studyId: studyIdsToUpdate) {
+                try {
+                    ddbExportTimeTable.putItem(new Item().withPrimaryKey(STUDY_ID, studyId).withNumber(LAST_EXPORT_DATE_TIME, endDateTime.getMillis()));
+                } catch (RuntimeException ex) {
+                    LOG.error("Unable to update export time table for study id: " + studyId +
+                            ex.getMessage(), ex);
+                }
+            }
+        }
     }
 
     /**

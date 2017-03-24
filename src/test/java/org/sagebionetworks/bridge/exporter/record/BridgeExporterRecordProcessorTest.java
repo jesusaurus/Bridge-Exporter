@@ -6,19 +6,15 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
-import static org.sagebionetworks.bridge.exporter.record.BridgeExporterRecordProcessor.LAST_EXPORT_DATE_TIME;
-import static org.sagebionetworks.bridge.exporter.record.BridgeExporterRecordProcessor.STUDY_ID;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
@@ -31,6 +27,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.config.Config;
+import org.sagebionetworks.bridge.exporter.dynamo.DynamoHelper;
 import org.sagebionetworks.bridge.exporter.exceptions.RestartBridgeExporterException;
 import org.sagebionetworks.bridge.exporter.helper.ExportHelper;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
@@ -59,6 +56,7 @@ public class BridgeExporterRecordProcessorTest {
     private BridgeExporterRecordProcessor recordProcessor;
     private Table mockDdbExportTimeTable;
     private ExportHelper mockExportHelper;
+    private DynamoHelper mockDynamoHelper;
 
     @BeforeMethod
     public void before() throws Exception {
@@ -83,6 +81,7 @@ public class BridgeExporterRecordProcessorTest {
         mockRecordIdFactory = mock(RecordIdSourceFactory.class);
         mockDdbExportTimeTable = mock(Table.class);
         mockExportHelper = mock(ExportHelper.class);
+        mockDynamoHelper = mock(DynamoHelper.class);
 
         // set up record processor
         recordProcessor = spy(new BridgeExporterRecordProcessor());
@@ -95,7 +94,7 @@ public class BridgeExporterRecordProcessorTest {
         recordProcessor.setSynapseHelper(mockSynapseHelper);
         recordProcessor.setWorkerManager(mockManager);
         recordProcessor.setExportHelper(mockExportHelper);
-        recordProcessor.setDdbExportTimeTable(mockDdbExportTimeTable);
+        recordProcessor.setDynamoHelper(mockDynamoHelper);
     }
 
     @Test
@@ -199,91 +198,5 @@ public class BridgeExporterRecordProcessorTest {
 
         // verify that we're NOT marking the task as success
         verify(recordProcessor, never()).setTaskSuccess(any());
-    }
-
-    @Test
-    public void testModifyExportTimeTable() throws Exception {
-        List<String> testStudyIdsToUpdate = new ArrayList<>();
-        testStudyIdsToUpdate.add("id1");
-        testStudyIdsToUpdate.add("id2");
-
-        Item dummySuccessRecord1 = new Item();
-        when(mockDdbRecordTable.getItem("id", "success-record-1")).thenReturn(dummySuccessRecord1);
-
-        // mock record ID factory
-        List<String> recordIdList = ImmutableList.of("success-record-1");
-        when(mockRecordIdFactory.getRecordSourceForRequest(REQUEST)).thenReturn(recordIdList);
-        when(mockExportHelper.getEndDateTime(any())).thenReturn(END_DATE_TIME);
-        when(mockExportHelper.bootstrapStudyIdsToQuery(any())).thenReturn(testStudyIdsToUpdate);
-
-        // execute
-        recordProcessor.processRecordsForRequest(REQUEST);
-
-        // verify that we marked the task as success
-        verify(recordProcessor).setTaskSuccess(any());
-
-        ArgumentCaptor<Item> itemArgumentCaptor = ArgumentCaptor.forClass(Item.class);
-        verify(mockDdbExportTimeTable, times(2)).putItem(itemArgumentCaptor.capture());
-
-        List<Item> items = itemArgumentCaptor.getAllValues();
-        Item item1 = items.get(0);
-        assertEquals(item1.get(STUDY_ID), "id1");
-        assertEquals(item1.getLong(LAST_EXPORT_DATE_TIME), END_DATE_TIME.getMillis());
-        Item item2 = items.get(1);
-        assertEquals(item2.get(STUDY_ID), "id2");
-        assertEquals(item2.getLong(LAST_EXPORT_DATE_TIME), END_DATE_TIME.getMillis());
-
-        // validate that we cleaned up all our files
-        assertTrue(mockFileHelper.isEmpty());
-    }
-
-    @Test
-    public void testNotModifyExportTimeTableEmptyStudyIds() throws Exception {
-        Item dummySuccessRecord1 = new Item();
-        when(mockDdbRecordTable.getItem("id", "success-record-1")).thenReturn(dummySuccessRecord1);
-
-        // mock record ID factory
-        List<String> recordIdList = ImmutableList.of("success-record-1");
-        when(mockRecordIdFactory.getRecordSourceForRequest(REQUEST)).thenReturn(recordIdList);
-        when(mockExportHelper.getEndDateTime(any())).thenReturn(END_DATE_TIME);
-        when(mockExportHelper.bootstrapStudyIdsToQuery(any())).thenReturn(ImmutableList.of());
-
-        // execute
-        recordProcessor.processRecordsForRequest(REQUEST);
-
-        // verify that we marked the task as success
-        verify(recordProcessor).setTaskSuccess(any());
-
-        verifyNoMoreInteractions(mockDdbExportTimeTable);
-
-        // validate that we cleaned up all our files
-        assertTrue(mockFileHelper.isEmpty());
-    }
-
-    @Test
-    public void testNotModifyExportTimeTableNullEndDateTime() throws Exception {
-        List<String> testStudyIdsToUpdate = new ArrayList<>();
-        testStudyIdsToUpdate.add("id1");
-        testStudyIdsToUpdate.add("id2");
-
-        Item dummySuccessRecord1 = new Item();
-        when(mockDdbRecordTable.getItem("id", "success-record-1")).thenReturn(dummySuccessRecord1);
-
-        // mock record ID factory
-        List<String> recordIdList = ImmutableList.of("success-record-1");
-        when(mockRecordIdFactory.getRecordSourceForRequest(REQUEST)).thenReturn(recordIdList);
-        when(mockExportHelper.getEndDateTime(any())).thenReturn(null);
-        when(mockExportHelper.bootstrapStudyIdsToQuery(any())).thenReturn(testStudyIdsToUpdate);
-
-        // execute
-        recordProcessor.processRecordsForRequest(REQUEST);
-
-        // verify that we marked the task as success
-        verify(recordProcessor).setTaskSuccess(any());
-
-        verifyNoMoreInteractions(mockDdbExportTimeTable);
-
-        // validate that we cleaned up all our files
-        assertTrue(mockFileHelper.isEmpty());
     }
 }

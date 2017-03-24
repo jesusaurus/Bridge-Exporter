@@ -20,6 +20,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import org.sagebionetworks.bridge.config.Config;
+import org.sagebionetworks.bridge.exporter.dynamo.DynamoHelper;
 import org.sagebionetworks.bridge.exporter.exceptions.RestartBridgeExporterException;
 import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
 import org.sagebionetworks.bridge.exporter.exceptions.SynapseUnavailableException;
@@ -45,8 +46,6 @@ public class BridgeExporterRecordProcessor {
     // package-scoped to be available to unit tests
     static final String CONFIG_KEY_RECORD_LOOP_DELAY_MILLIS = "record.loop.delay.millis";
     static final String CONFIG_KEY_RECORD_LOOP_PROGRESS_REPORT_PERIOD = "record.loop.progress.report.period";
-    static final String STUDY_ID = "studyId";
-    static final String LAST_EXPORT_DATE_TIME = "lastExportDateTime";
 
     // config attributes
     private int delayMillis;
@@ -55,7 +54,6 @@ public class BridgeExporterRecordProcessor {
 
     // Spring helpers
     private Table ddbRecordTable;
-    private Table ddbExportTimeTable;
     private FileHelper fileHelper;
     private MetricsHelper metricsHelper;
     private RecordFilterHelper recordFilterHelper;
@@ -63,6 +61,7 @@ public class BridgeExporterRecordProcessor {
     private SynapseHelper synapseHelper;
     private ExportWorkerManager workerManager;
     private ExportHelper exportHelper;
+    private DynamoHelper dynamoHelper;
 
     /** Config, used to get attributes for loop control and time zone. */
     @Autowired
@@ -78,11 +77,6 @@ public class BridgeExporterRecordProcessor {
         this.ddbRecordTable = ddbRecordTable;
     }
 
-    /** DDB Export Time Table. */
-    @Resource(name = "ddbExportTimeTable")
-    final void setDdbExportTimeTable(Table ddbExportTimeTable) {
-        this.ddbExportTimeTable = ddbExportTimeTable;
-    }
 
     /** File helper, used for creating and cleaning up the temp dir used to store the request's temporary files. */
     @Autowired
@@ -128,6 +122,11 @@ public class BridgeExporterRecordProcessor {
     @Autowired
     public final void setExportHelper(ExportHelper exportHelper) {
         this.exportHelper = exportHelper;
+    }
+
+    @Autowired
+    public final void setDynamoHelper(DynamoHelper dynamoHelper) {
+        this.dynamoHelper = dynamoHelper;
     }
 
     /**
@@ -212,13 +211,9 @@ public class BridgeExporterRecordProcessor {
             setTaskSuccess(task);
 
             // finally modify export time table in ddb
-            List<String> studyIdsToUpdate = exportHelper.bootstrapStudyIdsToQuery(request);
+            List<String> studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request);
             DateTime endDateTime = exportHelper.getEndDateTime(request);
-            if (!studyIdsToUpdate.isEmpty() && endDateTime != null) {
-                for (String studyId: studyIdsToUpdate) {
-                    ddbExportTimeTable.putItem(new Item().withPrimaryKey(STUDY_ID, studyId).withNumber(LAST_EXPORT_DATE_TIME, endDateTime.getMillis()));
-                }
-            }
+            dynamoHelper.updateExportTimeTable(studyIdsToUpdate, endDateTime);
         } finally {
             long elapsedTime = stopwatch.elapsed(TimeUnit.SECONDS);
             if (task.isSuccess()) {
