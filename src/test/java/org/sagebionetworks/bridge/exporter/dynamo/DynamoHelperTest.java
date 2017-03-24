@@ -1,7 +1,6 @@
 package org.sagebionetworks.bridge.exporter.dynamo;
 
 import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -273,7 +272,7 @@ public class DynamoHelperTest {
         Item item1 = new Item().withString(IDENTIFIER, "ddb-foo");
         Item item2 = new Item().withString(IDENTIFIER, "ddb-bar");
         List<Item> studyIdList = ImmutableList.of(item1, item2);
-        when(mockDdbScanHelper.scan(any(), any(), eq(IDENTIFIER), any(), any())).thenReturn(studyIdList);
+        when(mockDdbScanHelper.scan(any())).thenReturn(studyIdList);
 
         DynamoHelper dynamoHelper = new DynamoHelper();
         dynamoHelper.setDdbStudyTable(mockStudyTable);

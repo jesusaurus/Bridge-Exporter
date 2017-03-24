@@ -154,7 +154,7 @@ public class DynamoHelper {
 
         if (request.getStudyWhitelist() == null) {
             // get the study id list from ddb table
-            Iterable<Item> scanOutcomes = ddbScanHelper.scan(ddbStudyTable, null, IDENTIFIER, null, null);
+            Iterable<Item> scanOutcomes = ddbScanHelper.scan(ddbStudyTable);
             for (Item item: scanOutcomes) {
                 studyIdList.add(item.getString(IDENTIFIER));
             }

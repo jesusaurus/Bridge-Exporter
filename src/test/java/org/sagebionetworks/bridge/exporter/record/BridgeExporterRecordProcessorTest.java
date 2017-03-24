@@ -1,6 +1,7 @@
 package org.sagebionetworks.bridge.exporter.record;
 
 import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.eq;
 import static org.mockito.Matchers.same;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -175,6 +176,10 @@ public class BridgeExporterRecordProcessorTest {
 
         // validate that we cleaned up all our files
         assertTrue(mockFileHelper.isEmpty());
+
+        verify(mockDynamoHelper).bootstrapStudyIdsToQuery(eq(REQUEST));
+        verify(mockDynamoHelper).updateExportTimeTable(any(), any());
+        verify(mockExportHelper).getEndDateTime(eq(REQUEST));
     }
 
     @Test

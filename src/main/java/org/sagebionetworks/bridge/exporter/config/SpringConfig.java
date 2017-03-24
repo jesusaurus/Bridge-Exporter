@@ -28,6 +28,7 @@ import org.springframework.context.annotation.Configuration;
 import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.config.PropertiesConfig;
 import org.sagebionetworks.bridge.dynamodb.DynamoQueryHelper;
+import org.sagebionetworks.bridge.dynamodb.DynamoScanHelper;
 import org.sagebionetworks.bridge.exporter.notification.S3EventNotificationCallback;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterSqsCallback;
 import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
@@ -215,5 +216,10 @@ public class SpringConfig {
         List<ColumnDefinition> value = mapper.readValue(file, new TypeReference<List<ColumnDefinition>>(){});
 
         return ImmutableList.copyOf(value);
+    }
+
+    @Bean
+    public DynamoScanHelper ddbScanHelper() {
+        return new DynamoScanHelper();
     }
 }
