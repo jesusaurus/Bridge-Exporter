@@ -2,13 +2,14 @@ package org.sagebionetworks.bridge.exporter.record;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
-
 import javax.annotation.Resource;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
 import com.google.common.base.Stopwatch;
+import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
 import org.joda.time.LocalDate;
 import org.sagebionetworks.client.exceptions.SynapseException;
@@ -19,9 +20,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import org.sagebionetworks.bridge.config.Config;
+import org.sagebionetworks.bridge.exporter.dynamo.DynamoHelper;
 import org.sagebionetworks.bridge.exporter.exceptions.RestartBridgeExporterException;
 import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
 import org.sagebionetworks.bridge.exporter.exceptions.SynapseUnavailableException;
+import org.sagebionetworks.bridge.exporter.helper.ExportHelper;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.metrics.MetricsHelper;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
@@ -57,6 +60,8 @@ public class BridgeExporterRecordProcessor {
     private RecordIdSourceFactory recordIdSourceFactory;
     private SynapseHelper synapseHelper;
     private ExportWorkerManager workerManager;
+    private ExportHelper exportHelper;
+    private DynamoHelper dynamoHelper;
 
     /** Config, used to get attributes for loop control and time zone. */
     @Autowired
@@ -71,6 +76,7 @@ public class BridgeExporterRecordProcessor {
     public final void setDdbRecordTable(Table ddbRecordTable) {
         this.ddbRecordTable = ddbRecordTable;
     }
+
 
     /** File helper, used for creating and cleaning up the temp dir used to store the request's temporary files. */
     @Autowired
@@ -111,6 +117,16 @@ public class BridgeExporterRecordProcessor {
     @Autowired
     public final void setWorkerManager(ExportWorkerManager workerManager) {
         this.workerManager = workerManager;
+    }
+
+    @Autowired
+    public final void setExportHelper(ExportHelper exportHelper) {
+        this.exportHelper = exportHelper;
+    }
+
+    @Autowired
+    public final void setDynamoHelper(DynamoHelper dynamoHelper) {
+        this.dynamoHelper = dynamoHelper;
     }
 
     /**
@@ -193,6 +209,11 @@ public class BridgeExporterRecordProcessor {
 
             // We made it to the end. Set the success flag on the task.
             setTaskSuccess(task);
+
+            // finally modify export time table in ddb
+            List<String> studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request);
+            DateTime endDateTime = exportHelper.getEndDateTime(request);
+            dynamoHelper.updateExportTimeTable(studyIdsToUpdate, endDateTime);
         } finally {
             long elapsedTime = stopwatch.elapsed(TimeUnit.SECONDS);
             if (task.isSuccess()) {

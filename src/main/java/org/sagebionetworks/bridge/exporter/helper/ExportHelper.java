@@ -11,6 +11,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Charsets;
 import com.google.common.collect.ImmutableMap;
 import org.apache.commons.lang.StringUtils;
+import org.joda.time.DateTime;
+import org.joda.time.DateTimeZone;
 import org.sagebionetworks.repo.model.table.ColumnType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,12 +21,13 @@ import org.springframework.stereotype.Component;
 
 import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
+import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
+import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
 import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
 import org.sagebionetworks.bridge.rest.model.UploadSchema;
 import org.sagebionetworks.bridge.s3.S3Helper;
-import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
 
 /**
  * This class contains utility methods that call multiple backend services that doesn't really fit into any of the
@@ -51,6 +54,7 @@ public class ExportHelper {
 
     // config attributes
     private String attachmentBucket;
+    private DateTimeZone timeZone;
 
     // Spring helpers
     private Table ddbAttachmentTable;
@@ -60,6 +64,7 @@ public class ExportHelper {
     @Autowired
     public final void setConfig(Config config) {
         this.attachmentBucket = config.get(BridgeExporterUtil.CONFIG_KEY_ATTACHMENT_S3_BUCKET);
+        timeZone = DateTimeZone.forID(config.get(BridgeExporterUtil.CONFIG_KEY_TIME_ZONE_NAME));
     }
 
     /** DDB Attachments table, for uploading and downloading attachments. */
@@ -215,5 +220,25 @@ public class ExportHelper {
         // upload to S3
         s3Helper.writeBytesToS3(attachmentBucket, attachmentId, text.getBytes(Charsets.UTF_8));
         return attachmentId;
+    }
+
+    /**
+     * Helper method to get end date time from sqs request
+     * @param request
+     * @return
+     */
+    public DateTime getEndDateTime(BridgeExporterRequest request) {
+        DateTime endDateTime;
+        if (request.getDate() != null) {
+            endDateTime = request.getDate().toDateTimeAtStartOfDay(timeZone)
+                    .withHourOfDay(23).withMinuteOfHour(59).withSecondOfMinute(59).withMillisOfSecond(999);
+        } else if (request.getEndDateTime() != null) {
+            endDateTime = request.getEndDateTime();
+        } else {
+            // s3 override case
+            endDateTime = null;
+        }
+
+        return endDateTime;
     }
 }

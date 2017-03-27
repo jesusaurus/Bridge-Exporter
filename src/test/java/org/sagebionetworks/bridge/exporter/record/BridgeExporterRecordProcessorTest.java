@@ -1,6 +1,7 @@
 package org.sagebionetworks.bridge.exporter.record;
 
 import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.eq;
 import static org.mockito.Matchers.same;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -20,13 +21,16 @@ import java.util.List;
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
 import com.google.common.collect.ImmutableList;
+import org.joda.time.DateTime;
 import org.joda.time.LocalDate;
 import org.mockito.ArgumentCaptor;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.config.Config;
+import org.sagebionetworks.bridge.exporter.dynamo.DynamoHelper;
 import org.sagebionetworks.bridge.exporter.exceptions.RestartBridgeExporterException;
+import org.sagebionetworks.bridge.exporter.helper.ExportHelper;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.metrics.MetricsHelper;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
@@ -41,6 +45,9 @@ public class BridgeExporterRecordProcessorTest {
     private static final BridgeExporterRequest REQUEST = new BridgeExporterRequest.Builder()
             .withDate(LocalDate.parse("2015-11-04")).withTag("unit-test-tag").build();
 
+    private static final String END_DATE_TIME_STR = "2016-05-09T23:59:59.999-0700";
+    private static final DateTime END_DATE_TIME = DateTime.parse(END_DATE_TIME_STR);
+
     private Table mockDdbRecordTable;
     private InMemoryFileHelper mockFileHelper;
     private ExportWorkerManager mockManager;
@@ -48,6 +55,9 @@ public class BridgeExporterRecordProcessorTest {
     private RecordFilterHelper mockRecordFilterHelper;
     private RecordIdSourceFactory mockRecordIdFactory;
     private BridgeExporterRecordProcessor recordProcessor;
+    private Table mockDdbExportTimeTable;
+    private ExportHelper mockExportHelper;
+    private DynamoHelper mockDynamoHelper;
 
     @BeforeMethod
     public void before() throws Exception {
@@ -70,6 +80,9 @@ public class BridgeExporterRecordProcessorTest {
         mockMetricsHelper = mock(MetricsHelper.class);
         mockRecordFilterHelper = mock(RecordFilterHelper.class);
         mockRecordIdFactory = mock(RecordIdSourceFactory.class);
+        mockDdbExportTimeTable = mock(Table.class);
+        mockExportHelper = mock(ExportHelper.class);
+        mockDynamoHelper = mock(DynamoHelper.class);
 
         // set up record processor
         recordProcessor = spy(new BridgeExporterRecordProcessor());
@@ -81,6 +94,8 @@ public class BridgeExporterRecordProcessorTest {
         recordProcessor.setRecordIdSourceFactory(mockRecordIdFactory);
         recordProcessor.setSynapseHelper(mockSynapseHelper);
         recordProcessor.setWorkerManager(mockManager);
+        recordProcessor.setExportHelper(mockExportHelper);
+        recordProcessor.setDynamoHelper(mockDynamoHelper);
     }
 
     @Test
@@ -161,6 +176,10 @@ public class BridgeExporterRecordProcessorTest {
 
         // validate that we cleaned up all our files
         assertTrue(mockFileHelper.isEmpty());
+
+        verify(mockDynamoHelper).bootstrapStudyIdsToQuery(eq(REQUEST));
+        verify(mockDynamoHelper).updateExportTimeTable(any(), any());
+        verify(mockExportHelper).getEndDateTime(eq(REQUEST));
     }
 
     @Test
