@@ -29,8 +29,8 @@ public class ExportHelperTest {
     private static final String DUMMY_ATTACHMENT_CONTENT = "dummy attachment content";
 
     private static final String UPLOAD_DATE = "2016-05-09";
-    private static final String UPLOAD_START_DATE_TIME = "2016-05-09T00:00:00.000-0700";
-    private static final String UPLOAD_END_DATE_TIME = "2016-05-09T23:59:59.999-0700";
+    private static final String UPLOAD_START_DATE_TIME = "2016-05-09T00:00:00.000+0900";
+    private static final String UPLOAD_END_DATE_TIME = "2016-05-09T23:59:59.999+0900";
 
     private static final DateTime UPLOAD_START_DATE_TIME_OBJ = DateTime.parse(UPLOAD_START_DATE_TIME);
     private static final DateTime UPLOAD_END_DATE_TIME_OBJ = DateTime.parse(UPLOAD_END_DATE_TIME);
@@ -77,9 +77,14 @@ public class ExportHelperTest {
 
     @Test
     public void getEndDateTimeTest() {
+        // mock Config - Use a timezone other than PST or UTC to make sure we handle timezones correctly
+        Config mockConfig = mock(Config.class);
+        when(mockConfig.get(BridgeExporterUtil.CONFIG_KEY_TIME_ZONE_NAME)).thenReturn("Asia/Tokyo");
+
         BridgeExporterRequest request;
         DateTime endDateTime;
         ExportHelper exportHelper = new ExportHelper();
+        exportHelper.setConfig(mockConfig);
 
         // DAILY
         request = new BridgeExporterRequest.Builder().withDate(UPLOAD_DATE_OBJ).build();
