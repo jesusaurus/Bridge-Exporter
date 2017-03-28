@@ -201,7 +201,10 @@ public class DynamoHelper {
         for (String studyId : studyIdList) {
             Item studyIdItem = ddbExportTimeTable.getItem(STUDY_ID, studyId);
             if (studyIdItem != null && !request.getIgnoreLastExportTime()) {
-                studyIdsToQuery.put(studyId, new DateTime(studyIdItem.getLong(LAST_EXPORT_DATE_TIME), timeZone));
+                DateTime lastExportDateTime = new DateTime(studyIdItem.getLong(LAST_EXPORT_DATE_TIME), timeZone);
+                if (!endDateTime.isBefore(lastExportDateTime)) {
+                    studyIdsToQuery.put(studyId, lastExportDateTime);
+                }
             } else {
                 // bootstrap startDateTime with the exportType in request
                 ExportType exportType = request.getExportType();

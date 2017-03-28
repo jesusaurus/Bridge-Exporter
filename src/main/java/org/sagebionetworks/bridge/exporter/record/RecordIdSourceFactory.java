@@ -9,7 +9,6 @@ import javax.annotation.Resource;
 import com.amazonaws.services.dynamodbv2.document.Index;
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.RangeKeyCondition;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import org.apache.commons.lang.StringUtils;
 import org.joda.time.DateTime;
@@ -96,39 +95,28 @@ public class RecordIdSourceFactory {
      * @throws IOException
      *         if we fail reading the underlying source
      */
-    public Iterable<String> getRecordSourceForRequest(BridgeExporterRequest request) throws IOException {
+    public Iterable<String> getRecordSourceForRequest(BridgeExporterRequest request, DateTime endDateTime, Map<String, DateTime> studyIdsToQuery) throws IOException {
         if (StringUtils.isNotBlank(request.getRecordIdS3Override())) {
             return getS3RecordIdSource(request);
         } else {
-            return getDynamoRecordIdSourceGeneral(request);
+            return getDynamoRecordIdSourceGeneral(endDateTime, studyIdsToQuery);
         }
     }
 
     /**
      * Helper method to get ddb records
-     * @param request
      * @return
      */
-    private Iterable<String> getDynamoRecordIdSourceGeneral(BridgeExporterRequest request) {
-        DateTime endDateTime = exportHelper.getEndDateTime(request);
-
-        Map<String, DateTime> studyIdsToQuery = dynamoHelper.bootstrapStudyIdsToQuery(request, endDateTime);
-
+    private Iterable<String> getDynamoRecordIdSourceGeneral(DateTime endDateTime, Map<String, DateTime> studyIdsToQuery) {
         // proceed
         Iterable<Item> recordItemIter;
 
         // We need to make a separate query for _each_ study in the whitelist. That's just how DDB hash keys work.
         List<Iterable<Item>> recordItemIterList = new ArrayList<>();
         for (String oneStudyId : studyIdsToQuery.keySet()) {
-            Iterable<Item> recordItemIterTemp;
-            if (endDateTime.isBefore(studyIdsToQuery.get(oneStudyId))) {
-                // if the given endDateTime is before lastExportDateTime, just return an empty list to avoid throwing exception
-                recordItemIterTemp = ImmutableList.of();
-            } else {
-                recordItemIterTemp = ddbQueryHelper.query(ddbRecordStudyUploadedOnIndex, "studyId", oneStudyId,
-                        new RangeKeyCondition("uploadedOn").between(studyIdsToQuery.get(oneStudyId).getMillis(),
-                                endDateTime.getMillis()));
-            }
+            Iterable<Item> recordItemIterTemp = ddbQueryHelper.query(ddbRecordStudyUploadedOnIndex, "studyId", oneStudyId,
+                    new RangeKeyCondition("uploadedOn").between(studyIdsToQuery.get(oneStudyId).getMillis(),
+                            endDateTime.getMillis()));
 
             recordItemIterList.add(recordItemIterTemp);
         }
