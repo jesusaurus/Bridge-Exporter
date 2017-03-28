@@ -177,7 +177,7 @@ public class BridgeExporterRecordProcessorTest {
         // validate that we cleaned up all our files
         assertTrue(mockFileHelper.isEmpty());
 
-        verify(mockDynamoHelper).bootstrapStudyIdsToQuery(eq(REQUEST));
+        verify(mockDynamoHelper).bootstrapStudyIdsToQuery(eq(REQUEST), any());
         verify(mockDynamoHelper).updateExportTimeTable(any(), any());
         verify(mockExportHelper).getEndDateTime(eq(REQUEST));
     }
