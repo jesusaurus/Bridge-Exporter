@@ -141,7 +141,7 @@ public class BridgeExporterRecordProcessor {
      *         if Synapse is not available in read/write mode
      */
     public void processRecordsForRequest(BridgeExporterRequest request) throws IOException,
-            RestartBridgeExporterException, SynapseUnavailableException {
+            RestartBridgeExporterException, SynapseUnavailableException, InterruptedException {
         LOG.info("Received request " + request.toString());
 
         // Check to see that Synapse is up and availabe for read/write. If it isn't, throw an exception, so the

@@ -182,7 +182,8 @@ public class DynamoHelper {
      * @param request
      * @return
      */
-    public Map<String, DateTime> bootstrapStudyIdsToQuery(BridgeExporterRequest request, DateTime endDateTime) {
+    public Map<String, DateTime> bootstrapStudyIdsToQuery(BridgeExporterRequest request, DateTime endDateTime)
+            throws InterruptedException {
         List<String> studyIdList = new ArrayList<>();
 
         if (request.getStudyWhitelist() == null) {
@@ -210,6 +211,9 @@ public class DynamoHelper {
                 ExportType exportType = request.getExportType();
                 studyIdsToQuery.put(studyId, exportType.getStartDateTime(endDateTime));
             }
+
+            // then sleep 1 sec before next read
+            TimeUnit.SECONDS.sleep(1);
         }
 
         return studyIdsToQuery;
@@ -220,7 +224,7 @@ public class DynamoHelper {
      * @param studyIdsToUpdate
      * @param endDateTime
      */
-    public void updateExportTimeTable(List<String> studyIdsToUpdate, DateTime endDateTime) {
+    public void updateExportTimeTable(List<String> studyIdsToUpdate, DateTime endDateTime) throws InterruptedException {
         if (!studyIdsToUpdate.isEmpty() && endDateTime != null) {
             for (String studyId: studyIdsToUpdate) {
                 try {
@@ -229,6 +233,9 @@ public class DynamoHelper {
                     LOG.error("Unable to update export time table for study id: " + studyId +
                             ex.getMessage(), ex);
                 }
+
+                // sleep 1 sec before next write
+                TimeUnit.SECONDS.sleep(1);
             }
         }
     }
