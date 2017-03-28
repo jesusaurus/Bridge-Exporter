@@ -2,6 +2,7 @@ package org.sagebionetworks.bridge.exporter.dynamo;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -11,13 +12,17 @@ import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
 import com.jcabi.aspects.Cacheable;
 import org.joda.time.DateTime;
+import org.joda.time.DateTimeZone;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.dynamodb.DynamoScanHelper;
+import org.sagebionetworks.bridge.exporter.record.ExportType;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
+import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
 
 /**
@@ -42,6 +47,13 @@ public class DynamoHelper {
     private Table ddbStudyTable;
     private Table ddbExportTimeTable;
     private DynamoScanHelper ddbScanHelper;
+    private DateTimeZone timeZone;
+
+    /** Config, used to get S3 bucket for record ID override files. */
+    @Autowired
+    final void setConfig(Config config) {
+        timeZone = DateTimeZone.forID(config.get(BridgeExporterUtil.CONFIG_KEY_TIME_ZONE_NAME));
+    }
 
     /** Participant options table, used to get user sharing scope. */
     @Resource(name = "ddbParticipantOptionsTable")
@@ -163,6 +175,41 @@ public class DynamoHelper {
         }
 
         return studyIdList;
+    }
+
+    /**
+     * Helper method to generate study ids for query
+     * @param request
+     * @return
+     */
+    public Map<String, DateTime> bootstrapStudyIdsToQuery(BridgeExporterRequest request, DateTime endDateTime) {
+        List<String> studyIdList = new ArrayList<>();
+
+        if (request.getStudyWhitelist() == null) {
+            // get the study id list from ddb table
+            Iterable<Item> scanOutcomes = ddbScanHelper.scan(ddbStudyTable);
+            for (Item item: scanOutcomes) {
+                studyIdList.add(item.getString(IDENTIFIER));
+            }
+        } else {
+            studyIdList.addAll(request.getStudyWhitelist());
+        }
+
+        // maintain insert order for testing
+        Map<String, DateTime> studyIdsToQuery = new HashMap<>();
+
+        for (String studyId : studyIdList) {
+            Item studyIdItem = ddbExportTimeTable.getItem(STUDY_ID, studyId);
+            if (studyIdItem != null && !request.getIgnoreLastExportTime()) {
+                studyIdsToQuery.put(studyId, new DateTime(studyIdItem.getLong(LAST_EXPORT_DATE_TIME), timeZone));
+            } else {
+                // bootstrap startDateTime with the exportType in request
+                ExportType exportType = request.getExportType();
+                studyIdsToQuery.put(studyId, exportType.getStartDateTime(endDateTime));
+            }
+        }
+
+        return studyIdsToQuery;
     }
 
     /**

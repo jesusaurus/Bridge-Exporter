@@ -22,7 +22,6 @@ import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
 import com.google.common.collect.ImmutableList;
 import org.joda.time.DateTime;
-import org.joda.time.LocalDate;
 import org.mockito.ArgumentCaptor;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -42,11 +41,11 @@ import org.sagebionetworks.bridge.file.InMemoryFileHelper;
 
 @SuppressWarnings("unchecked")
 public class BridgeExporterRecordProcessorTest {
-    private static final BridgeExporterRequest REQUEST = new BridgeExporterRequest.Builder()
-            .withDate(LocalDate.parse("2015-11-04")).withTag("unit-test-tag").build();
-
     private static final String END_DATE_TIME_STR = "2016-05-09T23:59:59.999-0700";
     private static final DateTime END_DATE_TIME = DateTime.parse(END_DATE_TIME_STR);
+
+    private static final BridgeExporterRequest REQUEST = new BridgeExporterRequest.Builder()
+            .withEndDateTime(END_DATE_TIME).withExportType(ExportType.DAILY).withTag("unit-test-tag").build();
 
     private Table mockDdbRecordTable;
     private InMemoryFileHelper mockFileHelper;
@@ -180,6 +179,32 @@ public class BridgeExporterRecordProcessorTest {
         verify(mockDynamoHelper).bootstrapStudyIdsToQuery(eq(REQUEST));
         verify(mockDynamoHelper).updateExportTimeTable(any(), any());
         verify(mockExportHelper).getEndDateTime(eq(REQUEST));
+    }
+
+    @Test
+    public void testIgnoreLastExportTime() throws Exception {
+        BridgeExporterRequest newRequest = new BridgeExporterRequest.Builder()
+                .withEndDateTime(END_DATE_TIME).withExportType(ExportType.DAILY).withIgnoreLastExportTime(true).withTag("unit-test-tag").build();
+
+        // mock DDB record table - We don't look inside any of these records, so for the purposes of this test, just
+        // make dummy DDB record items with no content.
+        Item dummySuccessRecord1 = new Item();
+
+        when(mockDdbRecordTable.getItem("id", "success-record-1")).thenReturn(dummySuccessRecord1);
+
+        // mock record ID factory
+        List<String> recordIdList = ImmutableList.of("success-record-1");
+        when(mockRecordIdFactory.getRecordSourceForRequest(newRequest)).thenReturn(recordIdList);
+
+        // execute
+        recordProcessor.processRecordsForRequest(newRequest);
+
+        // verify that we marked the task as success
+        verify(recordProcessor).setTaskSuccess(any());
+
+        // verify we didn't call dyanmohelper and exporthelper
+        verifyNoMoreInteractions(mockDynamoHelper);
+        verifyNoMoreInteractions(mockExportHelper);
     }
 
     @Test

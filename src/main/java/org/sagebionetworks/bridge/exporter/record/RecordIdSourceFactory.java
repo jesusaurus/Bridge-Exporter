@@ -3,22 +3,23 @@ package org.sagebionetworks.bridge.exporter.record;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-
+import java.util.Map;
 import javax.annotation.Resource;
 
 import com.amazonaws.services.dynamodbv2.document.Index;
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.RangeKeyCondition;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import org.apache.commons.lang.StringUtils;
 import org.joda.time.DateTime;
-import org.joda.time.DateTimeZone;
-import org.joda.time.LocalDate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.dynamodb.DynamoQueryHelper;
+import org.sagebionetworks.bridge.exporter.dynamo.DynamoHelper;
+import org.sagebionetworks.bridge.exporter.helper.ExportHelper;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.s3.S3Helper;
@@ -32,21 +33,23 @@ public class RecordIdSourceFactory {
     private static final RecordIdSource.Converter<Item> DYNAMO_ITEM_CONVERTER = from -> from.getString("id");
     private static final RecordIdSource.Converter<String> NOOP_CONVERTER = from -> from;
 
+    static final String STUDY_ID = "studyId";
+
     // config vars
     private String overrideBucket;
-    private DateTimeZone timeZone;
 
     // Spring helpers
     private DynamoQueryHelper ddbQueryHelper;
     private Index ddbRecordStudyUploadedOnIndex;
     private Index ddbRecordUploadDateIndex;
     private S3Helper s3Helper;
+    private ExportHelper exportHelper;
+    private DynamoHelper dynamoHelper;
 
     /** Config, used to get S3 bucket for record ID override files. */
     @Autowired
     final void setConfig(Config config) {
         overrideBucket = config.get(BridgeExporterUtil.CONFIG_KEY_RECORD_ID_OVERRIDE_BUCKET);
-        timeZone = DateTimeZone.forID(config.get(BridgeExporterUtil.CONFIG_KEY_TIME_ZONE_NAME));
     }
 
     /** DDB Query Helper, used to abstract away query logic. */
@@ -73,6 +76,16 @@ public class RecordIdSourceFactory {
         this.s3Helper = s3Helper;
     }
 
+    @Autowired
+    final void setExportHelper(ExportHelper exportHelper) {
+        this.exportHelper = exportHelper;
+    }
+
+    @Autowired
+    final void setDynamoHelper(DynamoHelper dynamoHelper) {
+        this.dynamoHelper = dynamoHelper;
+    }
+
     /**
      * Gets the record ID source for the given Bridge EX request. Returns an Iterable instead of a RecordIdSource for
      * easy mocking.
@@ -86,61 +99,42 @@ public class RecordIdSourceFactory {
     public Iterable<String> getRecordSourceForRequest(BridgeExporterRequest request) throws IOException {
         if (StringUtils.isNotBlank(request.getRecordIdS3Override())) {
             return getS3RecordIdSource(request);
-        } else if (request.getStudyWhitelist() != null) {
-            return getDynamoRecordIdSourceWithStudyWhitelist(request);
         } else {
-            return getDynamoRecordIdSource(request);
+            return getDynamoRecordIdSourceGeneral(request);
         }
     }
 
     /**
-     * If we have a study whitelist, we should always use the study-uploadedOn index, as it's more performant. If we
-     * have a date, we'll need to compute the start and endDateTimes based off of that. Otherwise, we use the start-
-     * and endDateTimes verbatim.
+     * Helper method to get ddb records
+     * @param request
+     * @return
      */
-    private Iterable<String> getDynamoRecordIdSourceWithStudyWhitelist(BridgeExporterRequest request) {
-        // Compute start- and endDateTime.
-        DateTime startDateTime;
-        DateTime endDateTime;
-        if (request.getDate() != null) {
-            // startDateTime is obviously date at midnight local time. endDateTime is the start of the next day.
-            LocalDate date = request.getDate();
-            startDateTime = date.toDateTimeAtStartOfDay(timeZone);
-            endDateTime = date.plusDays(1).toDateTimeAtStartOfDay(timeZone);
-        } else {
-            // Logically, if there is no date, there must be a start- and endDateTime. (We check for recordIdS3Override
-            // in the calling method.
-            startDateTime = request.getStartDateTime();
-            endDateTime = request.getEndDateTime();
-        }
+    private Iterable<String> getDynamoRecordIdSourceGeneral(BridgeExporterRequest request) {
+        DateTime endDateTime = exportHelper.getEndDateTime(request);
 
-        // startDateTime is inclusive but endDateTime is exclusive. This is so that if a record happens to fall right
-        // on the overlap, it's only exported once. DDB doesn't allow us to do AND conditions in a range key query,
-        // and the BETWEEN is always inclusive. However, the granularity is down to the millisecond, so we can just
-        // use endDateTime minus 1 millisecond.
-        long startEpochTime = startDateTime.getMillis();
-        long endEpochTime = endDateTime.getMillis() - 1;
+        Map<String, DateTime> studyIdsToQuery = dynamoHelper.bootstrapStudyIdsToQuery(request, endDateTime);
 
-        // RangeKeyCondition can be shared across multiple queries.
-        RangeKeyCondition rangeKeyCondition = new RangeKeyCondition("uploadedOn").between(startEpochTime,
-                endEpochTime);
+        // proceed
+        Iterable<Item> recordItemIter;
 
         // We need to make a separate query for _each_ study in the whitelist. That's just how DDB hash keys work.
         List<Iterable<Item>> recordItemIterList = new ArrayList<>();
-        for (String oneStudyId : request.getStudyWhitelist()) {
-            Iterable<Item> recordItemIter = ddbQueryHelper.query(ddbRecordStudyUploadedOnIndex, "studyId", oneStudyId,
-                    rangeKeyCondition);
-            recordItemIterList.add(recordItemIter);
+        for (String oneStudyId : studyIdsToQuery.keySet()) {
+            Iterable<Item> recordItemIterTemp;
+            if (endDateTime.isBefore(studyIdsToQuery.get(oneStudyId))) {
+                // if the given endDateTime is before lastExportDateTime, just return an empty list to avoid throwing exception
+                recordItemIterTemp = ImmutableList.of();
+            } else {
+                recordItemIterTemp = ddbQueryHelper.query(ddbRecordStudyUploadedOnIndex, "studyId", oneStudyId,
+                        new RangeKeyCondition("uploadedOn").between(studyIdsToQuery.get(oneStudyId).getMillis(),
+                                endDateTime.getMillis()));
+            }
+
+            recordItemIterList.add(recordItemIterTemp);
         }
 
-        // Concatenate all the iterables together.
-        return new RecordIdSource<>(Iterables.concat(recordItemIterList), DYNAMO_ITEM_CONVERTER);
-    }
+        recordItemIter = Iterables.concat(recordItemIterList);
 
-    /** Get the record ID source from a DDB query. */
-    private Iterable<String> getDynamoRecordIdSource(BridgeExporterRequest request) {
-        Iterable<Item> recordItemIter = ddbQueryHelper.query(ddbRecordUploadDateIndex, "uploadDate",
-                request.getDate().toString());
         return new RecordIdSource<>(recordItemIter, DYNAMO_ITEM_CONVERTER);
     }
 
