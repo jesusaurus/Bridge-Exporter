@@ -267,7 +267,7 @@ public class DynamoHelperTest {
     }
 
     @Test
-    public void bootstrapStudyIdsToQueryTestNormal() {
+    public void bootstrapStudyIdsToQueryTestNormal() throws InterruptedException {
         // mock study table and study id list
         Table mockStudyTable = mock(Table.class);
         DynamoScanHelper mockDdbScanHelper = mock(DynamoScanHelper.class);
@@ -317,7 +317,7 @@ public class DynamoHelperTest {
     }
 
     @Test
-    public void bootstrapStudyIdsToQueryTestNoItemInExportTimeTable() {
+    public void bootstrapStudyIdsToQueryTestNoItemInExportTimeTable() throws InterruptedException {
         // mock study table and study id list
         Table mockStudyTable = mock(Table.class);
         DynamoScanHelper mockDdbScanHelper = mock(DynamoScanHelper.class);
@@ -360,7 +360,7 @@ public class DynamoHelperTest {
     }
 
     @Test
-    public void bootstrapStudyIdsToQueryTestEndDateTimeBeforeLastExportTime() {
+    public void bootstrapStudyIdsToQueryTestEndDateTimeBeforeLastExportTime() throws InterruptedException {
         // mock study table and study id list
         Table mockStudyTable = mock(Table.class);
         DynamoScanHelper mockDdbScanHelper = mock(DynamoScanHelper.class);
