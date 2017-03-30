@@ -158,8 +158,7 @@ public class DynamoHelper {
      * @param request
      * @return
      */
-    public List<String> bootstrapStudyIdsToQuery(BridgeExporterRequest request, DateTime endDateTime)
-            throws InterruptedException {
+    public List<String> bootstrapStudyIdsToQuery(BridgeExporterRequest request, DateTime endDateTime) {
         List<String> studyIdList = new ArrayList<>();
 
         if (request.getStudyWhitelist() == null) {
@@ -185,7 +184,12 @@ public class DynamoHelper {
                 studyIdsToQuery.add(studyId);
             }
 
-            TimeUnit.SECONDS.sleep(1);
+            try {
+                TimeUnit.SECONDS.sleep(1);
+            } catch (InterruptedException e) {
+                LOG.error("Unable to sleep thread: " +
+                        e.getMessage(), e);
+            }
         }
 
         return studyIdsToQuery;
@@ -196,7 +200,7 @@ public class DynamoHelper {
      * @param studyIdsToUpdate
      * @param endDateTime
      */
-    public void updateExportTimeTable(List<String> studyIdsToUpdate, DateTime endDateTime) throws InterruptedException {
+    public void updateExportTimeTable(List<String> studyIdsToUpdate, DateTime endDateTime) {
         if (!studyIdsToUpdate.isEmpty() && endDateTime != null) {
             for (String studyId: studyIdsToUpdate) {
                 try {
@@ -206,7 +210,12 @@ public class DynamoHelper {
                             ex.getMessage(), ex);
                 }
 
-                TimeUnit.SECONDS.sleep(1);
+                try {
+                    TimeUnit.SECONDS.sleep(1);
+                } catch (InterruptedException e) {
+                    LOG.error("Unable to sleep thread: " +
+                            e.getMessage(), e);
+                }
             }
         }
     }

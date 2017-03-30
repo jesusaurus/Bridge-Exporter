@@ -29,7 +29,7 @@ public class BridgeExporterSqsCallback implements PollSqsCallback {
     /** Parses the SQS message and passes it to the record processor. */
     @Override
     public void callback(String messageBody) throws IOException, PollSqsWorkerBadRequestException,
-            RestartBridgeExporterException, SynapseUnavailableException, InterruptedException {
+            RestartBridgeExporterException, SynapseUnavailableException {
         BridgeExporterRequest request;
         try {
             request = DefaultObjectMapper.INSTANCE.readValue(messageBody, BridgeExporterRequest.class);
