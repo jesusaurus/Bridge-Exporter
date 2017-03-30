@@ -127,7 +127,7 @@ public class BridgeExporterRecordProcessorTest {
         // mock record ID factory
         List<String> recordIdList = ImmutableList.of("success-record-1", "filtered-record", "missing-record",
                 "error-record", "success-record-2");
-        when(mockRecordIdFactory.getRecordSourceForRequest(REQUEST)).thenReturn(recordIdList);
+        when(mockRecordIdFactory.getRecordSourceForRequest(same(REQUEST), any(), any())).thenReturn(recordIdList);
 
         // mock export worker manager - Only mock error record. The others will just no-op by default in Mockito.
         doThrow(IOException.class).when(mockManager).addSubtaskForRecord(any(ExportTask.class),
@@ -194,7 +194,7 @@ public class BridgeExporterRecordProcessorTest {
 
         // mock record ID factory
         List<String> recordIdList = ImmutableList.of("success-record-1");
-        when(mockRecordIdFactory.getRecordSourceForRequest(newRequest)).thenReturn(recordIdList);
+        when(mockRecordIdFactory.getRecordSourceForRequest(same(newRequest), any(), any())).thenReturn(recordIdList);
 
         // execute
         recordProcessor.processRecordsForRequest(newRequest);
@@ -213,7 +213,7 @@ public class BridgeExporterRecordProcessorTest {
 
         // mock DDB record table and record ID factory
         when(mockDdbRecordTable.getItem("id", "dummy-record")).thenReturn(new Item());
-        when(mockRecordIdFactory.getRecordSourceForRequest(REQUEST)).thenReturn(ImmutableList.of("dummy-record"));
+        when(mockRecordIdFactory.getRecordSourceForRequest(same(REQUEST), any(), any())).thenReturn(ImmutableList.of("dummy-record"));
 
         // ExportWorkerManager throws in endOfStream()
         doThrow(RestartBridgeExporterException.class).when(mockManager).endOfStream(any());

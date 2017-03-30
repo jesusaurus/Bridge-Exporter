@@ -47,7 +47,7 @@ public class RecordIdSourceFactoryTest {
         fromDdb(true);
     }
 
-    private static void fromDdb(boolean isEndDateTimeBeforeLastExportTime) throws Exception{
+    private static void fromDdb(boolean isEndDateTimeBeforeLastExportTime) throws Exception {
         // mock helpers
         DynamoHelper mockDynamoHelper = mock(DynamoHelper.class);
         ExportHelper mockExportHelper = mock(ExportHelper.class);
@@ -101,7 +101,7 @@ public class RecordIdSourceFactoryTest {
                 .withExportType(ExportType.DAILY)
                 .build();
 
-        Iterable<String> recordIdIter = factory.getRecordSourceForRequest(request);
+        Iterable<String> recordIdIter = factory.getRecordSourceForRequest(request, UPLOAD_END_DATE_TIME_OBJ, studyIdsToQuery);
 
         List<String> recordIdList = ImmutableList.copyOf(recordIdIter);
 
@@ -146,7 +146,7 @@ public class RecordIdSourceFactoryTest {
         // execute and validate
         BridgeExporterRequest request = new BridgeExporterRequest.Builder()
                 .withRecordIdS3Override("dummy-override-file").build();
-        Iterable<String> recordIdIter = factory.getRecordSourceForRequest(request);
+        Iterable<String> recordIdIter = factory.getRecordSourceForRequest(request, UPLOAD_END_DATE_TIME_OBJ, ImmutableMap.of());
 
         List<String> recordIdList = ImmutableList.copyOf(recordIdIter);
         assertEquals(recordIdList.size(), 3);
