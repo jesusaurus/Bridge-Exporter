@@ -11,13 +11,16 @@ import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
 import com.jcabi.aspects.Cacheable;
 import org.joda.time.DateTime;
+import org.joda.time.DateTimeZone;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.dynamodb.DynamoScanHelper;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
+import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
 
 /**
@@ -42,6 +45,12 @@ public class DynamoHelper {
     private Table ddbStudyTable;
     private Table ddbExportTimeTable;
     private DynamoScanHelper ddbScanHelper;
+    private DateTimeZone timeZone;
+
+    @Autowired
+    final void setConfig(Config config) {
+        timeZone = DateTimeZone.forID(config.get(BridgeExporterUtil.CONFIG_KEY_TIME_ZONE_NAME));
+    }
 
     /** Participant options table, used to get user sharing scope. */
     @Resource(name = "ddbParticipantOptionsTable")
@@ -149,7 +158,7 @@ public class DynamoHelper {
      * @param request
      * @return
      */
-    public List<String> bootstrapStudyIdsToQuery(BridgeExporterRequest request) {
+    public List<String> bootstrapStudyIdsToQuery(BridgeExporterRequest request, DateTime endDateTime) {
         List<String> studyIdList = new ArrayList<>();
 
         if (request.getStudyWhitelist() == null) {
@@ -162,7 +171,28 @@ public class DynamoHelper {
             studyIdList.addAll(request.getStudyWhitelist());
         }
 
-        return studyIdList;
+        List<String> studyIdsToQuery = new ArrayList<>();
+
+        for (String studyId : studyIdList) {
+            Item studyIdItem = ddbExportTimeTable.getItem(STUDY_ID, studyId);
+            if (studyIdItem != null) {
+                DateTime lastExportDateTime = new DateTime(studyIdItem.getLong(LAST_EXPORT_DATE_TIME), timeZone);
+                if (!endDateTime.isBefore(lastExportDateTime)) {
+                    studyIdsToQuery.add(studyId);
+                }
+            } else {
+                studyIdsToQuery.add(studyId);
+            }
+
+            try {
+                TimeUnit.SECONDS.sleep(1);
+            } catch (InterruptedException e) {
+                LOG.error("Unable to sleep thread: " +
+                        e.getMessage(), e);
+            }
+        }
+
+        return studyIdsToQuery;
     }
 
     /**
@@ -178,6 +208,13 @@ public class DynamoHelper {
                 } catch (RuntimeException ex) {
                     LOG.error("Unable to update export time table for study id: " + studyId +
                             ex.getMessage(), ex);
+                }
+
+                try {
+                    TimeUnit.SECONDS.sleep(1);
+                } catch (InterruptedException e) {
+                    LOG.error("Unable to sleep thread: " +
+                            e.getMessage(), e);
                 }
             }
         }
