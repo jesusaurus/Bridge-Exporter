@@ -44,6 +44,7 @@ public class BridgeExporterRecordProcessorTest {
     private static final String END_DATE_TIME_STR = "2016-05-09T23:59:59.999-0700";
     private static final DateTime END_DATE_TIME = DateTime.parse(END_DATE_TIME_STR);
 
+
     private static final BridgeExporterRequest REQUEST = new BridgeExporterRequest.Builder()
             .withEndDateTime(END_DATE_TIME).withExportType(ExportType.DAILY).withTag("unit-test-tag").build();
 
@@ -81,6 +82,7 @@ public class BridgeExporterRecordProcessorTest {
         mockRecordIdFactory = mock(RecordIdSourceFactory.class);
         mockDdbExportTimeTable = mock(Table.class);
         mockExportHelper = mock(ExportHelper.class);
+        when(mockExportHelper.getEndDateTime(eq(REQUEST))).thenReturn(END_DATE_TIME);
         mockDynamoHelper = mock(DynamoHelper.class);
 
         // set up record processor
@@ -177,6 +179,7 @@ public class BridgeExporterRecordProcessorTest {
         assertTrue(mockFileHelper.isEmpty());
 
         verify(mockDynamoHelper).bootstrapStudyIdsToQuery(eq(REQUEST), eq(null));
+
         verify(mockDynamoHelper).updateExportTimeTable(any(), any());
         verify(mockExportHelper).getEndDateTime(eq(REQUEST));
     }
