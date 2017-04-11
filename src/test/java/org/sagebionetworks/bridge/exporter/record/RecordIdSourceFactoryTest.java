@@ -1,10 +1,8 @@
 package org.sagebionetworks.bridge.exporter.record;
 
-import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Matchers.same;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 import static org.sagebionetworks.bridge.exporter.record.RecordIdSourceFactory.STUDY_ID;
 import static org.testng.Assert.assertEquals;
@@ -24,8 +22,6 @@ import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.dynamodb.DynamoQueryHelper;
-import org.sagebionetworks.bridge.exporter.dynamo.DynamoHelper;
-import org.sagebionetworks.bridge.exporter.helper.ExportHelper;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.s3.S3Helper;
@@ -48,16 +44,6 @@ public class RecordIdSourceFactoryTest {
     }
 
     private static void fromDdb(boolean isEndDateTimeBeforeLastExportTime) throws Exception {
-        // mock helpers
-        DynamoHelper mockDynamoHelper = mock(DynamoHelper.class);
-        ExportHelper mockExportHelper = mock(ExportHelper.class);
-
-        if (!isEndDateTimeBeforeLastExportTime) {
-            when(mockExportHelper.getEndDateTime(any())).thenReturn(UPLOAD_END_DATE_TIME_OBJ);
-        } else {
-            when(mockExportHelper.getEndDateTime(any())).thenReturn(UPLOAD_START_DATE_TIME_OBJ);
-        }
-
         // mock map
         Map<String, DateTime> studyIdsToQuery;
         if (!isEndDateTimeBeforeLastExportTime) {
@@ -65,8 +51,6 @@ public class RecordIdSourceFactoryTest {
         } else {
             studyIdsToQuery = ImmutableMap.of("ddb-foo", UPLOAD_END_DATE_TIME_OBJ, "ddb-bar", UPLOAD_END_DATE_TIME_OBJ);
         }
-
-        when(mockDynamoHelper.bootstrapStudyIdsToQuery(any(), any())).thenReturn(studyIdsToQuery);
 
         Index mockRecordIndex = mock(Index.class);
         DynamoQueryHelper mockQueryHelper = mock(DynamoQueryHelper.class);
@@ -91,8 +75,6 @@ public class RecordIdSourceFactoryTest {
         factory.setDdbQueryHelper(mockQueryHelper);
         factory.setConfig(mockConfig());
         factory.setDdbRecordStudyUploadedOnIndex(mockRecordIndex);
-        factory.setDynamoHelper(mockDynamoHelper);
-        factory.setExportHelper(mockExportHelper);
 
         // execute and validate
         BridgeExporterRequest request;
@@ -115,8 +97,7 @@ public class RecordIdSourceFactoryTest {
             validateRangeKey(fooRangeKeyCaptor.getValue(), UPLOAD_START_DATE_TIME_OBJ.getMillis(), UPLOAD_END_DATE_TIME_OBJ.getMillis());
             validateRangeKey(barRangeKeyCaptor.getValue(), UPLOAD_START_DATE_TIME_OBJ.getMillis(), UPLOAD_END_DATE_TIME_OBJ.getMillis());
         } else {
-            assertEquals(recordIdList.size(), 0); // only output records in given time range
-            verifyNoMoreInteractions(mockQueryHelper);
+            assertEquals(recordIdList.size(), 4); // only output records in given time range
         }
     }
 

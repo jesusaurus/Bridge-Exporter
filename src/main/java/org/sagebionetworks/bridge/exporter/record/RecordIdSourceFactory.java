@@ -17,8 +17,6 @@ import org.springframework.stereotype.Component;
 
 import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.dynamodb.DynamoQueryHelper;
-import org.sagebionetworks.bridge.exporter.dynamo.DynamoHelper;
-import org.sagebionetworks.bridge.exporter.helper.ExportHelper;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.s3.S3Helper;
@@ -40,10 +38,7 @@ public class RecordIdSourceFactory {
     // Spring helpers
     private DynamoQueryHelper ddbQueryHelper;
     private Index ddbRecordStudyUploadedOnIndex;
-    private Index ddbRecordUploadDateIndex;
     private S3Helper s3Helper;
-    private ExportHelper exportHelper;
-    private DynamoHelper dynamoHelper;
 
     /** Config, used to get S3 bucket for record ID override files. */
     @Autowired
@@ -63,26 +58,10 @@ public class RecordIdSourceFactory {
         this.ddbRecordStudyUploadedOnIndex = ddbRecordStudyUploadedOnIndex;
     }
 
-    /** DDB Record table Upload Date index. */
-    @Resource(name = "ddbRecordUploadDateIndex")
-    final void setDdbRecordUploadDateIndex(Index ddbRecordUploadDateIndex) {
-        this.ddbRecordUploadDateIndex = ddbRecordUploadDateIndex;
-    }
-
     /** S3 Helper, used to download record ID override files. */
     @Autowired
     final void setS3Helper(S3Helper s3Helper) {
         this.s3Helper = s3Helper;
-    }
-
-    @Autowired
-    final void setExportHelper(ExportHelper exportHelper) {
-        this.exportHelper = exportHelper;
-    }
-
-    @Autowired
-    final void setDynamoHelper(DynamoHelper dynamoHelper) {
-        this.dynamoHelper = dynamoHelper;
     }
 
     /**
@@ -113,9 +92,9 @@ public class RecordIdSourceFactory {
 
         // We need to make a separate query for _each_ study in the whitelist. That's just how DDB hash keys work.
         List<Iterable<Item>> recordItemIterList = new ArrayList<>();
-        for (String oneStudyId : studyIdsToQuery.keySet()) {
-            Iterable<Item> recordItemIterTemp = ddbQueryHelper.query(ddbRecordStudyUploadedOnIndex, "studyId", oneStudyId,
-                    new RangeKeyCondition("uploadedOn").between(studyIdsToQuery.get(oneStudyId).getMillis(),
+        for (Map.Entry<String, DateTime> oneStudyIdAndDateTime : studyIdsToQuery.entrySet()) {
+            Iterable<Item> recordItemIterTemp = ddbQueryHelper.query(ddbRecordStudyUploadedOnIndex, "studyId", oneStudyIdAndDateTime.getKey(),
+                    new RangeKeyCondition("uploadedOn").between(oneStudyIdAndDateTime.getValue().getMillis(),
                             endDateTime.getMillis()));
 
             recordItemIterList.add(recordItemIterTemp);

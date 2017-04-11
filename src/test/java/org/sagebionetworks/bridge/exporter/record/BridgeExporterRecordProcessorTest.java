@@ -176,7 +176,7 @@ public class BridgeExporterRecordProcessorTest {
         // validate that we cleaned up all our files
         assertTrue(mockFileHelper.isEmpty());
 
-        verify(mockDynamoHelper).bootstrapStudyIdsToQuery(eq(REQUEST));
+        verify(mockDynamoHelper).bootstrapStudyIdsToQuery(eq(REQUEST), eq(null));
         verify(mockDynamoHelper).updateExportTimeTable(any(), any());
         verify(mockExportHelper).getEndDateTime(eq(REQUEST));
     }
@@ -201,10 +201,6 @@ public class BridgeExporterRecordProcessorTest {
 
         // verify that we marked the task as success
         verify(recordProcessor).setTaskSuccess(any());
-
-        // verify we didn't call dyanmohelper and exporthelper
-        verifyNoMoreInteractions(mockDynamoHelper);
-        verifyNoMoreInteractions(mockExportHelper);
     }
 
     @Test

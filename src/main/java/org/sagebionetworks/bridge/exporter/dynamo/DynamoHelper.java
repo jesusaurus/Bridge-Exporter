@@ -10,7 +10,9 @@ import javax.annotation.Resource;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
+import com.google.common.collect.ImmutableMap;
 import com.jcabi.aspects.Cacheable;
+import org.apache.commons.lang.StringUtils;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
 import org.slf4j.Logger;
@@ -182,8 +184,12 @@ public class DynamoHelper {
      * @param request
      * @return
      */
-    public Map<String, DateTime> bootstrapStudyIdsToQuery(BridgeExporterRequest request, DateTime endDateTime)
-             {
+    public Map<String, DateTime> bootstrapStudyIdsToQuery(BridgeExporterRequest request, DateTime endDateTime) {
+        // first check if it is s3 override request
+        if (StringUtils.isNotBlank(request.getRecordIdS3Override())) {
+            return ImmutableMap.of();
+        }
+
         List<String> studyIdList = new ArrayList<>();
 
         if (request.getStudyWhitelist() == null) {
