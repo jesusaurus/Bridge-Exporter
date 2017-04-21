@@ -5,7 +5,7 @@ import org.joda.time.DateTime;
 public enum ExportType {
     DAILY {
         public DateTime getStartDateTime(DateTime endDateTime) {
-            return endDateTime.withHourOfDay(0).withMinuteOfHour(0).withSecondOfMinute(0).withMillisOfSecond(0);
+            return endDateTime.minusDays(1).withTimeAtStartOfDay();
         }
     },
     HOURLY {
@@ -15,7 +15,7 @@ public enum ExportType {
     },
     INSTANT {
         public DateTime getStartDateTime(DateTime endDateTime) {
-            return endDateTime.withHourOfDay(0).withMinuteOfHour(0).withSecondOfMinute(0).withMillisOfSecond(0);
+            return endDateTime.minusDays(1).withTimeAtStartOfDay();
         }
     };
 

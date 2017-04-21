@@ -87,20 +87,19 @@ public class RecordIdSourceFactory {
      * @return
      */
     private Iterable<String> getDynamoRecordIdSourceGeneral(DateTime endDateTime, Map<String, DateTime> studyIdsToQuery) {
-        // proceed
-        Iterable<Item> recordItemIter;
-
         // We need to make a separate query for _each_ study in the whitelist. That's just how DDB hash keys work.
         List<Iterable<Item>> recordItemIterList = new ArrayList<>();
         for (Map.Entry<String, DateTime> oneStudyIdAndDateTime : studyIdsToQuery.entrySet()) {
-            Iterable<Item> recordItemIterTemp = ddbQueryHelper.query(ddbRecordStudyUploadedOnIndex, "studyId", oneStudyIdAndDateTime.getKey(),
-                    new RangeKeyCondition("uploadedOn").between(oneStudyIdAndDateTime.getValue().getMillis(),
-                            endDateTime.getMillis()));
+            RangeKeyCondition rangeKeyCondition = new RangeKeyCondition("uploadedOn")
+                    .between(oneStudyIdAndDateTime.getValue().getMillis(), endDateTime.getMillis());
+
+            Iterable<Item> recordItemIterTemp = ddbQueryHelper
+                    .query(ddbRecordStudyUploadedOnIndex, "studyId", oneStudyIdAndDateTime.getKey(), rangeKeyCondition);
 
             recordItemIterList.add(recordItemIterTemp);
         }
 
-        recordItemIter = Iterables.concat(recordItemIterList);
+        Iterable<Item> recordItemIter = Iterables.concat(recordItemIterList);
 
         return new RecordIdSource<>(recordItemIter, DYNAMO_ITEM_CONVERTER);
     }

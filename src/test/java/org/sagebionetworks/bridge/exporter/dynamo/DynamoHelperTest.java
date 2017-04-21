@@ -41,11 +41,12 @@ public class DynamoHelperTest {
     private static final String EXPORT_TIME_TABLE_NAME = "exportTime";
 
     private static final String UPLOAD_DATE = "2016-05-09";
-    private static final String UPLOAD_START_DATE_TIME = "2016-05-09T00:00:00.000-0700";
+    private static final String UPLOAD_START_DATE_TIME = "2016-05-08T00:00:00.000-0700";
     private static final String UPLOAD_END_DATE_TIME = "2016-05-09T23:59:59.999-0700";
 
     private static final DateTime UPLOAD_START_DATE_TIME_OBJ = DateTime.parse(UPLOAD_START_DATE_TIME);
     private static final DateTime UPLOAD_END_DATE_TIME_OBJ = DateTime.parse(UPLOAD_END_DATE_TIME);
+    private static final DateTime LAST_EXPORT_DATE_TIME_OBJ = UPLOAD_START_DATE_TIME_OBJ.minus(1);
     private static final LocalDate UPLOAD_DATE_OBJ = LocalDate.parse(UPLOAD_DATE);
 
     @Test
@@ -284,9 +285,9 @@ public class DynamoHelperTest {
         when(mockExportTimeTable.getTableName()).thenReturn(EXPORT_TIME_TABLE_NAME);
 
         Item fooItem = new Item().withString(STUDY_ID, "ddb-foo").withLong(
-                LAST_EXPORT_DATE_TIME, UPLOAD_START_DATE_TIME_OBJ.getMillis());
+                LAST_EXPORT_DATE_TIME, LAST_EXPORT_DATE_TIME_OBJ.getMillis());
         Item barItem = new Item().withString(STUDY_ID, "ddb-bar").withLong(
-                LAST_EXPORT_DATE_TIME, UPLOAD_START_DATE_TIME_OBJ.getMillis());
+                LAST_EXPORT_DATE_TIME, LAST_EXPORT_DATE_TIME_OBJ.getMillis());
         when(mockExportTimeTable.getItem(STUDY_ID, "ddb-foo")).thenReturn(fooItem);
         when(mockExportTimeTable.getItem(STUDY_ID, "ddb-bar")).thenReturn(barItem);
 
@@ -305,8 +306,8 @@ public class DynamoHelperTest {
         studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request, UPLOAD_END_DATE_TIME_OBJ);
 
         assertEquals(studyIdsToUpdate.size(), 2);
-        assertEquals(studyIdsToUpdate.get("ddb-foo").getMillis(), UPLOAD_START_DATE_TIME_OBJ.getMillis());
-        assertEquals(studyIdsToUpdate.get("ddb-bar").getMillis(), UPLOAD_START_DATE_TIME_OBJ.getMillis());
+        assertEquals(studyIdsToUpdate.get("ddb-foo").toString(), LAST_EXPORT_DATE_TIME_OBJ.toString());
+        assertEquals(studyIdsToUpdate.get("ddb-bar").toString(), LAST_EXPORT_DATE_TIME_OBJ.toString());
 
         // hourly
         request = new BridgeExporterRequest.Builder().withEndDateTime(UPLOAD_END_DATE_TIME_OBJ)
@@ -317,7 +318,7 @@ public class DynamoHelperTest {
         studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request, UPLOAD_END_DATE_TIME_OBJ);
 
         assertEquals(studyIdsToUpdate.size(), 1);
-        assertEquals(studyIdsToUpdate.get("ddb-foo").getMillis(), UPLOAD_START_DATE_TIME_OBJ.getMillis());
+        assertEquals(studyIdsToUpdate.get("ddb-foo").toString(), LAST_EXPORT_DATE_TIME_OBJ.toString());
 
         // instant
         request = new BridgeExporterRequest.Builder()
@@ -328,7 +329,7 @@ public class DynamoHelperTest {
         studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request, UPLOAD_END_DATE_TIME_OBJ);
 
         assertEquals(studyIdsToUpdate.size(), 1);
-        assertEquals(studyIdsToUpdate.get("ddb-foo").getMillis(), UPLOAD_START_DATE_TIME_OBJ.getMillis());
+        assertEquals(studyIdsToUpdate.get("ddb-foo").toString(), LAST_EXPORT_DATE_TIME_OBJ.toString());
     }
 
     @Test
@@ -361,8 +362,8 @@ public class DynamoHelperTest {
         studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request, UPLOAD_END_DATE_TIME_OBJ);
 
         assertEquals(studyIdsToUpdate.size(), 2);
-        assertEquals(studyIdsToUpdate.get("ddb-foo").getMillis(), UPLOAD_START_DATE_TIME_OBJ.getMillis());
-        assertEquals(studyIdsToUpdate.get("ddb-bar").getMillis(), UPLOAD_START_DATE_TIME_OBJ.getMillis());
+        assertEquals(studyIdsToUpdate.get("ddb-foo").toString(), UPLOAD_START_DATE_TIME_OBJ.toString());
+        assertEquals(studyIdsToUpdate.get("ddb-bar").toString(), UPLOAD_START_DATE_TIME_OBJ.toString());
 
         // hourly
         request = new BridgeExporterRequest.Builder().withEndDateTime(UPLOAD_END_DATE_TIME_OBJ)
@@ -373,8 +374,8 @@ public class DynamoHelperTest {
         studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request, UPLOAD_END_DATE_TIME_OBJ);
 
         assertEquals(studyIdsToUpdate.size(), 1);
-        assertEquals(studyIdsToUpdate.get("ddb-foo").getMillis(), UPLOAD_END_DATE_TIME_OBJ
-                .minusHours(1).withMinuteOfHour(0).withSecondOfMinute(0).withMillisOfSecond(0).getMillis());
+        assertEquals(studyIdsToUpdate.get("ddb-foo").toString(), UPLOAD_END_DATE_TIME_OBJ
+                .minusHours(1).withMinuteOfHour(0).withSecondOfMinute(0).withMillisOfSecond(0).toString());
 
         // instant
         request = new BridgeExporterRequest.Builder()
@@ -385,7 +386,7 @@ public class DynamoHelperTest {
         studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request, UPLOAD_END_DATE_TIME_OBJ);
 
         assertEquals(studyIdsToUpdate.size(), 1);
-        assertEquals(studyIdsToUpdate.get("ddb-foo").getMillis(), UPLOAD_START_DATE_TIME_OBJ.getMillis());
+        assertEquals(studyIdsToUpdate.get("ddb-foo").toString(), UPLOAD_START_DATE_TIME_OBJ.toString());
     }
 
     @Test
@@ -394,8 +395,10 @@ public class DynamoHelperTest {
         Table mockStudyTable = mock(Table.class);
         DynamoScanHelper mockDdbScanHelper = mock(DynamoScanHelper.class);
 
-        Item item1 = new Item().withString(IDENTIFIER, "ddb-foo");
-        Item item2 = new Item().withString(IDENTIFIER, "ddb-bar");
+        Item item1 = new Item().withString(IDENTIFIER, "ddb-foo").withLong(
+                LAST_EXPORT_DATE_TIME, LAST_EXPORT_DATE_TIME_OBJ.getMillis());
+        Item item2 = new Item().withString(IDENTIFIER, "ddb-bar").withLong(
+                LAST_EXPORT_DATE_TIME, LAST_EXPORT_DATE_TIME_OBJ.getMillis());
         List<Item> studyIdList = ImmutableList.of(item1, item2);
         when(mockDdbScanHelper.scan(any())).thenReturn(studyIdList);
 
@@ -419,8 +422,8 @@ public class DynamoHelperTest {
         studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request, UPLOAD_END_DATE_TIME_OBJ);
 
         assertEquals(studyIdsToUpdate.size(), 2);
-        assertEquals(studyIdsToUpdate.get("ddb-foo").getMillis(), UPLOAD_START_DATE_TIME_OBJ.getMillis());
-        assertEquals(studyIdsToUpdate.get("ddb-bar").getMillis(), UPLOAD_START_DATE_TIME_OBJ.getMillis());
+        assertEquals(studyIdsToUpdate.get("ddb-foo").toString(), UPLOAD_START_DATE_TIME_OBJ.toString());
+        assertEquals(studyIdsToUpdate.get("ddb-bar").toString(), UPLOAD_START_DATE_TIME_OBJ.toString());
 
         // hourly
         request = new BridgeExporterRequest.Builder().withEndDateTime(UPLOAD_END_DATE_TIME_OBJ)
@@ -432,8 +435,8 @@ public class DynamoHelperTest {
         studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request, UPLOAD_END_DATE_TIME_OBJ);
 
         assertEquals(studyIdsToUpdate.size(), 1);
-        assertEquals(studyIdsToUpdate.get("ddb-foo").getMillis(), UPLOAD_END_DATE_TIME_OBJ
-                .minusHours(1).withMinuteOfHour(0).withSecondOfMinute(0).withMillisOfSecond(0).getMillis());
+        assertEquals(studyIdsToUpdate.get("ddb-foo").toString(), UPLOAD_END_DATE_TIME_OBJ
+                .minusHours(1).withMinuteOfHour(0).withSecondOfMinute(0).withMillisOfSecond(0).toString());
 
         // instant
         request = new BridgeExporterRequest.Builder()
@@ -445,7 +448,7 @@ public class DynamoHelperTest {
         studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request, UPLOAD_END_DATE_TIME_OBJ);
 
         assertEquals(studyIdsToUpdate.size(), 1);
-        assertEquals(studyIdsToUpdate.get("ddb-foo").getMillis(), UPLOAD_START_DATE_TIME_OBJ.getMillis());
+        assertEquals(studyIdsToUpdate.get("ddb-foo").toString(), UPLOAD_START_DATE_TIME_OBJ.toString());
     }
 
     @Test

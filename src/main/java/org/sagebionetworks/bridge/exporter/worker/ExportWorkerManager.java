@@ -567,7 +567,7 @@ public class ExportWorkerManager {
             }
             BridgeExporterRequest redriveRequest = new BridgeExporterRequest.Builder().copyOf(request)
                     .withEndDateTime(null).withExportType(null).withRecordIdS3Override(filename).withTag(redriveTag)
-                    .withRedriveCount(redriveCount + 1).build();
+                    .withRedriveCount(redriveCount + 1).withIgnoreLastExportTime(false).build();
             LOG.info("Redriving records using S3 file " + filename);
 
             try {
@@ -624,7 +624,7 @@ public class ExportWorkerManager {
             }
             BridgeExporterRequest redriveRequest = new BridgeExporterRequest.Builder().copyOf(request)
                     .withTableWhitelist(redriveTableWhitelist).withRedriveCount(redriveCount + 1).withTag(redriveTag)
-                    .build();
+                    .withIgnoreLastExportTime(false).build();
             LOG.info("Redriving tables: " + BridgeExporterUtil.COMMA_SPACE_JOINER.join(redriveTableWhitelist));
 
             try {

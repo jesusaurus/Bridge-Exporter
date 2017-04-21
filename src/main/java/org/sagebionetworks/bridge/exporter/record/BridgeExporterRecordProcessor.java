@@ -164,6 +164,7 @@ public class BridgeExporterRecordProcessor {
 
         Stopwatch stopwatch = Stopwatch.createStarted();
         try {
+            // get end date time used in getting study ids and their corresponding start date time
             DateTime endDateTime = exportHelper.getEndDateTime(request);
             Map<String, DateTime> studyIdsToQuery = dynamoHelper.bootstrapStudyIdsToQuery(request, endDateTime);
 

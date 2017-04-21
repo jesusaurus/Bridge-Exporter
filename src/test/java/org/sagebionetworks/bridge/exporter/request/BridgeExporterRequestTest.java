@@ -98,7 +98,8 @@ public class BridgeExporterRequestTest {
                 .withExporterDdbPrefixOverride(TEST_DDB_PREFIX_OVERRIDE).withRedriveCount(1)
                 .withSharingMode(BridgeExporterSharingMode.PUBLIC_ONLY).withStudyWhitelist(originalStudyWhitelist)
                 .withSynapseProjectOverrideMap(originalProjectOverrideMap).withTableWhitelist(originalTableWhitelist)
-                .withTag(TEST_TAG).build();
+                .withTag(TEST_TAG)
+                .withIgnoreLastExportTime(true).build();
 
         // validate
         assertEquals(request.getExporterDdbPrefixOverride(), TEST_DDB_PREFIX_OVERRIDE);
@@ -109,6 +110,7 @@ public class BridgeExporterRequestTest {
         assertEquals(request.getSynapseProjectOverrideMap(), originalProjectOverrideMap);
         assertEquals(request.getTableWhitelist(), originalTableWhitelist);
         assertEquals(request.getTag(), TEST_TAG);
+        assertTrue(request.getIgnoreLastExportTime());
 
         // Validate that changes to the original collections won't be reflected in the request.
         originalStudyWhitelist.add("new-study");
@@ -121,7 +123,7 @@ public class BridgeExporterRequestTest {
         assertFalse(request.getTableWhitelist().contains(TEST_SCHEMA_KEY));
 
         // test toString
-        assertEquals(request.toString(), "endDateTime=2016-05-09T13:53:13.801-07:00, redriveCount=1, tag=" + TEST_TAG + ", ignoreLastExportTime=false, exportType=DAILY");
+        assertEquals(request.toString(), "endDateTime=2016-05-09T13:53:13.801-07:00, redriveCount=1, tag=" + TEST_TAG + ", ignoreLastExportTime=true, exportType=DAILY");
 
         // test copy
         BridgeExporterRequest copy = new BridgeExporterRequest.Builder().copyOf(request).build();
@@ -281,6 +283,7 @@ public class BridgeExporterRequestTest {
                 "       \"revision\":13\n" +
                 "   }],\n" +
                 "   \"tag\":\"" + TEST_TAG + "\"\n" +
+                "   \"ignoreLastExportTime\":true,\n" +
                 "}";
 
         // convert to POJO
@@ -293,6 +296,7 @@ public class BridgeExporterRequestTest {
         assertEquals(request.getSynapseProjectOverrideMap(), TEST_PROJECT_OVERRIDE_MAP);
         assertEquals(request.getTableWhitelist(), ImmutableSet.of(TEST_SCHEMA_KEY));
         assertEquals(request.getTag(), TEST_TAG);
+        assertTrue(request.getIgnoreLastExportTime());
 
         // convert back to JSON
         JsonNode jsonNode = DefaultObjectMapper.INSTANCE.convertValue(request, JsonNode.class);
@@ -302,6 +306,7 @@ public class BridgeExporterRequestTest {
         assertEquals(jsonNode.get("redriveCount").intValue(), 2);
         assertEquals(jsonNode.get("sharingMode").textValue(), BridgeExporterSharingMode.PUBLIC_ONLY.name());
         assertEquals(jsonNode.get("tag").textValue(), TEST_TAG);
+        assertTrue(jsonNode.get("ignoreLastExportTime").booleanValue());
 
         JsonNode studyWhitelistNode = jsonNode.get("studyWhitelist");
         assertTrue(studyWhitelistNode.isArray());

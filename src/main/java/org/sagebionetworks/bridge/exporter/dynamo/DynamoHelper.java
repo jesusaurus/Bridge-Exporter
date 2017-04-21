@@ -180,9 +180,9 @@ public class DynamoHelper {
     }
 
     /**
-     * Helper method to generate study ids for query
+     * Helper method to generate study ids for query.
      * @param request
-     * @return
+     * @return A Map with key is study id, value is the start date time to query ddb table.
      */
     public Map<String, DateTime> bootstrapStudyIdsToQuery(BridgeExporterRequest request, DateTime endDateTime) {
         // first check if it is s3 override request

@@ -313,6 +313,10 @@ public class BridgeExporterRequest {
                     throw new IllegalStateException("Must specify study whitelist for instant export.");
                 }
 
+                if (exportType == ExportType.HOURLY && studyWhitelist == null) {
+                    throw new IllegalStateException("Must specify study whitelist for hourly export.");
+                }
+
                 if (StringUtils.isNotBlank(recordIdS3Override)) {
                     throw new IllegalStateException("Cannot specify recordIdS3Override for daily, hourly or instant export.");
                 }
