@@ -212,8 +212,10 @@ public class BridgeExporterRecordProcessor {
 
             // finally modify export time table in ddb
             DateTime endDateTime = exportHelper.getEndDateTime(request);
-            List<String> studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request, endDateTime);
-            dynamoHelper.updateExportTimeTable(studyIdsToUpdate, endDateTime);
+            if (endDateTime != null) {
+                List<String> studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request, endDateTime);
+                dynamoHelper.updateExportTimeTable(studyIdsToUpdate, endDateTime);
+            }
         } finally {
             long elapsedTime = stopwatch.elapsed(TimeUnit.SECONDS);
             if (task.isSuccess()) {
