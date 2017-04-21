@@ -449,6 +449,15 @@ public class DynamoHelperTest {
     }
 
     @Test
+    public void bootstrapStudyIdsToQueryTestS3Override() throws Exception {
+        DynamoHelper dynamoHelper = new DynamoHelper();
+        BridgeExporterRequest request = new BridgeExporterRequest.Builder().withRecordIdS3Override("test-override").build();
+        Map<String, DateTime> retStudyIds = dynamoHelper.bootstrapStudyIdsToQuery(request, UPLOAD_END_DATE_TIME_OBJ);
+
+        assertEquals(retStudyIds.size(), 0);
+    }
+
+    @Test
     public void testModifyExportTimeTable() throws Exception {
         DynamoHelper dynamoHelper = new DynamoHelper();
         Table mockDdbExportTimeTable = mock(Table.class);
