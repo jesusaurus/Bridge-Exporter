@@ -13,7 +13,7 @@ public class ExportTypeTest {
     public void testGetStartDateTime() {
         ExportType testExportType = ExportType.DAILY;
         DateTime startDateTime = testExportType.getStartDateTime(END_DATE_TIME);
-        assertEquals(startDateTime, END_DATE_TIME.withHourOfDay(0).withMinuteOfHour(0).withSecondOfMinute(0).withMillisOfSecond(0));
+        assertEquals(startDateTime, END_DATE_TIME.minusDays(1).withTimeAtStartOfDay());
 
         testExportType = ExportType.HOURLY;
         startDateTime = testExportType.getStartDateTime(END_DATE_TIME);
@@ -21,6 +21,6 @@ public class ExportTypeTest {
 
         testExportType = ExportType.INSTANT;
         startDateTime = testExportType.getStartDateTime(END_DATE_TIME);
-        assertEquals(startDateTime, END_DATE_TIME.withHourOfDay(0).withMinuteOfHour(0).withSecondOfMinute(0).withMillisOfSecond(0));
+        assertEquals(startDateTime, END_DATE_TIME.minusDays(1).withTimeAtStartOfDay());
     }
 }

@@ -282,8 +282,8 @@ public class BridgeExporterRequestTest {
                 "       \"schemaId\":\"test-schema\",\n" +
                 "       \"revision\":13\n" +
                 "   }],\n" +
-                "   \"tag\":\"" + TEST_TAG + "\"\n" +
-                "   \"ignoreLastExportTime\":true,\n" +
+                "   \"tag\":\"" + TEST_TAG + "\",\n" +
+                "   \"ignoreLastExportTime\":true\n" +
                 "}";
 
         // convert to POJO
