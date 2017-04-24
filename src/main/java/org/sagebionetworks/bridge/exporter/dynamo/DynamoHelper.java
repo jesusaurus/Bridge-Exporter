@@ -202,7 +202,6 @@ public class DynamoHelper {
             studyIdList.addAll(request.getStudyWhitelist());
         }
 
-        // maintain insert order for testing
         Map<String, DateTime> studyIdsToQuery = new HashMap<>();
 
         for (String studyId : studyIdList) {

@@ -35,9 +35,11 @@ public class ExportHelperTest {
     private static final String UPLOAD_DATE = "2016-05-09";
     private static final String UPLOAD_START_DATE_TIME = "2016-05-09T00:00:00.000-0700";
     private static final String UPLOAD_END_DATE_TIME = "2016-05-09T23:59:59.999-0700";
+    private static final String UPLOAD_END_DATE_TIME_INSTANT = "2016-05-09T23:58:59.999-0700";
 
     private static final DateTime UPLOAD_START_DATE_TIME_OBJ = DateTime.parse(UPLOAD_START_DATE_TIME);
     private static final DateTime UPLOAD_END_DATE_TIME_OBJ = DateTime.parse(UPLOAD_END_DATE_TIME);
+    private static final DateTime UPLOAD_END_DATE_TIME_OBJ_INSTANT = DateTime.parse(UPLOAD_END_DATE_TIME_INSTANT);
     private static final LocalDate UPLOAD_DATE_OBJ = LocalDate.parse(UPLOAD_DATE);
 
     @BeforeClass
@@ -119,7 +121,7 @@ public class ExportHelperTest {
                 .build();
         endDateTime = exportHelper.getEndDateTime(request);
 
-        assertEquals(endDateTime.getMillis(), UPLOAD_END_DATE_TIME_OBJ.minusMinutes(1).getMillis());
+        assertEquals(endDateTime.getMillis(), UPLOAD_END_DATE_TIME_OBJ_INSTANT.getMillis());
 
         // s3 override
         request = new BridgeExporterRequest.Builder().withRecordIdS3Override("dummy-override").build();

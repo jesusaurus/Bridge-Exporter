@@ -35,22 +35,13 @@ public class RecordIdSourceFactoryTest {
 
     @Test
     public void fromDdbNormal() throws Exception {
-        fromDdb(false);
+        fromDdb();
     }
 
-    @Test
-    public void fromDdbEndDateTimeBeforeLastExportTime() throws Exception {
-        fromDdb(true);
-    }
-
-    private static void fromDdb(boolean isEndDateTimeBeforeLastExportTime) throws Exception {
+    private static void fromDdb() throws Exception {
         // mock map
         Map<String, DateTime> studyIdsToQuery;
-        if (!isEndDateTimeBeforeLastExportTime) {
-            studyIdsToQuery = ImmutableMap.of("ddb-foo", UPLOAD_START_DATE_TIME_OBJ, "ddb-bar", UPLOAD_START_DATE_TIME_OBJ);
-        } else {
-            studyIdsToQuery = ImmutableMap.of("ddb-foo", UPLOAD_END_DATE_TIME_OBJ, "ddb-bar", UPLOAD_END_DATE_TIME_OBJ);
-        }
+        studyIdsToQuery = ImmutableMap.of("ddb-foo", UPLOAD_START_DATE_TIME_OBJ, "ddb-bar", UPLOAD_START_DATE_TIME_OBJ);
 
         Index mockRecordIndex = mock(Index.class);
         DynamoQueryHelper mockQueryHelper = mock(DynamoQueryHelper.class);
@@ -87,18 +78,14 @@ public class RecordIdSourceFactoryTest {
 
         List<String> recordIdList = ImmutableList.copyOf(recordIdIter);
 
-        if (!isEndDateTimeBeforeLastExportTime) {
-            assertEquals(recordIdList.size(), 4); // only output records in given time range
-            assertEquals(recordIdList.get(0), "foo-1");
-            assertEquals(recordIdList.get(1), "foo-2");
-            assertEquals(recordIdList.get(2), "bar-1");
-            assertEquals(recordIdList.get(3), "bar-2");
+        assertEquals(recordIdList.size(), 4); // only output records in given time range
+        assertEquals(recordIdList.get(0), "foo-1");
+        assertEquals(recordIdList.get(1), "foo-2");
+        assertEquals(recordIdList.get(2), "bar-1");
+        assertEquals(recordIdList.get(3), "bar-2");
 
-            validateRangeKey(fooRangeKeyCaptor.getValue(), UPLOAD_START_DATE_TIME_OBJ.getMillis(), UPLOAD_END_DATE_TIME_OBJ.getMillis());
-            validateRangeKey(barRangeKeyCaptor.getValue(), UPLOAD_START_DATE_TIME_OBJ.getMillis(), UPLOAD_END_DATE_TIME_OBJ.getMillis());
-        } else {
-            assertEquals(recordIdList.size(), 4); // only output records in given time range
-        }
+        validateRangeKey(fooRangeKeyCaptor.getValue(), UPLOAD_START_DATE_TIME_OBJ.getMillis(), UPLOAD_END_DATE_TIME_OBJ.getMillis());
+        validateRangeKey(barRangeKeyCaptor.getValue(), UPLOAD_START_DATE_TIME_OBJ.getMillis(), UPLOAD_END_DATE_TIME_OBJ.getMillis());
     }
 
     private static void validateRangeKey(RangeKeyCondition rangeKey, long expectedStartMillis,

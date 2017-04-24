@@ -272,6 +272,7 @@ public class ExportWorkerManagerEndOfStreamTest {
         List<BridgeExporterRequest> redriveRequestList = redriveRequestCaptor.getAllValues();
 
         BridgeExporterRequest redriveRecordRequest = redriveRequestList.get(0);
+        assertNull(redriveRecordRequest.getExportType());
         assertNull(redriveRecordRequest.getEndDateTime());
         assertEquals(redriveRecordRequest.getRecordIdS3Override(), "redrive-record-ids.2016-08-16T01:30:00.001Z");
         assertEquals(redriveRecordRequest.getRedriveCount(), 1);

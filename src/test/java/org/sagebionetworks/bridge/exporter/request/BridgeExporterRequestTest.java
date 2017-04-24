@@ -155,6 +155,12 @@ public class BridgeExporterRequestTest {
     }
 
     @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp =
+            "Must specify study whitelist for hourly export.")
+    public void hourlyWithNoWhitelist() {
+        new BridgeExporterRequest.Builder().withExportType(ExportType.HOURLY).withEndDateTime(END_DATE_TIME).build();
+    }
+
+    @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp =
             "Cannot specify recordIdS3Override for daily, hourly or instant export.")
     public void dailyWithOverride() {
         new BridgeExporterRequest.Builder().withExportType(DAILY).withEndDateTime(END_DATE_TIME).withRecordIdS3Override(TEST_RECORD_OVERRIDE).build();
