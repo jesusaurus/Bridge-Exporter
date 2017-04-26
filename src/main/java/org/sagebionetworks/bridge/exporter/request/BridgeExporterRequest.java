@@ -21,6 +21,7 @@ import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 @JsonDeserialize(builder = BridgeExporterRequest.Builder.class)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class BridgeExporterRequest {
+    private final DateTime startDateTime;
     private final DateTime endDateTime;
     private final String exporterDdbPrefixOverride;
     private final String recordIdS3Override;
@@ -34,10 +35,11 @@ public class BridgeExporterRequest {
     private final ExportType exportType;
 
     /** Private constructor. To build, go through the builder. */
-    private BridgeExporterRequest(DateTime endDateTime, String exporterDdbPrefixOverride,
+    private BridgeExporterRequest(DateTime startDateTime, DateTime endDateTime, String exporterDdbPrefixOverride,
             String recordIdS3Override, int redriveCount, BridgeExporterSharingMode sharingMode,
             Set<String> studyWhitelist, Map<String, String> synapseProjectOverrideMap,
             Set<UploadSchemaKey> tableWhitelist, String tag, boolean ignoreLastExportTime, ExportType exportType) {
+        this.startDateTime = startDateTime;
         this.endDateTime = endDateTime;
         this.exporterDdbPrefixOverride = exporterDdbPrefixOverride;
         this.recordIdS3Override = recordIdS3Override;
@@ -49,6 +51,11 @@ public class BridgeExporterRequest {
         this.tag = tag;
         this.ignoreLastExportTime = ignoreLastExportTime;
         this.exportType = exportType;
+    }
+
+    @JsonSerialize(using = DateTimeToStringSerializer.class)
+    public DateTime getStartDateTime() {
+        return startDateTime;
     }
 
     /**
@@ -154,13 +161,14 @@ public class BridgeExporterRequest {
                 Objects.equals(tableWhitelist, that.tableWhitelist) &&
                 Objects.equals(tag, that.tag) &&
                 Objects.equals(ignoreLastExportTime, that.ignoreLastExportTime) &&
-                Objects.equals(exportType, that.exportType);
+                Objects.equals(exportType, that.exportType) &&
+                Objects.equals(startDateTime, that.startDateTime);
     }
 
     @Override
     public final int hashCode() {
         return Objects.hash(endDateTime, exporterDdbPrefixOverride, recordIdS3Override, redriveCount, sharingMode,
-                studyWhitelist, synapseProjectOverrideMap, tableWhitelist, tag, ignoreLastExportTime, exportType);
+                studyWhitelist, synapseProjectOverrideMap, tableWhitelist, tag, ignoreLastExportTime, exportType, startDateTime);
     }
 
     /**
@@ -170,6 +178,11 @@ public class BridgeExporterRequest {
     @Override
     public String toString() {
         StringBuilder stringBuilder = new StringBuilder();
+
+        if (startDateTime != null) {
+            stringBuilder.append("startDateTime=");
+            stringBuilder.append(startDateTime);
+        }
 
         if (endDateTime != null) {
             stringBuilder.append("endDateTime=");
@@ -199,6 +212,7 @@ public class BridgeExporterRequest {
 
     /** Request builder. */
     public static class Builder {
+        private DateTime startDateTime;
         private DateTime endDateTime;
         private String exporterDdbPrefixOverride;
         private String recordIdS3Override;
@@ -214,6 +228,7 @@ public class BridgeExporterRequest {
         /** Sets the builder with a copy of the given request. */
         public Builder copyOf(BridgeExporterRequest other) {
             // Don't worry about copying collections here. This is handled by build().
+            startDateTime = other.startDateTime;
             endDateTime = other.endDateTime;
             exporterDdbPrefixOverride = other.exporterDdbPrefixOverride;
             recordIdS3Override = other.recordIdS3Override;
@@ -225,6 +240,13 @@ public class BridgeExporterRequest {
             tag = other.tag;
             ignoreLastExportTime = other.ignoreLastExportTime;
             exportType = other.exportType;
+            return this;
+        }
+
+        /** @see BridgeExporterRequest#getStartDateTime()  */
+        @JsonDeserialize(using = DateTimeDeserializer.class)
+        public Builder withStartDateTime(DateTime startDateTime) {
+            this.startDateTime = startDateTime;
             return this;
         }
 
@@ -295,10 +317,15 @@ public class BridgeExporterRequest {
 
         /** Builds a Bridge EX request object and validates all parameters. */
         public BridgeExporterRequest build() {
+            if (startDateTime != null && !ignoreLastExportTime) {
+                throw new IllegalStateException("Cannot specify start date time without setting ignore last export date time.");
+            }
+
             boolean hasExportType = exportType != null;
 
             // if it is a daily or hourly export, it must have endDateTime
             boolean hasEndDateTime = endDateTime != null;
+            boolean hasRecordIdS3Override = StringUtils.isNotBlank(recordIdS3Override);
 
             if (hasExportType) {
                 if ((exportType == ExportType.DAILY || exportType == ExportType.HOURLY) && !hasEndDateTime) {
@@ -317,11 +344,11 @@ public class BridgeExporterRequest {
                     throw new IllegalStateException("Must specify study whitelist for hourly export.");
                 }
 
-                if (StringUtils.isNotBlank(recordIdS3Override)) {
+                if (hasRecordIdS3Override) {
                     throw new IllegalStateException("Cannot specify recordIdS3Override for daily, hourly or instant export.");
                 }
             } else {
-                if (!StringUtils.isNotBlank(recordIdS3Override)) {
+                if (!hasRecordIdS3Override) {
                     throw new IllegalStateException("Must specify recordIdS3Override for override export.");
                 }
             }
@@ -329,6 +356,16 @@ public class BridgeExporterRequest {
             // If exporterDdbPrefixOverride is specified, then so must synapseProjectOverrideMap, and vice versa.
             boolean hasExporterDdbPrefixOverride = StringUtils.isNotBlank(exporterDdbPrefixOverride);
             boolean hasSynapseProjectOverrideMap = synapseProjectOverrideMap != null;
+
+            // make sure that a request must set ignoreLastExportDateTime to true when specifying
+            // exporterDdbPrefixOverride, recordIdS3Override, synapseProjectOverrideMap, or tableWhitelist
+            if (hasRecordIdS3Override || hasSynapseProjectOverrideMap || hasExporterDdbPrefixOverride || tableWhitelist != null) {
+                if (!ignoreLastExportTime) {
+                    throw new IllegalStateException("Must set ignoreLastExportDateTime to true when setting " +
+                            "exporterDdbPrefixOverride, recordIdS3Override, synapseProjectOverrideMap, or tableWhitelist.");
+                }
+            }
+
             if (hasExporterDdbPrefixOverride ^ hasSynapseProjectOverrideMap) {
                 throw new IllegalStateException("exporterDdbPrefixOverride and synapseProjectOverrideMap must both " +
                         "be specified or both be absent.");
@@ -369,7 +406,7 @@ public class BridgeExporterRequest {
                 tableWhitelist = ImmutableSet.copyOf(tableWhitelist);
             }
 
-            return new BridgeExporterRequest(endDateTime, exporterDdbPrefixOverride, recordIdS3Override,
+            return new BridgeExporterRequest(startDateTime, endDateTime, exporterDdbPrefixOverride, recordIdS3Override,
                     redriveCount, sharingMode, studyWhitelist, synapseProjectOverrideMap,
                     tableWhitelist, tag, ignoreLastExportTime, exportType);
         }

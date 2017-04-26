@@ -124,7 +124,7 @@ public class ExportHelperTest {
         assertEquals(endDateTime.getMillis(), UPLOAD_END_DATE_TIME_OBJ_INSTANT.getMillis());
 
         // s3 override
-        request = new BridgeExporterRequest.Builder().withRecordIdS3Override("dummy-override").build();
+        request = new BridgeExporterRequest.Builder().withRecordIdS3Override("dummy-override").withIgnoreLastExportTime(true).build();
         endDateTime = exportHelper.getEndDateTime(request);
 
         assertNull(endDateTime);

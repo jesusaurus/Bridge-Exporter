@@ -113,7 +113,7 @@ public class RecordIdSourceFactoryTest {
 
         // execute and validate
         BridgeExporterRequest request = new BridgeExporterRequest.Builder()
-                .withRecordIdS3Override("dummy-override-file").build();
+                .withRecordIdS3Override("dummy-override-file").withIgnoreLastExportTime(true).build();
         Iterable<String> recordIdIter = factory.getRecordSourceForRequest(request, null, ImmutableMap.of());
 
         List<String> recordIdList = ImmutableList.copyOf(recordIdIter);
