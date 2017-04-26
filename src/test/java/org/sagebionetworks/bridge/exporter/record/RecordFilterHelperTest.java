@@ -191,7 +191,7 @@ public class RecordFilterHelperTest {
         UploadSchemaKey acceptedSchemaKey = new UploadSchemaKey.Builder().withStudyId(TEST_STUDY)
                 .withSchemaId("test-schema").withRevision(3).build();
         BridgeExporterRequest request = makeRequestBuilder().withTableWhitelist(ImmutableSet.of(acceptedSchemaKey))
-                .build();
+                .withIgnoreLastExportTime(true).build();
         Item record = makeRecord(SharingScope.ALL_QUALIFIED_RESEARCHERS, TEST_STUDY)
                 .withString("schemaId", "test-schema").withInt("schemaRevision", 3);
 
@@ -211,7 +211,7 @@ public class RecordFilterHelperTest {
         UploadSchemaKey acceptedSchemaKey = new UploadSchemaKey.Builder().withStudyId(TEST_STUDY)
                 .withSchemaId("test-schema").withRevision(3).build();
         BridgeExporterRequest request = makeRequestBuilder().withTableWhitelist(ImmutableSet.of(acceptedSchemaKey))
-                .build();
+                .withIgnoreLastExportTime(true).build();
 
         // same schema, different revision
         Item record = makeRecord(SharingScope.ALL_QUALIFIED_RESEARCHERS, TEST_STUDY)

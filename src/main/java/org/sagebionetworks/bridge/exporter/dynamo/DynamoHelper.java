@@ -233,9 +233,14 @@ public class DynamoHelper {
                     studyIdsToQuery.put(studyId, lastExportDateTime);
                 }
             } else {
-                // bootstrap startDateTime with the exportType in request
-                ExportType exportType = request.getExportType();
-                studyIdsToQuery.put(studyId, exportType.getStartDateTime(endDateTime));
+                if (request.getStartDateTime() != null) {
+                    // if we setup a start date time, just use it -- normally we will not setup this field.
+                    studyIdsToQuery.put(studyId, request.getStartDateTime());
+                } else {
+                    // bootstrap startDateTime with the exportType in request
+                    ExportType exportType = request.getExportType();
+                    studyIdsToQuery.put(studyId, exportType.getStartDateTime(endDateTime));
+                }
             }
 
             // then sleep 1 sec before next read
