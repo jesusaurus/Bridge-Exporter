@@ -278,11 +278,13 @@ public class ExportWorkerManagerEndOfStreamTest {
         assertEquals(redriveRecordRequest.getRedriveCount(), 1);
         assertEquals(redriveRecordRequest.getStudyWhitelist(), request.getStudyWhitelist());
         assertEquals(redriveRecordRequest.getTag(), ExportWorkerManager.REDRIVE_TAG_PREFIX + request.getTag());
+        assertTrue(redriveRecordRequest.getIgnoreLastExportTime());
 
         BridgeExporterRequest redriveTableRequest = redriveRequestList.get(1);
         assertEquals(redriveTableRequest.getRedriveCount(), 1);
         assertEquals(redriveTableRequest.getStudyWhitelist(), request.getStudyWhitelist());
         assertEquals(redriveTableRequest.getTag(), ExportWorkerManager.REDRIVE_TAG_PREFIX + request.getTag());
+        assertTrue(redriveRecordRequest.getIgnoreLastExportTime());
 
         // For tables, we redrive A, C, and E. Note that this causes A and C to be double-redriven. This is because the
         // test is contrived. In practice, it's rare for a record and its table to independently fail. We only special

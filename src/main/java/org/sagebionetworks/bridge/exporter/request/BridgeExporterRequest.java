@@ -53,6 +53,10 @@ public class BridgeExporterRequest {
         this.exportType = exportType;
     }
 
+    /**
+     * Start date, inclusive. For use with special export jobs, including testing, re-drive and re-export.
+     * If this is specified, the ignoreLastExportTime should be set to true.
+     */
     @JsonSerialize(using = DateTimeToStringSerializer.class)
     public DateTime getStartDateTime() {
         return startDateTime;
@@ -182,6 +186,7 @@ public class BridgeExporterRequest {
         if (startDateTime != null) {
             stringBuilder.append("startDateTime=");
             stringBuilder.append(startDateTime);
+            stringBuilder.append(", ");
         }
 
         if (endDateTime != null) {
@@ -317,14 +322,29 @@ public class BridgeExporterRequest {
 
         /** Builds a Bridge EX request object and validates all parameters. */
         public BridgeExporterRequest build() {
-            if (startDateTime != null && !ignoreLastExportTime) {
-                throw new IllegalStateException("Cannot specify start date time without setting ignore last export date time.");
-            }
-
             boolean hasExportType = exportType != null;
 
             // if it is a daily or hourly export, it must have endDateTime
             boolean hasEndDateTime = endDateTime != null;
+
+            boolean hasStartDateTime = startDateTime != null;
+
+            if (hasStartDateTime && hasExportType) {
+                throw new IllegalStateException("Cannot both specify startDateTime and exportType.");
+            }
+
+            if (hasStartDateTime) {
+                if (!ignoreLastExportTime) {
+                    throw new IllegalStateException("Cannot specify start date time without setting ignore last export date time.");
+                }
+                if (!hasEndDateTime) {
+                    throw new IllegalStateException("Should specify end date time if specified start date time.");
+                }
+                if (!startDateTime.isBefore(endDateTime)) {
+                    throw new IllegalStateException("StartDateTime must be before endDateTime.");
+                }
+            }
+
             boolean hasRecordIdS3Override = StringUtils.isNotBlank(recordIdS3Override);
 
             if (hasExportType) {
@@ -348,9 +368,13 @@ public class BridgeExporterRequest {
                     throw new IllegalStateException("Cannot specify recordIdS3Override for daily, hourly or instant export.");
                 }
             } else {
-                if (!hasRecordIdS3Override) {
+                if (!hasRecordIdS3Override && !hasStartDateTime) {
                     throw new IllegalStateException("Must specify recordIdS3Override for override export.");
                 }
+            }
+
+            if (hasEndDateTime && hasRecordIdS3Override) {
+                throw new IllegalStateException("Cannot specify both recordIdS3Override and end date time.");
             }
 
             // If exporterDdbPrefixOverride is specified, then so must synapseProjectOverrideMap, and vice versa.

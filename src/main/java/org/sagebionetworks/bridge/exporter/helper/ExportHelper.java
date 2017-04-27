@@ -231,7 +231,7 @@ public class ExportHelper {
     public DateTime getEndDateTime(BridgeExporterRequest request) {
         ExportType exportType = request.getExportType();
 
-        if (exportType == ExportType.INSTANT) {
+        if (exportType != null && exportType == ExportType.INSTANT) {
             // set end date time to 1 min ago to avoid clock skew issue for instant export
             return DateTime.now().minusMinutes(1);
         } else {

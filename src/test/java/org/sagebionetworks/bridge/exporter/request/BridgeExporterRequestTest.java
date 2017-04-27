@@ -62,6 +62,26 @@ public class BridgeExporterRequestTest {
     }
 
     @Test
+    public void withStartDateTime() {
+        BridgeExporterRequest request = new BridgeExporterRequest.Builder()
+                .withEndDateTime(END_DATE_TIME).withStudyWhitelist(STUDY_WHITELIST)
+                .withStartDateTime(START_DATE_TIME).withIgnoreLastExportTime(true).build();
+        assertEquals(request.getEndDateTime(), END_DATE_TIME);
+        assertEquals(request.getSharingMode(), BridgeExporterSharingMode.SHARED);
+        assertEquals(request.getStudyWhitelist(), STUDY_WHITELIST);
+        assertEquals(request.getStartDateTime(), START_DATE_TIME);
+        assertTrue(request.getIgnoreLastExportTime());
+
+        // test toString
+        assertEquals(request.toString(), "startDateTime="+ START_DATE_TIME + ", endDateTime=" + END_DATE_TIME
+                + ", redriveCount=0, tag=null, ignoreLastExportTime=true, exportType=null");
+
+        // test copy
+        BridgeExporterRequest copy = new BridgeExporterRequest.Builder().copyOf(request).build();
+        assertEquals(copy, request);
+    }
+
+    @Test
     public void withRecordOverride() {
         BridgeExporterRequest request = new BridgeExporterRequest.Builder()
                 .withRecordIdS3Override(TEST_RECORD_OVERRIDE).withIgnoreLastExportTime(true).build();
@@ -131,6 +151,12 @@ public class BridgeExporterRequestTest {
     }
 
     @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp =
+            "Cannot both specify startDateTime and exportType.")
+    public void hasBothStartDateTimeAndExportType() {
+        new BridgeExporterRequest.Builder().withExportType(DAILY).withEndDateTime(END_DATE_TIME).withStartDateTime(START_DATE_TIME).build();
+    }
+
+    @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp =
             "Must specify endDateTime for daily or hourly export.")
     public void dailyWithNoEndDateTIme() {
         new BridgeExporterRequest.Builder().withExportType(DAILY).build();
@@ -197,10 +223,33 @@ public class BridgeExporterRequestTest {
     }
 
     @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp =
+            "Cannot specify both recordIdS3Override and end date time.")
+    public void hasRecordOverrideWithEndDateTime() {
+        new BridgeExporterRequest.Builder().withRecordIdS3Override("dummy-override")
+                .withEndDateTime(END_DATE_TIME).build();
+    }
+
+    @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp =
             "Cannot specify start date time without setting ignore last export date time.")
     public void hasStartDateTimeWithoutIgnoreLastExportDateTime() {
         new BridgeExporterRequest.Builder().withStartDateTime(DateTime.now()).withIgnoreLastExportTime(false)
-                .withExportType(ExportType.HOURLY).withEndDateTime(END_DATE_TIME).withStudyWhitelist(STUDY_WHITELIST)
+                .withEndDateTime(END_DATE_TIME).withStudyWhitelist(STUDY_WHITELIST)
+                .build();
+    }
+
+    @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp =
+            "Should specify end date time if specified start date time.")
+    public void hasStartDateTimeWithoutEndDateTime() {
+        new BridgeExporterRequest.Builder().withStartDateTime(DateTime.now()).withIgnoreLastExportTime(true)
+                .withStudyWhitelist(STUDY_WHITELIST)
+                .build();
+    }
+
+    @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp =
+            "StartDateTime must be before endDateTime.")
+    public void hasStartDateTimeAfterEndDateTime() {
+        new BridgeExporterRequest.Builder().withStartDateTime(DateTime.now()).withIgnoreLastExportTime(true)
+                .withEndDateTime(END_DATE_TIME).withStudyWhitelist(STUDY_WHITELIST)
                 .build();
     }
 
@@ -319,6 +368,28 @@ public class BridgeExporterRequestTest {
     }
 
     @Test
+    public void jsonSerializationWithStartDateTime() throws Exception {
+        String jsonText = "{\n" +
+                "   \"ignoreLastExportTime\":true,\n" +
+                "   \"studyWhitelist\":[\"test-study\"],\n" +
+                "   \"startDateTime\":\"" + START_DATE_TIME_STRING + "\",\n" +
+                "   \"endDateTime\":\"" + END_DATE_TIME_STRING + "\"\n" +
+                "}";
+
+        // convert to POJO
+        BridgeExporterRequest request = DefaultObjectMapper.INSTANCE.readValue(jsonText, BridgeExporterRequest.class);
+        assertTrue(request.getIgnoreLastExportTime());
+        assertEquals(request.getStartDateTime(), START_DATE_TIME);
+        assertEquals(request.getEndDateTime(), END_DATE_TIME);
+
+        // convert back to JSON
+        JsonNode jsonNode = DefaultObjectMapper.INSTANCE.convertValue(request, JsonNode.class);
+        assertTrue(jsonNode.get("ignoreLastExportTime").booleanValue());
+        assertEquals(DateTime.parse(jsonNode.get("startDateTime").textValue()), START_DATE_TIME);
+        assertEquals(DateTime.parse(jsonNode.get("endDateTime").textValue()), END_DATE_TIME);
+    }
+
+    @Test
     public void jsonSerializationWithOptionalParams() throws Exception {
         // start with JSON
         String jsonText = "{\n" +
@@ -336,8 +407,7 @@ public class BridgeExporterRequestTest {
                 "       \"revision\":13\n" +
                 "   }],\n" +
                 "   \"tag\":\"" + TEST_TAG + "\",\n" +
-                "   \"ignoreLastExportTime\":true,\n" +
-                "   \"startDateTime\":\"" + START_DATE_TIME_STRING + "\"\n" +
+                "   \"ignoreLastExportTime\":true\n" +
                 "}";
 
         // convert to POJO
@@ -351,7 +421,6 @@ public class BridgeExporterRequestTest {
         assertEquals(request.getTableWhitelist(), ImmutableSet.of(TEST_SCHEMA_KEY));
         assertEquals(request.getTag(), TEST_TAG);
         assertTrue(request.getIgnoreLastExportTime());
-        assertEquals(request.getStartDateTime(), START_DATE_TIME);
 
         // convert back to JSON
         JsonNode jsonNode = DefaultObjectMapper.INSTANCE.convertValue(request, JsonNode.class);
@@ -362,7 +431,6 @@ public class BridgeExporterRequestTest {
         assertEquals(jsonNode.get("sharingMode").textValue(), BridgeExporterSharingMode.PUBLIC_ONLY.name());
         assertEquals(jsonNode.get("tag").textValue(), TEST_TAG);
         assertTrue(jsonNode.get("ignoreLastExportTime").booleanValue());
-        assertEquals(DateTime.parse(jsonNode.get("startDateTime").textValue()), START_DATE_TIME);
 
         JsonNode studyWhitelistNode = jsonNode.get("studyWhitelist");
         assertTrue(studyWhitelistNode.isArray());

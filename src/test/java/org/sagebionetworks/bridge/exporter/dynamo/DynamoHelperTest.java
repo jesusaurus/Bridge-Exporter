@@ -49,9 +49,9 @@ public class DynamoHelperTest {
     private static final DateTime UPLOAD_START_DATE_TIME_OBJ = DateTime.parse(UPLOAD_START_DATE_TIME);
     private static final DateTime EXPORT_START_DATE_TIME_OBJ = DateTime.parse(EXPORT_START_DATE_TIME);
     private static final DateTime UPLOAD_END_DATE_TIME_OBJ = DateTime.parse(UPLOAD_END_DATE_TIME);
-    private static final DateTime UPLOAD_END_DATE_TIME_OBJ_HOUR = DateTime.parse(UPLOAD_END_DATE_TIME_HOUR);
-    private static final DateTime LAST_EXPORT_DATE_TIME_OBJ = UPLOAD_START_DATE_TIME_OBJ.minus(1);
-    private static final DateTime LAST_EXPORT_DATE_TIME_OBJ_AFTER = UPLOAD_END_DATE_TIME_OBJ.plus(1);
+    private static final DateTime UPLOAD_START_DATE_TIME_OBJ_HOUR = DateTime.parse(UPLOAD_END_DATE_TIME_HOUR);
+    private static final DateTime LAST_EXPORT_DATE_TIME_OBJ = UPLOAD_START_DATE_TIME_OBJ.minusMillis(1);
+    private static final DateTime LAST_EXPORT_DATE_TIME_OBJ_AFTER = UPLOAD_END_DATE_TIME_OBJ.plusMillis(1);
     private static final LocalDate UPLOAD_DATE_OBJ = LocalDate.parse(UPLOAD_DATE);
 
     @Test
@@ -440,7 +440,7 @@ public class DynamoHelperTest {
         studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request, UPLOAD_END_DATE_TIME_OBJ);
 
         assertEquals(studyIdsToUpdate.size(), 1);
-        assertEquals(studyIdsToUpdate.get("ddb-foo").toString(), UPLOAD_END_DATE_TIME_OBJ_HOUR.toString());
+        assertEquals(studyIdsToUpdate.get("ddb-foo").toString(), UPLOAD_START_DATE_TIME_OBJ_HOUR.toString());
 
         // instant
         request = new BridgeExporterRequest.Builder()
@@ -500,7 +500,7 @@ public class DynamoHelperTest {
         studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request, UPLOAD_END_DATE_TIME_OBJ);
 
         assertEquals(studyIdsToUpdate.size(), 1);
-        assertEquals(studyIdsToUpdate.get("ddb-foo").toString(), UPLOAD_END_DATE_TIME_OBJ_HOUR.toString());
+        assertEquals(studyIdsToUpdate.get("ddb-foo").toString(), UPLOAD_START_DATE_TIME_OBJ_HOUR.toString());
 
         // instant
         request = new BridgeExporterRequest.Builder()
@@ -572,6 +572,7 @@ public class DynamoHelperTest {
                 .withIgnoreLastExportTime(true)
                 .withStudyWhitelist(ImmutableSet.of("ddb-foo"))
                 .withStartDateTime(EXPORT_START_DATE_TIME_OBJ)
+                .withEndDateTime(UPLOAD_END_DATE_TIME_OBJ)
                 .build();
 
         studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request, UPLOAD_END_DATE_TIME_OBJ);

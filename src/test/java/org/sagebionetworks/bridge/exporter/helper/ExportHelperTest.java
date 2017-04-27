@@ -102,7 +102,7 @@ public class ExportHelperTest {
                 ExportType.DAILY).build();
         endDateTime = exportHelper.getEndDateTime(request);
 
-        assertEquals(endDateTime.getMillis(), UPLOAD_END_DATE_TIME_OBJ.getMillis());
+        assertEquals(endDateTime, UPLOAD_END_DATE_TIME_OBJ);
 
         // HOURLY
         request = new BridgeExporterRequest.Builder()
@@ -112,7 +112,7 @@ public class ExportHelperTest {
                 .build();
         endDateTime = exportHelper.getEndDateTime(request);
 
-        assertEquals(endDateTime.getMillis(), UPLOAD_END_DATE_TIME_OBJ.getMillis());
+        assertEquals(endDateTime, UPLOAD_END_DATE_TIME_OBJ);
 
         // INSTANT
         request = new BridgeExporterRequest.Builder()
