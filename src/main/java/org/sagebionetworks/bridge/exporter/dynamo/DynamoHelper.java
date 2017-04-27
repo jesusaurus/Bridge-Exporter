@@ -159,48 +159,6 @@ public class DynamoHelper {
     }
 
     /**
-     * Helper method to generate study ids for query
-     * @param request
-     * @return
-     */
-    public List<String> bootstrapStudyIdsToQuery(BridgeExporterRequest request, DateTime endDateTime) {
-        List<String> studyIdList = new ArrayList<>();
-
-        if (request.getStudyWhitelist() == null) {
-            // get the study id list from ddb table
-            Iterable<Item> scanOutcomes = ddbScanHelper.scan(ddbStudyTable);
-            for (Item item: scanOutcomes) {
-                studyIdList.add(item.getString(IDENTIFIER));
-            }
-        } else {
-            studyIdList.addAll(request.getStudyWhitelist());
-        }
-
-        List<String> studyIdsToQuery = new ArrayList<>();
-
-        for (String studyId : studyIdList) {
-            Item studyIdItem = ddbExportTimeTable.getItem(STUDY_ID, studyId);
-            if (studyIdItem != null) {
-                DateTime lastExportDateTime = new DateTime(studyIdItem.getLong(LAST_EXPORT_DATE_TIME), timeZone);
-                if (!endDateTime.isBefore(lastExportDateTime)) {
-                    studyIdsToQuery.add(studyId);
-                }
-            } else {
-                studyIdsToQuery.add(studyId);
-            }
-
-            try {
-                TimeUnit.SECONDS.sleep(1);
-            } catch (InterruptedException e) {
-                LOG.error("Unable to sleep thread: " +
-                        e.getMessage(), e);
-            }
-        }
-
-        return studyIdsToQuery;
-    }
-
-    /**
      * Helper method to generate study ids for query.
      * @param request
      * @return A Map with key is study id, value is the start date time to query ddb table.
