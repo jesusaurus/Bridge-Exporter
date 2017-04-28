@@ -91,7 +91,7 @@ public class RecordIdSourceFactory {
         List<Iterable<Item>> recordItemIterList = new ArrayList<>();
         for (Map.Entry<String, DateTime> oneStudyIdAndDateTime : studyIdsToQuery.entrySet()) {
             RangeKeyCondition rangeKeyCondition = new RangeKeyCondition("uploadedOn")
-                    .between(oneStudyIdAndDateTime.getValue().getMillis(), endDateTime.getMillis());
+                    .between(oneStudyIdAndDateTime.getValue().getMillis(), endDateTime.getMillis() - 1);
 
             Iterable<Item> recordItemIterTemp = ddbQueryHelper
                     .query(ddbRecordStudyUploadedOnIndex, "studyId", oneStudyIdAndDateTime.getKey(), rangeKeyCondition);

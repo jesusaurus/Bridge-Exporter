@@ -44,12 +44,12 @@ public class DynamoHelperTest {
     private static final String UPLOAD_START_DATE_TIME = "2016-05-08T00:00:00.000-0700";
     private static final String EXPORT_START_DATE_TIME = "2016-05-07T00:00:00.000-0700";
     private static final String UPLOAD_END_DATE_TIME = "2016-05-09T23:59:59.999-0700";
-    private static final String UPLOAD_END_DATE_TIME_HOUR = "2016-05-09T22:00:00.000-0700";
+    private static final String UPLOAD_START_DATE_TIME_HOUR = "2016-05-09T22:00:00.000-0700";
 
     private static final DateTime UPLOAD_START_DATE_TIME_OBJ = DateTime.parse(UPLOAD_START_DATE_TIME);
     private static final DateTime EXPORT_START_DATE_TIME_OBJ = DateTime.parse(EXPORT_START_DATE_TIME);
     private static final DateTime UPLOAD_END_DATE_TIME_OBJ = DateTime.parse(UPLOAD_END_DATE_TIME);
-    private static final DateTime UPLOAD_START_DATE_TIME_OBJ_HOUR = DateTime.parse(UPLOAD_END_DATE_TIME_HOUR);
+    private static final DateTime UPLOAD_START_DATE_TIME_OBJ_HOUR = DateTime.parse(UPLOAD_START_DATE_TIME_HOUR);
     private static final DateTime LAST_EXPORT_DATE_TIME_OBJ = UPLOAD_START_DATE_TIME_OBJ.minusMillis(1);
     private static final DateTime LAST_EXPORT_DATE_TIME_OBJ_AFTER = UPLOAD_END_DATE_TIME_OBJ.plusMillis(1);
     private static final LocalDate UPLOAD_DATE_OBJ = LocalDate.parse(UPLOAD_DATE);
