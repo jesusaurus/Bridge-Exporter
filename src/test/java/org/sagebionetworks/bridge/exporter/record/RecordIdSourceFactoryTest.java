@@ -84,8 +84,8 @@ public class RecordIdSourceFactoryTest {
         assertEquals(recordIdList.get(2), "bar-1");
         assertEquals(recordIdList.get(3), "bar-2");
 
-        validateRangeKey(fooRangeKeyCaptor.getValue(), UPLOAD_START_DATE_TIME_OBJ.getMillis(), UPLOAD_END_DATE_TIME_OBJ.getMillis());
-        validateRangeKey(barRangeKeyCaptor.getValue(), UPLOAD_START_DATE_TIME_OBJ.getMillis(), UPLOAD_END_DATE_TIME_OBJ.getMillis());
+        validateRangeKey(fooRangeKeyCaptor.getValue(), UPLOAD_START_DATE_TIME_OBJ.getMillis(), UPLOAD_END_DATE_TIME_OBJ.getMillis() - 1);
+        validateRangeKey(barRangeKeyCaptor.getValue(), UPLOAD_START_DATE_TIME_OBJ.getMillis(), UPLOAD_END_DATE_TIME_OBJ.getMillis() - 1);
     }
 
     private static void validateRangeKey(RangeKeyCondition rangeKey, long expectedStartMillis,

@@ -543,7 +543,6 @@ public class DynamoHelperTest {
         Map<String, DateTime> studyIdsToUpdate;
         // daily
         request = new BridgeExporterRequest.Builder().withEndDateTime(UPLOAD_END_DATE_TIME_OBJ)
-                .withExportType(ExportType.DAILY)
                 .withIgnoreLastExportTime(true)
                 .withStartDateTime(EXPORT_START_DATE_TIME_OBJ)
                 .build();
@@ -555,7 +554,6 @@ public class DynamoHelperTest {
 
         // hourly
         request = new BridgeExporterRequest.Builder().withEndDateTime(UPLOAD_END_DATE_TIME_OBJ)
-                .withExportType(ExportType.HOURLY)
                 .withIgnoreLastExportTime(true)
                 .withStudyWhitelist(ImmutableSet.of("ddb-foo"))
                 .withStartDateTime(EXPORT_START_DATE_TIME_OBJ)
@@ -568,7 +566,6 @@ public class DynamoHelperTest {
 
         // instant
         request = new BridgeExporterRequest.Builder()
-                .withExportType(ExportType.INSTANT)
                 .withIgnoreLastExportTime(true)
                 .withStudyWhitelist(ImmutableSet.of("ddb-foo"))
                 .withStartDateTime(EXPORT_START_DATE_TIME_OBJ)
