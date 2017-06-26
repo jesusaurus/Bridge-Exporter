@@ -7,6 +7,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
@@ -17,12 +18,13 @@ import static org.testng.Assert.fail;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import org.joda.time.DateTime;
-import org.joda.time.LocalDate;
 import org.mockito.ArgumentCaptor;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -42,11 +44,11 @@ import org.sagebionetworks.bridge.file.InMemoryFileHelper;
 
 @SuppressWarnings("unchecked")
 public class BridgeExporterRecordProcessorTest {
-    private static final BridgeExporterRequest REQUEST = new BridgeExporterRequest.Builder()
-            .withDate(LocalDate.parse("2015-11-04")).withTag("unit-test-tag").build();
+    private static final String END_DATE_TIME_STR = "2016-05-09T23:59:59.999-0700";
+    private static final DateTime END_DATE_TIME = DateTime.parse(END_DATE_TIME_STR);
 
-    private static final DateTime END_DATE_TIME = DateTime.parse("2015-11-04")
-            .withHourOfDay(23).withMinuteOfHour(59).withSecondOfMinute(59).withMillisOfSecond(999);
+    private static final BridgeExporterRequest REQUEST = new BridgeExporterRequest.Builder()
+            .withEndDateTime(END_DATE_TIME).withExportType(ExportType.DAILY).withTag("unit-test-tag").build();
 
     private Table mockDdbRecordTable;
     private InMemoryFileHelper mockFileHelper;
@@ -82,7 +84,6 @@ public class BridgeExporterRecordProcessorTest {
         mockRecordIdFactory = mock(RecordIdSourceFactory.class);
         mockDdbExportTimeTable = mock(Table.class);
         mockExportHelper = mock(ExportHelper.class);
-        when(mockExportHelper.getEndDateTime(eq(REQUEST))).thenReturn(END_DATE_TIME);
         mockDynamoHelper = mock(DynamoHelper.class);
 
         // set up record processor
@@ -129,7 +130,10 @@ public class BridgeExporterRecordProcessorTest {
         // mock record ID factory
         List<String> recordIdList = ImmutableList.of("success-record-1", "filtered-record", "missing-record",
                 "error-record", "success-record-2");
-        when(mockRecordIdFactory.getRecordSourceForRequest(REQUEST)).thenReturn(recordIdList);
+        Map<String, DateTime> fakeStudyIds = ImmutableMap.of("fake-key", DateTime.now());
+        when(mockRecordIdFactory.getRecordSourceForRequest(same(REQUEST), eq(END_DATE_TIME), same(fakeStudyIds))).thenReturn(recordIdList);
+        when(mockExportHelper.getEndDateTime(same(REQUEST))).thenReturn(END_DATE_TIME);
+        when(mockDynamoHelper.bootstrapStudyIdsToQuery(same(REQUEST), eq(END_DATE_TIME))).thenReturn(fakeStudyIds);
 
         // mock export worker manager - Only mock error record. The others will just no-op by default in Mockito.
         doThrow(IOException.class).when(mockManager).addSubtaskForRecord(any(ExportTask.class),
@@ -178,9 +182,37 @@ public class BridgeExporterRecordProcessorTest {
         // validate that we cleaned up all our files
         assertTrue(mockFileHelper.isEmpty());
 
+        verify(mockRecordIdFactory).getRecordSourceForRequest(same(REQUEST), eq(END_DATE_TIME), same(fakeStudyIds));
         verify(mockDynamoHelper).bootstrapStudyIdsToQuery(eq(REQUEST), eq(END_DATE_TIME));
-        verify(mockDynamoHelper).updateExportTimeTable(any(), any());
+        ArgumentCaptor<List> listArgumentCaptor = ArgumentCaptor.forClass(List.class);
+        verify(mockDynamoHelper).updateExportTimeTable(listArgumentCaptor.capture(), eq(END_DATE_TIME));
+        List<String> studyIdsToUpdate = listArgumentCaptor.getValue();
+        assertEquals(1, studyIdsToUpdate.size());
+        assertEquals(studyIdsToUpdate.get(0), "fake-key");
         verify(mockExportHelper).getEndDateTime(eq(REQUEST));
+    }
+
+    @Test
+    public void testIgnoreLastExportTime() throws Exception {
+        BridgeExporterRequest newRequest = new BridgeExporterRequest.Builder()
+                .withEndDateTime(END_DATE_TIME).withExportType(ExportType.DAILY).withIgnoreLastExportTime(true).withTag("unit-test-tag").build();
+
+        // mock DDB record table - We don't look inside any of these records, so for the purposes of this test, just
+        // make dummy DDB record items with no content.
+        Item dummySuccessRecord1 = new Item();
+
+        when(mockDdbRecordTable.getItem("id", "success-record-1")).thenReturn(dummySuccessRecord1);
+
+        // mock record ID factory
+        List<String> recordIdList = ImmutableList.of("success-record-1");
+        when(mockRecordIdFactory.getRecordSourceForRequest(same(newRequest), any(), any())).thenReturn(recordIdList);
+
+        // execute
+        recordProcessor.processRecordsForRequest(newRequest);
+
+        // verify that we marked the task as success
+        verify(recordProcessor).setTaskSuccess(any());
+        verify(mockDynamoHelper, times(0)).updateExportTimeTable(any(), any());
     }
 
     @Test
@@ -189,7 +221,7 @@ public class BridgeExporterRecordProcessorTest {
 
         // mock DDB record table and record ID factory
         when(mockDdbRecordTable.getItem("id", "dummy-record")).thenReturn(new Item());
-        when(mockRecordIdFactory.getRecordSourceForRequest(REQUEST)).thenReturn(ImmutableList.of("dummy-record"));
+        when(mockRecordIdFactory.getRecordSourceForRequest(same(REQUEST), any(), any())).thenReturn(ImmutableList.of("dummy-record"));
 
         // ExportWorkerManager throws in endOfStream()
         doThrow(RestartBridgeExporterException.class).when(mockManager).endOfStream(any());
