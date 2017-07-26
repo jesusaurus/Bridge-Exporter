@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -20,6 +21,7 @@ import com.amazonaws.services.dynamodbv2.document.Table;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Stopwatch;
+import com.google.common.collect.ImmutableSet;
 import com.google.gson.JsonParseException;
 import com.google.gson.stream.MalformedJsonException;
 import org.apache.commons.lang.StringUtils;
@@ -505,7 +507,8 @@ public class ExportWorkerManager {
      * @param task
      *         export task to be finished
      */
-    public void endOfStream(ExportTask task) throws RestartBridgeExporterException {
+    public void endOfStream(ExportTask task, Map<String, DateTime> startDateTimeByStudy)
+            throws RestartBridgeExporterException {
         BridgeExporterRequest request = task.getRequest();
         int redriveCount = request.getRedriveCount();
         String tag = request.getTag();
@@ -566,8 +569,8 @@ public class ExportWorkerManager {
                 redriveTag = REDRIVE_TAG_PREFIX + tag;
             }
             BridgeExporterRequest redriveRequest = new BridgeExporterRequest.Builder().copyOf(request)
-                    .withEndDateTime(null).withExportType(null).withRecordIdS3Override(filename).withTag(redriveTag)
-                    .withRedriveCount(redriveCount + 1).withIgnoreLastExportTime(true).build();
+                    .withStartDateTime(null).withEndDateTime(null).withRecordIdS3Override(filename).withTag(redriveTag)
+                    .withRedriveCount(redriveCount + 1).withUseLastExportTime(false).build();
             LOG.info("Redriving records using S3 file " + filename);
 
             try {
@@ -585,7 +588,8 @@ public class ExportWorkerManager {
         LOG.info("All subtasks done for request " + request.toString());
 
         // Tell each health data handler to upload their TSVs to Synapse.
-        Set<UploadSchemaKey> redriveTableWhitelist = new HashSet<>();
+        // Use a TreeMap so we can iterate our redrives in a predictable order.
+        Map<String, Set<UploadSchemaKey>> redriveTablesByStudy = new TreeMap<>();
         for (Map.Entry<UploadSchemaKey, HealthDataExportHandler> healthDataHandlerEntry
                 : healthDataHandlersBySchema.entrySet()) {
             UploadSchemaKey schemaKey = healthDataHandlerEntry.getKey();
@@ -608,30 +612,55 @@ public class ExportWorkerManager {
                             originalEx.getMessage(), originalEx);
                     if (isRetryable(originalEx)) {
                         // Similarly, track which tables (schemas) to redrive.
-                        redriveTableWhitelist.add(schemaKey);
+                        String studyId = schemaKey.getStudyId();
+                        Set<UploadSchemaKey> redriveTableSet = redriveTablesByStudy.get(studyId);
+                        if (redriveTableSet == null) {
+                            redriveTableSet = new HashSet<>();
+                            redriveTablesByStudy.put(studyId, redriveTableSet);
+                        }
+                        redriveTableSet.add(schemaKey);
                     }
                 }
             }
         }
-        if (!redriveTableWhitelist.isEmpty() && redriveCount < redriveMaxCount) {
-            // Create a copy of the original request, except add the table whitelist and update the tag. This will be
-            // used to trigger the redrive.
-            String redriveTag;
-            if (tag.startsWith(REDRIVE_TAG_PREFIX)) {
-                redriveTag = tag;
-            } else {
-                redriveTag = REDRIVE_TAG_PREFIX + tag;
-            }
-            BridgeExporterRequest redriveRequest = new BridgeExporterRequest.Builder().copyOf(request)
-                    .withTableWhitelist(redriveTableWhitelist).withRedriveCount(redriveCount + 1).withTag(redriveTag)
-                    .withIgnoreLastExportTime(true).build();
-            LOG.info("Redriving tables: " + BridgeExporterUtil.COMMA_SPACE_JOINER.join(redriveTableWhitelist));
+        if (!redriveTablesByStudy.isEmpty() && redriveCount < redriveMaxCount) {
+            for (Map.Entry<String, Set<UploadSchemaKey>> oneRedriveTableEntry : redriveTablesByStudy.entrySet()) {
+                String oneStudyId = oneRedriveTableEntry.getKey();
+                Set<UploadSchemaKey> redriveTableWhitelist = oneRedriveTableEntry.getValue();
 
-            try {
-                sqsHelper.sendMessageAsJson(sqsQueueUrl, redriveRequest, REDRIVE_DELAY_SECONDS);
-            } catch (AmazonClientException | JsonProcessingException ex) {
-                // log error, but move on
-                LOG.error("Error redriving tables: " + ex.getMessage(), ex);
+                BridgeExporterRequest.Builder redriveTableRequestBuilder = new BridgeExporterRequest.Builder()
+                        .copyOf(request).withTableWhitelist(redriveTableWhitelist).withRedriveCount(redriveCount + 1)
+                        .withUseLastExportTime(false);
+
+                // Create a copy of the original request, except add the table whitelist and update the tag. This will
+                // be used to trigger the redrive.
+                String redriveTag;
+                if (tag.startsWith(REDRIVE_TAG_PREFIX)) {
+                    redriveTag = tag;
+                } else {
+                    redriveTag = REDRIVE_TAG_PREFIX + tag;
+                }
+                redriveTableRequestBuilder.withTag(redriveTag);
+
+                // Since this is only a single study, set the studyWhitelist
+                redriveTableRequestBuilder.withStudyWhitelist(ImmutableSet.of(oneStudyId));
+
+                // If the original request contained endDateTime but not startDateTime (which is likely because of
+                // useLastExportTime), we need to get the startDateTime from the study map.
+                if (request.getEndDateTime() != null && request.getStartDateTime() == null) {
+                    DateTime startDateTime = startDateTimeByStudy.get(oneStudyId);
+                    redriveTableRequestBuilder.withStartDateTime(startDateTime);
+                }
+
+                BridgeExporterRequest redriveRequest = redriveTableRequestBuilder.build();
+                LOG.info("Redriving tables: " + BridgeExporterUtil.COMMA_SPACE_JOINER.join(redriveTableWhitelist));
+
+                try {
+                    sqsHelper.sendMessageAsJson(sqsQueueUrl, redriveRequest, REDRIVE_DELAY_SECONDS);
+                } catch (AmazonClientException | JsonProcessingException ex) {
+                    // log error, but move on
+                    LOG.error("Error redriving tables: " + ex.getMessage(), ex);
+                }
             }
         }
 

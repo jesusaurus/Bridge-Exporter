@@ -18,7 +18,7 @@ public class BridgeExporterRecordProcessorSynapseWritableTest {
 
     private static final DateTime DUMMY_REQUEST_DATE_TIME = DateTime.parse("2015-11-04T23:59:59Z");
     private static final BridgeExporterRequest REQUEST = new BridgeExporterRequest.Builder()
-            .withEndDateTime(DUMMY_REQUEST_DATE_TIME).withExportType(ExportType.DAILY).withTag("unit-test-tag").build();
+            .withEndDateTime(DUMMY_REQUEST_DATE_TIME).withTag("unit-test-tag").withUseLastExportTime(true).build();
 
     @Test(expectedExceptions = SynapseUnavailableException.class, expectedExceptionsMessageRegExp =
             "Synapse not in writable state")

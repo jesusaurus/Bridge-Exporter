@@ -191,7 +191,7 @@ public class RecordFilterHelperTest {
         UploadSchemaKey acceptedSchemaKey = new UploadSchemaKey.Builder().withStudyId(TEST_STUDY)
                 .withSchemaId("test-schema").withRevision(3).build();
         BridgeExporterRequest request = makeRequestBuilder().withTableWhitelist(ImmutableSet.of(acceptedSchemaKey))
-                .withIgnoreLastExportTime(true).build();
+                .build();
         Item record = makeRecord(SharingScope.ALL_QUALIFIED_RESEARCHERS, TEST_STUDY)
                 .withString("schemaId", "test-schema").withInt("schemaRevision", 3);
 
@@ -211,7 +211,7 @@ public class RecordFilterHelperTest {
         UploadSchemaKey acceptedSchemaKey = new UploadSchemaKey.Builder().withStudyId(TEST_STUDY)
                 .withSchemaId("test-schema").withRevision(3).build();
         BridgeExporterRequest request = makeRequestBuilder().withTableWhitelist(ImmutableSet.of(acceptedSchemaKey))
-                .withIgnoreLastExportTime(true).build();
+                .build();
 
         // same schema, different revision
         Item record = makeRecord(SharingScope.ALL_QUALIFIED_RESEARCHERS, TEST_STUDY)
@@ -407,7 +407,7 @@ public class RecordFilterHelperTest {
 
     private static BridgeExporterRequest.Builder makeRequestBuilder() {
         DateTime DUMMY_REQUEST_DATE_TIME = DateTime.parse("2015-10-31T23:59:59Z");
-        return new BridgeExporterRequest.Builder().withEndDateTime(DUMMY_REQUEST_DATE_TIME).withExportType(ExportType.DAILY)
-                .withTag("RecordFilterHelperTest");
+        return new BridgeExporterRequest.Builder().withEndDateTime(DUMMY_REQUEST_DATE_TIME)
+                .withTag("RecordFilterHelperTest").withUseLastExportTime(true);
     }
 }

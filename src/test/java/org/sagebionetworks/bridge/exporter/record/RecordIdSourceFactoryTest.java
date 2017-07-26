@@ -27,21 +27,20 @@ import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.s3.S3Helper;
 
 public class RecordIdSourceFactoryTest {
-    private static final String UPLOAD_START_DATE_TIME = "2015-11-11T00:00:00Z";
-    private static final String UPLOAD_END_DATE_TIME = "2015-11-11T23:59:59Z";
+    private static final String FOO_LAST_EXPORT_TIME_STRING = "2016-05-09T20:25:31.346-0700";
+    private static final DateTime FOO_LAST_EXPORT_TIME = DateTime.parse(FOO_LAST_EXPORT_TIME_STRING);
 
-    private static final DateTime UPLOAD_START_DATE_TIME_OBJ = DateTime.parse(UPLOAD_START_DATE_TIME);
-    private static final DateTime UPLOAD_END_DATE_TIME_OBJ = DateTime.parse(UPLOAD_END_DATE_TIME);
+    private static final String BAR_LAST_EXPORT_TIME_STRING = "2016-05-09T13:32:46.695-0700";
+    private static final DateTime BAR_LAST_EXPORT_TIME = DateTime.parse(BAR_LAST_EXPORT_TIME_STRING);
+
+    private static final String END_DATE_TIME_STRING = "2016-05-09T23:37:44.326-0700";
+    private static final DateTime END_DATE_TIME = DateTime.parse(END_DATE_TIME_STRING);
 
     @Test
     public void fromDdbNormal() throws Exception {
-        fromDdb();
-    }
-
-    private static void fromDdb() throws Exception {
         // mock map
-        Map<String, DateTime> studyIdsToQuery;
-        studyIdsToQuery = ImmutableMap.of("ddb-foo", UPLOAD_START_DATE_TIME_OBJ, "ddb-bar", UPLOAD_START_DATE_TIME_OBJ);
+        Map<String, DateTime> studyIdsToQuery = ImmutableMap.<String, DateTime>builder()
+                .put("ddb-foo", FOO_LAST_EXPORT_TIME).put("ddb-bar", BAR_LAST_EXPORT_TIME).build();
 
         Index mockRecordIndex = mock(Index.class);
         DynamoQueryHelper mockQueryHelper = mock(DynamoQueryHelper.class);
@@ -68,24 +67,19 @@ public class RecordIdSourceFactoryTest {
         factory.setDdbRecordStudyUploadedOnIndex(mockRecordIndex);
 
         // execute and validate
-        BridgeExporterRequest request;
-        request = new BridgeExporterRequest.Builder()
-                .withEndDateTime(UPLOAD_END_DATE_TIME_OBJ)
-                .withExportType(ExportType.DAILY)
-                .build();
-
-        Iterable<String> recordIdIter = factory.getRecordSourceForRequest(request, UPLOAD_END_DATE_TIME_OBJ, studyIdsToQuery);
+        BridgeExporterRequest request = new BridgeExporterRequest.Builder().withEndDateTime(END_DATE_TIME)
+                .withUseLastExportTime(true).build();
+        Iterable<String> recordIdIter = factory.getRecordSourceForRequest(request, studyIdsToQuery);
 
         List<String> recordIdList = ImmutableList.copyOf(recordIdIter);
-
         assertEquals(recordIdList.size(), 4); // only output records in given time range
         assertEquals(recordIdList.get(0), "foo-1");
         assertEquals(recordIdList.get(1), "foo-2");
         assertEquals(recordIdList.get(2), "bar-1");
         assertEquals(recordIdList.get(3), "bar-2");
 
-        validateRangeKey(fooRangeKeyCaptor.getValue(), UPLOAD_START_DATE_TIME_OBJ.getMillis(), UPLOAD_END_DATE_TIME_OBJ.getMillis() - 1);
-        validateRangeKey(barRangeKeyCaptor.getValue(), UPLOAD_START_DATE_TIME_OBJ.getMillis(), UPLOAD_END_DATE_TIME_OBJ.getMillis() - 1);
+        validateRangeKey(fooRangeKeyCaptor.getValue(), FOO_LAST_EXPORT_TIME.getMillis(), END_DATE_TIME.getMillis());
+        validateRangeKey(barRangeKeyCaptor.getValue(), BAR_LAST_EXPORT_TIME.getMillis(), END_DATE_TIME.getMillis());
     }
 
     private static void validateRangeKey(RangeKeyCondition rangeKey, long expectedStartMillis,
@@ -96,7 +90,9 @@ public class RecordIdSourceFactoryTest {
         Object[] rangeKeyValueArray = rangeKey.getValues();
         assertEquals(rangeKeyValueArray.length, 2);
         assertEquals(rangeKeyValueArray[0], expectedStartMillis);
-        assertEquals(rangeKeyValueArray[1], expectedEndMillis);
+
+        // end date is exclusive, so the query is actually 1 millisecond before
+        assertEquals(rangeKeyValueArray[1], expectedEndMillis - 1);
     }
 
     @Test
@@ -113,8 +109,8 @@ public class RecordIdSourceFactoryTest {
 
         // execute and validate
         BridgeExporterRequest request = new BridgeExporterRequest.Builder()
-                .withRecordIdS3Override("dummy-override-file").withIgnoreLastExportTime(true).build();
-        Iterable<String> recordIdIter = factory.getRecordSourceForRequest(request, null, ImmutableMap.of());
+                .withRecordIdS3Override("dummy-override-file").withUseLastExportTime(false).build();
+        Iterable<String> recordIdIter = factory.getRecordSourceForRequest(request, ImmutableMap.of());
 
         List<String> recordIdList = ImmutableList.copyOf(recordIdIter);
         assertEquals(recordIdList.size(), 3);

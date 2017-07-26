@@ -41,7 +41,6 @@ import org.sagebionetworks.bridge.exporter.helper.BridgeHelper;
 import org.sagebionetworks.bridge.exporter.helper.BridgeHelperTest;
 import org.sagebionetworks.bridge.exporter.helper.ExportHelper;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
-import org.sagebionetworks.bridge.exporter.record.ExportType;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
 import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
 import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
@@ -94,7 +93,7 @@ public class SynapseExportHandlerTest {
     public static final LocalDate DUMMY_REQUEST_DATE = LocalDate.parse("2015-10-31");
     private static final DateTime DUMMY_REQUEST_DATE_TIME = DateTime.parse("2015-10-31T23:59:59Z");
     public static final BridgeExporterRequest DUMMY_REQUEST = new BridgeExporterRequest.Builder()
-            .withEndDateTime(DUMMY_REQUEST_DATE_TIME).withExportType(ExportType.DAILY).build();
+            .withEndDateTime(DUMMY_REQUEST_DATE_TIME).withUseLastExportTime(true).build();
 
     // Constants to make a schema. In most tests, schema doesn't matter. However, in one particular test, namely the
     // test for our old hack to convert freeform text to attachments, we key off specific studies and schemas. This

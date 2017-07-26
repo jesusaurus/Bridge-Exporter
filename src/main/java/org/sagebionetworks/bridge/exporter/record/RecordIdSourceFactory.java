@@ -74,17 +74,17 @@ public class RecordIdSourceFactory {
      * @throws IOException
      *         if we fail reading the underlying source
      */
-    public Iterable<String> getRecordSourceForRequest(BridgeExporterRequest request, DateTime endDateTime, Map<String, DateTime> studyIdsToQuery) throws IOException {
+    public Iterable<String> getRecordSourceForRequest(BridgeExporterRequest request,
+            Map<String, DateTime> studyIdsToQuery) throws IOException {
         if (StringUtils.isNotBlank(request.getRecordIdS3Override())) {
             return getS3RecordIdSource(request);
         } else {
-            return getDynamoRecordIdSourceGeneral(endDateTime, studyIdsToQuery);
+            return getDynamoRecordIdSourceGeneral(request.getEndDateTime(), studyIdsToQuery);
         }
     }
 
     /**
      * Helper method to get ddb records
-     * @return
      */
     private Iterable<String> getDynamoRecordIdSourceGeneral(DateTime endDateTime, Map<String, DateTime> studyIdsToQuery) {
         // We need to make a separate query for _each_ study in the whitelist. That's just how DDB hash keys work.

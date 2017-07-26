@@ -16,7 +16,6 @@ import org.joda.time.LocalDate;
 import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
-import org.sagebionetworks.bridge.exporter.record.ExportType;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
@@ -24,7 +23,7 @@ public class ExportTaskTest {
     private static final LocalDate DUMMY_EXPORTER_DATE = LocalDate.parse("2015-12-07");
     private static final DateTime DUMMY_REQUEST_DATE_TIME = DateTime.parse("2015-12-07T23:59:59Z");
     private static final BridgeExporterRequest DUMMY_REQUEST = new BridgeExporterRequest.Builder()
-            .withEndDateTime(DUMMY_REQUEST_DATE_TIME).withExportType(ExportType.DAILY).build();
+            .withEndDateTime(DUMMY_REQUEST_DATE_TIME).withUseLastExportTime(true).build();
 
     @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp =
             "exporterDate must be non-null")

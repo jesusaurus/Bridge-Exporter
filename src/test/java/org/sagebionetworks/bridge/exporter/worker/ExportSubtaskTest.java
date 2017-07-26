@@ -13,7 +13,6 @@ import org.joda.time.LocalDate;
 import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
-import org.sagebionetworks.bridge.exporter.record.ExportType;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
@@ -21,7 +20,7 @@ import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 public class ExportSubtaskTest {
     private static final DateTime DUMMY_REQUEST_DATE_TIME = DateTime.parse("2015-12-06T23:59:59Z");
     private static final BridgeExporterRequest DUMMY_REQUEST = new BridgeExporterRequest.Builder()
-            .withEndDateTime(DUMMY_REQUEST_DATE_TIME).withExportType(ExportType.DAILY).build();
+            .withEndDateTime(DUMMY_REQUEST_DATE_TIME).withUseLastExportTime(true).build();
     private static final ExportTask DUMMY_PARENT_TASK = new ExportTask.Builder()
             .withExporterDate(LocalDate.parse("2015-12-07")).withMetrics(new Metrics()).withRequest(DUMMY_REQUEST)
             .withTmpDir(mock(File.class)).build();

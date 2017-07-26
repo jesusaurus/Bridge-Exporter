@@ -2,6 +2,7 @@ package org.sagebionetworks.bridge.exporter.dynamo;
 
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
@@ -25,34 +26,30 @@ import com.amazonaws.services.dynamodbv2.document.Table;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import org.joda.time.DateTime;
-import org.joda.time.LocalDate;
 import org.mockito.ArgumentCaptor;
 import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.dynamodb.DynamoScanHelper;
-import org.sagebionetworks.bridge.exporter.record.ExportType;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 
 @SuppressWarnings("unchecked")
 public class DynamoHelperTest {
-    private static final String STUDY_TABLE_NAME = "Study";
-    private static final String EXPORT_TIME_TABLE_NAME = "exportTime";
+    private static final String START_DATE_TIME_STRING = "2016-05-08T11:21:19.004-0700";
+    private static final DateTime START_DATE_TIME = DateTime.parse(START_DATE_TIME_STRING);
 
-    private static final String UPLOAD_DATE = "2016-05-09";
-    private static final String UPLOAD_START_DATE_TIME = "2016-05-08T00:00:00.000-0700";
-    private static final String EXPORT_START_DATE_TIME = "2016-05-07T00:00:00.000-0700";
-    private static final String UPLOAD_END_DATE_TIME = "2016-05-09T23:59:59.999-0700";
-    private static final String UPLOAD_START_DATE_TIME_HOUR = "2016-05-09T22:00:00.000-0700";
+    private static final String END_DATE_TIME_STRING = "2016-05-09T23:37:44.326-0700";
+    private static final DateTime END_DATE_TIME = DateTime.parse(END_DATE_TIME_STRING);
 
-    private static final DateTime UPLOAD_START_DATE_TIME_OBJ = DateTime.parse(UPLOAD_START_DATE_TIME);
-    private static final DateTime EXPORT_START_DATE_TIME_OBJ = DateTime.parse(EXPORT_START_DATE_TIME);
-    private static final DateTime UPLOAD_END_DATE_TIME_OBJ = DateTime.parse(UPLOAD_END_DATE_TIME);
-    private static final DateTime UPLOAD_START_DATE_TIME_OBJ_HOUR = DateTime.parse(UPLOAD_START_DATE_TIME_HOUR);
-    private static final DateTime LAST_EXPORT_DATE_TIME_OBJ = UPLOAD_START_DATE_TIME_OBJ.minusMillis(1);
-    private static final DateTime LAST_EXPORT_DATE_TIME_OBJ_AFTER = UPLOAD_END_DATE_TIME_OBJ.plusMillis(1);
-    private static final LocalDate UPLOAD_DATE_OBJ = LocalDate.parse(UPLOAD_DATE);
+    private static final String FOO_LAST_EXPORT_TIME_STRING = "2016-05-09T20:25:31.346-0700";
+    private static final DateTime FOO_LAST_EXPORT_TIME = DateTime.parse(FOO_LAST_EXPORT_TIME_STRING);
+
+    private static final String BAR_LAST_EXPORT_TIME_STRING = "2016-05-09T13:32:46.695-0700";
+    private static final DateTime BAR_LAST_EXPORT_TIME = DateTime.parse(BAR_LAST_EXPORT_TIME_STRING);
+
+    private static final String CALCULATED_LAST_EXPORT_TIME_STRING = "2016-05-08T00:00:00.000-0700";
+    private static final DateTime CALCULATED_LAST_EXPORT_TIME = DateTime.parse(CALCULATED_LAST_EXPORT_TIME_STRING);
 
     @Test
     public void getSharingScope() {
@@ -275,317 +272,179 @@ public class DynamoHelperTest {
     }
 
     @Test
-    public void bootstrapStudyIdsToQueryTestNormal() {
-        // mock study table and study id list
-        Table mockStudyTable = mock(Table.class);
-        DynamoScanHelper mockDdbScanHelper = mock(DynamoScanHelper.class);
-
-        Item item1 = new Item().withString(IDENTIFIER, "ddb-foo");
-        Item item2 = new Item().withString(IDENTIFIER, "ddb-bar");
-        List<Item> studyIdList = ImmutableList.of(item1, item2);
-        when(mockDdbScanHelper.scan(any())).thenReturn(studyIdList);
-
-        // mock exportTime ddb table with mock items
-        Table mockExportTimeTable = mock(Table.class);
-        when(mockExportTimeTable.getTableName()).thenReturn(EXPORT_TIME_TABLE_NAME);
-
-        Item fooItem = new Item().withString(STUDY_ID, "ddb-foo").withLong(
-                LAST_EXPORT_DATE_TIME, LAST_EXPORT_DATE_TIME_OBJ.getMillis());
-        Item barItem = new Item().withString(STUDY_ID, "ddb-bar").withLong(
-                LAST_EXPORT_DATE_TIME, LAST_EXPORT_DATE_TIME_OBJ.getMillis());
-        when(mockExportTimeTable.getItem(STUDY_ID, "ddb-foo")).thenReturn(fooItem);
-        when(mockExportTimeTable.getItem(STUDY_ID, "ddb-bar")).thenReturn(barItem);
-
-        DynamoHelper dynamoHelper = new DynamoHelper();
-        dynamoHelper.setDdbStudyTable(mockStudyTable);
-        dynamoHelper.setDdbScanHelper(mockDdbScanHelper);
-        dynamoHelper.setDdbExportTimeTable(mockExportTimeTable);
-        dynamoHelper.setConfig(mockConfig());
-
-        // mock request
-        BridgeExporterRequest request;
-        Map<String, DateTime> studyIdsToUpdate;
-        // daily
-        request = new BridgeExporterRequest.Builder().withEndDateTime(UPLOAD_END_DATE_TIME_OBJ)
-                .withExportType(ExportType.DAILY).build();
-        studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request, UPLOAD_END_DATE_TIME_OBJ);
-
-        assertEquals(studyIdsToUpdate.size(), 2);
-        assertEquals(studyIdsToUpdate.get("ddb-foo").toString(), LAST_EXPORT_DATE_TIME_OBJ.toString());
-        assertEquals(studyIdsToUpdate.get("ddb-bar").toString(), LAST_EXPORT_DATE_TIME_OBJ.toString());
-
-        // hourly
-        request = new BridgeExporterRequest.Builder().withEndDateTime(UPLOAD_END_DATE_TIME_OBJ)
-                .withExportType(ExportType.HOURLY)
-                .withStudyWhitelist(ImmutableSet.of("ddb-foo"))
-                .build();
-
-        studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request, UPLOAD_END_DATE_TIME_OBJ);
-
-        assertEquals(studyIdsToUpdate.size(), 1);
-        assertEquals(studyIdsToUpdate.get("ddb-foo").toString(), LAST_EXPORT_DATE_TIME_OBJ.toString());
-
-        // instant
-        request = new BridgeExporterRequest.Builder()
-                .withExportType(ExportType.INSTANT)
-                .withStudyWhitelist(ImmutableSet.of("ddb-foo"))
-                .build();
-
-        studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request, UPLOAD_END_DATE_TIME_OBJ);
-
-        assertEquals(studyIdsToUpdate.size(), 1);
-        assertEquals(studyIdsToUpdate.get("ddb-foo").toString(), LAST_EXPORT_DATE_TIME_OBJ.toString());
-    }
-
-    @Test
-    public void bootstrapStudyIdsToQueryTestEndDateTimeBeforeLastExportDateTime() {
-        // mock study table and study id list
-        Table mockStudyTable = mock(Table.class);
-        DynamoScanHelper mockDdbScanHelper = mock(DynamoScanHelper.class);
-
-        Item item1 = new Item().withString(IDENTIFIER, "ddb-foo");
-        Item item2 = new Item().withString(IDENTIFIER, "ddb-bar");
-        List<Item> studyIdList = ImmutableList.of(item1, item2);
-        when(mockDdbScanHelper.scan(any())).thenReturn(studyIdList);
-
-        // mock exportTime ddb table with mock items
-        Table mockExportTimeTable = mock(Table.class);
-        when(mockExportTimeTable.getTableName()).thenReturn(EXPORT_TIME_TABLE_NAME);
-
-        // mock export time table's last export date time to after the test end date time
-        Item fooItem = new Item().withString(STUDY_ID, "ddb-foo").withLong(
-                LAST_EXPORT_DATE_TIME, LAST_EXPORT_DATE_TIME_OBJ_AFTER.getMillis());
-        Item barItem = new Item().withString(STUDY_ID, "ddb-bar").withLong(
-                LAST_EXPORT_DATE_TIME, LAST_EXPORT_DATE_TIME_OBJ_AFTER.getMillis());
-        when(mockExportTimeTable.getItem(STUDY_ID, "ddb-foo")).thenReturn(fooItem);
-        when(mockExportTimeTable.getItem(STUDY_ID, "ddb-bar")).thenReturn(barItem);
-
-        DynamoHelper dynamoHelper = new DynamoHelper();
-        dynamoHelper.setDdbStudyTable(mockStudyTable);
-        dynamoHelper.setDdbScanHelper(mockDdbScanHelper);
-        dynamoHelper.setDdbExportTimeTable(mockExportTimeTable);
-        dynamoHelper.setConfig(mockConfig());
-
-        // mock request
-        BridgeExporterRequest request;
-        Map<String, DateTime> studyIdsToUpdate;
-        // daily
-        request = new BridgeExporterRequest.Builder().withEndDateTime(UPLOAD_END_DATE_TIME_OBJ)
-                .withExportType(ExportType.DAILY).build();
-        studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request, UPLOAD_END_DATE_TIME_OBJ);
-
-        // should output an empty study ids map since given end date time is before last export date time
-        assertEquals(studyIdsToUpdate.size(), 0);
-
-        // hourly
-        request = new BridgeExporterRequest.Builder().withEndDateTime(UPLOAD_END_DATE_TIME_OBJ)
-                .withExportType(ExportType.HOURLY)
-                .withStudyWhitelist(ImmutableSet.of("ddb-foo"))
-                .build();
-
-        studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request, UPLOAD_END_DATE_TIME_OBJ);
-
-        assertEquals(studyIdsToUpdate.size(), 0);
-
-        // instant
-        request = new BridgeExporterRequest.Builder()
-                .withExportType(ExportType.INSTANT)
-                .withStudyWhitelist(ImmutableSet.of("ddb-foo"))
-                .build();
-
-        studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request, UPLOAD_END_DATE_TIME_OBJ);
-
-        assertEquals(studyIdsToUpdate.size(), 0);
-    }
-
-    @Test
-    public void bootstrapStudyIdsToQueryTestNullItem() {
-        // mock study table and study id list
-        Table mockStudyTable = mock(Table.class);
-        DynamoScanHelper mockDdbScanHelper = mock(DynamoScanHelper.class);
-
-        Item item1 = new Item().withString(IDENTIFIER, "ddb-foo");
-        Item item2 = new Item().withString(IDENTIFIER, "ddb-bar");
-        List<Item> studyIdList = ImmutableList.of(item1, item2);
-        when(mockDdbScanHelper.scan(any())).thenReturn(studyIdList);
-
-        // mock exportTime ddb table with mock items
-        Table mockExportTimeTable = mock(Table.class);
-        when(mockExportTimeTable.getTableName()).thenReturn(EXPORT_TIME_TABLE_NAME);
-
-        DynamoHelper dynamoHelper = new DynamoHelper();
-        dynamoHelper.setDdbStudyTable(mockStudyTable);
-        dynamoHelper.setDdbScanHelper(mockDdbScanHelper);
-        dynamoHelper.setDdbExportTimeTable(mockExportTimeTable);
-        dynamoHelper.setConfig(mockConfig());
-
-        // mock request
-        BridgeExporterRequest request;
-        Map<String, DateTime> studyIdsToUpdate;
-        // daily
-        request = new BridgeExporterRequest.Builder().withEndDateTime(UPLOAD_END_DATE_TIME_OBJ)
-                .withExportType(ExportType.DAILY).build();
-        studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request, UPLOAD_END_DATE_TIME_OBJ);
-
-        assertEquals(studyIdsToUpdate.size(), 2);
-        assertEquals(studyIdsToUpdate.get("ddb-foo").toString(), UPLOAD_START_DATE_TIME_OBJ.toString());
-        assertEquals(studyIdsToUpdate.get("ddb-bar").toString(), UPLOAD_START_DATE_TIME_OBJ.toString());
-
-        // hourly
-        request = new BridgeExporterRequest.Builder().withEndDateTime(UPLOAD_END_DATE_TIME_OBJ)
-                .withExportType(ExportType.HOURLY)
-                .withStudyWhitelist(ImmutableSet.of("ddb-foo"))
-                .build();
-
-        studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request, UPLOAD_END_DATE_TIME_OBJ);
-
-        assertEquals(studyIdsToUpdate.size(), 1);
-        assertEquals(studyIdsToUpdate.get("ddb-foo").toString(), UPLOAD_START_DATE_TIME_OBJ_HOUR.toString());
-
-        // instant
-        request = new BridgeExporterRequest.Builder()
-                .withExportType(ExportType.INSTANT)
-                .withStudyWhitelist(ImmutableSet.of("ddb-foo"))
-                .build();
-
-        studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request, UPLOAD_END_DATE_TIME_OBJ);
-
-        assertEquals(studyIdsToUpdate.size(), 1);
-        assertEquals(studyIdsToUpdate.get("ddb-foo").toString(), UPLOAD_START_DATE_TIME_OBJ.toString());
-    }
-
-    @Test
-    public void bootstrapStudyIdsToQueryTestIgnoreLastExportTime() {
-        // mock study table and study id list
-        Table mockStudyTable = mock(Table.class);
-        DynamoScanHelper mockDdbScanHelper = mock(DynamoScanHelper.class);
-
-        Item item1 = new Item().withString(IDENTIFIER, "ddb-foo").withLong(
-                LAST_EXPORT_DATE_TIME, LAST_EXPORT_DATE_TIME_OBJ.getMillis());
-        Item item2 = new Item().withString(IDENTIFIER, "ddb-bar").withLong(
-                LAST_EXPORT_DATE_TIME, LAST_EXPORT_DATE_TIME_OBJ.getMillis());
-        List<Item> studyIdList = ImmutableList.of(item1, item2);
-        when(mockDdbScanHelper.scan(any())).thenReturn(studyIdList);
-
-        // mock exportTime ddb table with mock items
-        Table mockExportTimeTable = mock(Table.class);
-        when(mockExportTimeTable.getTableName()).thenReturn(EXPORT_TIME_TABLE_NAME);
-
-        DynamoHelper dynamoHelper = new DynamoHelper();
-        dynamoHelper.setDdbStudyTable(mockStudyTable);
-        dynamoHelper.setDdbScanHelper(mockDdbScanHelper);
-        dynamoHelper.setDdbExportTimeTable(mockExportTimeTable);
-        dynamoHelper.setConfig(mockConfig());
-
-        // mock request
-        BridgeExporterRequest request;
-        Map<String, DateTime> studyIdsToUpdate;
-        // daily
-        request = new BridgeExporterRequest.Builder().withEndDateTime(UPLOAD_END_DATE_TIME_OBJ)
-                .withExportType(ExportType.DAILY)
-                .withIgnoreLastExportTime(true).build();
-        studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request, UPLOAD_END_DATE_TIME_OBJ);
-
-        assertEquals(studyIdsToUpdate.size(), 2);
-        assertEquals(studyIdsToUpdate.get("ddb-foo").toString(), UPLOAD_START_DATE_TIME_OBJ.toString());
-        assertEquals(studyIdsToUpdate.get("ddb-bar").toString(), UPLOAD_START_DATE_TIME_OBJ.toString());
-
-        // hourly
-        request = new BridgeExporterRequest.Builder().withEndDateTime(UPLOAD_END_DATE_TIME_OBJ)
-                .withExportType(ExportType.HOURLY)
-                .withIgnoreLastExportTime(true)
-                .withStudyWhitelist(ImmutableSet.of("ddb-foo"))
-                .build();
-
-        studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request, UPLOAD_END_DATE_TIME_OBJ);
-
-        assertEquals(studyIdsToUpdate.size(), 1);
-        assertEquals(studyIdsToUpdate.get("ddb-foo").toString(), UPLOAD_START_DATE_TIME_OBJ_HOUR.toString());
-
-        // instant
-        request = new BridgeExporterRequest.Builder()
-                .withExportType(ExportType.INSTANT)
-                .withIgnoreLastExportTime(true)
-                .withStudyWhitelist(ImmutableSet.of("ddb-foo"))
-                .build();
-
-        studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request, UPLOAD_END_DATE_TIME_OBJ);
-
-        assertEquals(studyIdsToUpdate.size(), 1);
-        assertEquals(studyIdsToUpdate.get("ddb-foo").toString(), UPLOAD_START_DATE_TIME_OBJ.toString());
-    }
-
-    @Test
-    public void bootstrapStudyIdsToQueryTestIgnoreLastExportTimeWithStartDateTime() {
-        // mock study table and study id list
-        Table mockStudyTable = mock(Table.class);
-        DynamoScanHelper mockDdbScanHelper = mock(DynamoScanHelper.class);
-
-        Item item1 = new Item().withString(IDENTIFIER, "ddb-foo").withLong(
-                LAST_EXPORT_DATE_TIME, LAST_EXPORT_DATE_TIME_OBJ.getMillis());
-        Item item2 = new Item().withString(IDENTIFIER, "ddb-bar").withLong(
-                LAST_EXPORT_DATE_TIME, LAST_EXPORT_DATE_TIME_OBJ.getMillis());
-        List<Item> studyIdList = ImmutableList.of(item1, item2);
-        when(mockDdbScanHelper.scan(any())).thenReturn(studyIdList);
-
-        // mock exportTime ddb table with mock items
-        Table mockExportTimeTable = mock(Table.class);
-        when(mockExportTimeTable.getTableName()).thenReturn(EXPORT_TIME_TABLE_NAME);
-
-        DynamoHelper dynamoHelper = new DynamoHelper();
-        dynamoHelper.setDdbStudyTable(mockStudyTable);
-        dynamoHelper.setDdbScanHelper(mockDdbScanHelper);
-        dynamoHelper.setDdbExportTimeTable(mockExportTimeTable);
-        dynamoHelper.setConfig(mockConfig());
-
-        // mock request
-        BridgeExporterRequest request;
-        Map<String, DateTime> studyIdsToUpdate;
-        // daily
-        request = new BridgeExporterRequest.Builder().withEndDateTime(UPLOAD_END_DATE_TIME_OBJ)
-                .withIgnoreLastExportTime(true)
-                .withStartDateTime(EXPORT_START_DATE_TIME_OBJ)
-                .build();
-        studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request, UPLOAD_END_DATE_TIME_OBJ);
-
-        assertEquals(studyIdsToUpdate.size(), 2);
-        assertEquals(studyIdsToUpdate.get("ddb-foo").toString(), EXPORT_START_DATE_TIME_OBJ.toString());
-        assertEquals(studyIdsToUpdate.get("ddb-bar").toString(), EXPORT_START_DATE_TIME_OBJ.toString());
-
-        // hourly
-        request = new BridgeExporterRequest.Builder().withEndDateTime(UPLOAD_END_DATE_TIME_OBJ)
-                .withIgnoreLastExportTime(true)
-                .withStudyWhitelist(ImmutableSet.of("ddb-foo"))
-                .withStartDateTime(EXPORT_START_DATE_TIME_OBJ)
-                .build();
-
-        studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request, UPLOAD_END_DATE_TIME_OBJ);
-
-        assertEquals(studyIdsToUpdate.size(), 1);
-        assertEquals(studyIdsToUpdate.get("ddb-foo").toString(), EXPORT_START_DATE_TIME_OBJ.toString());
-
-        // instant
-        request = new BridgeExporterRequest.Builder()
-                .withIgnoreLastExportTime(true)
-                .withStudyWhitelist(ImmutableSet.of("ddb-foo"))
-                .withStartDateTime(EXPORT_START_DATE_TIME_OBJ)
-                .withEndDateTime(UPLOAD_END_DATE_TIME_OBJ)
-                .build();
-
-        studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request, UPLOAD_END_DATE_TIME_OBJ);
-
-        assertEquals(studyIdsToUpdate.size(), 1);
-        assertEquals(studyIdsToUpdate.get("ddb-foo").toString(), EXPORT_START_DATE_TIME_OBJ.toString());
-    }
-
-    @Test
     public void bootstrapStudyIdsToQueryTestS3Override() throws Exception {
         DynamoHelper dynamoHelper = new DynamoHelper();
         BridgeExporterRequest request = new BridgeExporterRequest.Builder().withRecordIdS3Override("test-override")
-                .withIgnoreLastExportTime(true).build();
-        Map<String, DateTime> retStudyIds = dynamoHelper.bootstrapStudyIdsToQuery(request, UPLOAD_END_DATE_TIME_OBJ);
+                .withUseLastExportTime(false).build();
+        Map<String, DateTime> retStudyIds = dynamoHelper.bootstrapStudyIdsToQuery(request);
 
         assertEquals(retStudyIds.size(), 0);
+    }
+
+    @Test
+    public void bootstrapStudyIdsToQueryTestNormal() throws Exception {
+        // mock study table and study id list
+        Table mockStudyTable = mock(Table.class);
+        DynamoScanHelper mockDdbScanHelper = mock(DynamoScanHelper.class);
+
+        Item item1 = new Item().withString(IDENTIFIER, "ddb-foo");
+        Item item2 = new Item().withString(IDENTIFIER, "ddb-bar");
+        List<Item> studyIdList = ImmutableList.of(item1, item2);
+        when(mockDdbScanHelper.scan(mockStudyTable)).thenReturn(studyIdList);
+
+        // mock exportTime ddb table with mock items
+        Table mockExportTimeTable = mock(Table.class);
+        Item fooItem = new Item().withString(STUDY_ID, "ddb-foo").withLong(
+                LAST_EXPORT_DATE_TIME, FOO_LAST_EXPORT_TIME.getMillis());
+        Item barItem = new Item().withString(STUDY_ID, "ddb-bar").withLong(
+                LAST_EXPORT_DATE_TIME, BAR_LAST_EXPORT_TIME.getMillis());
+        when(mockExportTimeTable.getItem(STUDY_ID, "ddb-foo")).thenReturn(fooItem);
+        when(mockExportTimeTable.getItem(STUDY_ID, "ddb-bar")).thenReturn(barItem);
+
+        DynamoHelper dynamoHelper = new DynamoHelper();
+        dynamoHelper.setDdbStudyTable(mockStudyTable);
+        dynamoHelper.setDdbScanHelper(mockDdbScanHelper);
+        dynamoHelper.setDdbExportTimeTable(mockExportTimeTable);
+        dynamoHelper.setConfig(mockConfig());
+
+        // mock request
+        BridgeExporterRequest request = new BridgeExporterRequest.Builder().withEndDateTime(END_DATE_TIME)
+                .withUseLastExportTime(true).build();
+        Map<String, DateTime> studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request);
+
+        assertEquals(studyIdsToUpdate.size(), 2);
+        assertEquals(studyIdsToUpdate.get("ddb-foo").toString(), FOO_LAST_EXPORT_TIME.toString());
+        assertEquals(studyIdsToUpdate.get("ddb-bar").toString(), BAR_LAST_EXPORT_TIME.toString());
+    }
+
+    @Test
+    public void bootstrapStudyIdsToQueryTestWithWhitelist() throws Exception {
+        // mock study table and study id list
+        DynamoScanHelper mockDdbScanHelper = mock(DynamoScanHelper.class);
+
+        // mock exportTime ddb table with mock items
+        Table mockExportTimeTable = mock(Table.class);
+        Item fooItem = new Item().withString(STUDY_ID, "ddb-foo").withLong(
+                LAST_EXPORT_DATE_TIME, FOO_LAST_EXPORT_TIME.getMillis());
+        Item barItem = new Item().withString(STUDY_ID, "ddb-bar").withLong(
+                LAST_EXPORT_DATE_TIME, BAR_LAST_EXPORT_TIME.getMillis());
+        when(mockExportTimeTable.getItem(STUDY_ID, "ddb-foo")).thenReturn(fooItem);
+        when(mockExportTimeTable.getItem(STUDY_ID, "ddb-bar")).thenReturn(barItem);
+
+        DynamoHelper dynamoHelper = new DynamoHelper();
+        dynamoHelper.setDdbScanHelper(mockDdbScanHelper);
+        dynamoHelper.setDdbExportTimeTable(mockExportTimeTable);
+        dynamoHelper.setConfig(mockConfig());
+
+        // mock request
+        BridgeExporterRequest request = new BridgeExporterRequest.Builder().withEndDateTime(END_DATE_TIME)
+                .withUseLastExportTime(true).withStudyWhitelist(ImmutableSet.of("ddb-foo", "ddb-bar")).build();
+        Map<String, DateTime> studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request);
+
+        assertEquals(studyIdsToUpdate.size(), 2);
+        assertEquals(studyIdsToUpdate.get("ddb-foo").toString(), FOO_LAST_EXPORT_TIME.toString());
+        assertEquals(studyIdsToUpdate.get("ddb-bar").toString(), BAR_LAST_EXPORT_TIME.toString());
+
+        // We never scan the study table.
+        verify(mockDdbScanHelper, never()).scan(any());
+    }
+
+    @Test
+    public void bootstrapStudyIdsToQueryTestWithStartDateTime() throws Exception {
+        // mock study table and study id list
+        Table mockStudyTable = mock(Table.class);
+        DynamoScanHelper mockDdbScanHelper = mock(DynamoScanHelper.class);
+
+        Item item1 = new Item().withString(IDENTIFIER, "ddb-foo");
+        Item item2 = new Item().withString(IDENTIFIER, "ddb-bar");
+        List<Item> studyIdList = ImmutableList.of(item1, item2);
+        when(mockDdbScanHelper.scan(mockStudyTable)).thenReturn(studyIdList);
+
+        // mock exportTime ddb table with mock items
+        Table mockExportTimeTable = mock(Table.class);
+
+        DynamoHelper dynamoHelper = new DynamoHelper();
+        dynamoHelper.setDdbStudyTable(mockStudyTable);
+        dynamoHelper.setDdbScanHelper(mockDdbScanHelper);
+        dynamoHelper.setDdbExportTimeTable(mockExportTimeTable);
+        dynamoHelper.setConfig(mockConfig());
+
+        // mock request
+        BridgeExporterRequest request = new BridgeExporterRequest.Builder().withStartDateTime(START_DATE_TIME)
+                .withEndDateTime(END_DATE_TIME).withUseLastExportTime(false).build();
+        Map<String, DateTime> studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request);
+
+        assertEquals(studyIdsToUpdate.size(), 2);
+        assertEquals(studyIdsToUpdate.get("ddb-foo").toString(), START_DATE_TIME.toString());
+        assertEquals(studyIdsToUpdate.get("ddb-bar").toString(), START_DATE_TIME.toString());
+
+        // We never call the export time table
+        verify(mockExportTimeTable, never()).getItem(any(), any());
+    }
+
+    @Test
+    public void bootstrapStudyIdsToQueryTestNullItem() throws Exception {
+        // mock study table and study id list
+        Table mockStudyTable = mock(Table.class);
+        DynamoScanHelper mockDdbScanHelper = mock(DynamoScanHelper.class);
+
+        Item item1 = new Item().withString(IDENTIFIER, "ddb-foo");
+        Item item2 = new Item().withString(IDENTIFIER, "ddb-bar");
+        List<Item> studyIdList = ImmutableList.of(item1, item2);
+        when(mockDdbScanHelper.scan(mockStudyTable)).thenReturn(studyIdList);
+
+        // mock exportTime ddb table with mock items
+        Table mockExportTimeTable = mock(Table.class);
+
+        DynamoHelper dynamoHelper = new DynamoHelper();
+        dynamoHelper.setDdbStudyTable(mockStudyTable);
+        dynamoHelper.setDdbScanHelper(mockDdbScanHelper);
+        dynamoHelper.setDdbExportTimeTable(mockExportTimeTable);
+        dynamoHelper.setConfig(mockConfig());
+
+        // mock request
+        BridgeExporterRequest request = new BridgeExporterRequest.Builder().withEndDateTime(END_DATE_TIME)
+                .withUseLastExportTime(true).build();
+        Map<String, DateTime> studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request);
+
+        assertEquals(studyIdsToUpdate.size(), 2);
+        assertEquals(studyIdsToUpdate.get("ddb-foo").toString(), CALCULATED_LAST_EXPORT_TIME.toString());
+        assertEquals(studyIdsToUpdate.get("ddb-bar").toString(), CALCULATED_LAST_EXPORT_TIME.toString());
+    }
+
+    @Test
+    public void bootstrapStudyIdsToQueryTestEndDateTimeBeforeLastExportDateTime() throws Exception {
+        // mock study table and study id list
+        Table mockStudyTable = mock(Table.class);
+        DynamoScanHelper mockDdbScanHelper = mock(DynamoScanHelper.class);
+
+        Item item1 = new Item().withString(IDENTIFIER, "ddb-foo");
+        Item item2 = new Item().withString(IDENTIFIER, "ddb-bar");
+        List<Item> studyIdList = ImmutableList.of(item1, item2);
+        when(mockDdbScanHelper.scan(mockStudyTable)).thenReturn(studyIdList);
+
+        // mock exportTime ddb table with mock items
+        Table mockExportTimeTable = mock(Table.class);
+        Item fooItem = new Item().withString(STUDY_ID, "ddb-foo").withLong(
+                LAST_EXPORT_DATE_TIME, END_DATE_TIME.getMillis());
+        Item barItem = new Item().withString(STUDY_ID, "ddb-bar").withLong(
+                LAST_EXPORT_DATE_TIME, END_DATE_TIME.getMillis() + 10000);
+        when(mockExportTimeTable.getItem(STUDY_ID, "ddb-foo")).thenReturn(fooItem);
+        when(mockExportTimeTable.getItem(STUDY_ID, "ddb-bar")).thenReturn(barItem);
+
+        DynamoHelper dynamoHelper = new DynamoHelper();
+        dynamoHelper.setDdbStudyTable(mockStudyTable);
+        dynamoHelper.setDdbScanHelper(mockDdbScanHelper);
+        dynamoHelper.setDdbExportTimeTable(mockExportTimeTable);
+        dynamoHelper.setConfig(mockConfig());
+
+        // mock request
+        BridgeExporterRequest request = new BridgeExporterRequest.Builder().withEndDateTime(END_DATE_TIME)
+                .withUseLastExportTime(true).build();
+        Map<String, DateTime> studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request);
+
+        // should output an empty study ids map since given end date time is before last export date time
+        assertEquals(studyIdsToUpdate.size(), 0);
     }
 
     @Test
@@ -599,7 +458,7 @@ public class DynamoHelperTest {
         testStudyIdsToUpdate.add("id2");
 
         // execute
-        dynamoHelper.updateExportTimeTable(testStudyIdsToUpdate, UPLOAD_END_DATE_TIME_OBJ);
+        dynamoHelper.updateExportTimeTable(testStudyIdsToUpdate, END_DATE_TIME);
 
         // verify
         ArgumentCaptor<Item> itemArgumentCaptor = ArgumentCaptor.forClass(Item.class);
@@ -608,10 +467,10 @@ public class DynamoHelperTest {
         List<Item> items = itemArgumentCaptor.getAllValues();
         Item item1 = items.get(0);
         assertEquals(item1.get(STUDY_ID), "id1");
-        assertEquals(item1.getLong(LAST_EXPORT_DATE_TIME), UPLOAD_END_DATE_TIME_OBJ.getMillis());
+        assertEquals(item1.getLong(LAST_EXPORT_DATE_TIME), END_DATE_TIME.getMillis());
         Item item2 = items.get(1);
         assertEquals(item2.get(STUDY_ID), "id2");
-        assertEquals(item2.getLong(LAST_EXPORT_DATE_TIME), UPLOAD_END_DATE_TIME_OBJ.getMillis());
+        assertEquals(item2.getLong(LAST_EXPORT_DATE_TIME), END_DATE_TIME.getMillis());
     }
 
     @Test
@@ -620,10 +479,8 @@ public class DynamoHelperTest {
         Table mockDdbExportTimeTable = mock(Table.class);
         dynamoHelper.setDdbExportTimeTable(mockDdbExportTimeTable);
 
-        List<String> testStudyIdsToUpdate = new ArrayList<>();
-
         // execute
-        dynamoHelper.updateExportTimeTable(testStudyIdsToUpdate, UPLOAD_END_DATE_TIME_OBJ);
+        dynamoHelper.updateExportTimeTable(ImmutableList.of(), END_DATE_TIME);
 
         // verify
         verifyNoMoreInteractions(mockDdbExportTimeTable);

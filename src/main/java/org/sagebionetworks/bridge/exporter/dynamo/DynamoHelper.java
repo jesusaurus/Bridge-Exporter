@@ -12,7 +12,6 @@ import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
 import com.google.common.collect.ImmutableMap;
 import com.jcabi.aspects.Cacheable;
-import org.apache.commons.lang.StringUtils;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
 import org.slf4j.Logger;
@@ -22,10 +21,10 @@ import org.springframework.stereotype.Component;
 
 import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.dynamodb.DynamoScanHelper;
-import org.sagebionetworks.bridge.exporter.record.ExportType;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
+import org.sagebionetworks.bridge.sqs.PollSqsWorkerBadRequestException;
 
 /**
  * Encapsulates common calls Bridge-EX makes to DDB. Some of these have a little bit of logic or require marshalling
@@ -160,17 +159,19 @@ public class DynamoHelper {
 
     /**
      * Helper method to generate study ids for query.
-     * @param request
+     *
      * @return A Map with key is study id, value is the start date time to query ddb table.
      */
-    public Map<String, DateTime> bootstrapStudyIdsToQuery(BridgeExporterRequest request, DateTime endDateTime) {
-        // first check if it is s3 override request
-        if (StringUtils.isNotBlank(request.getRecordIdS3Override())) {
+    public Map<String, DateTime> bootstrapStudyIdsToQuery(BridgeExporterRequest request)
+            throws PollSqsWorkerBadRequestException {
+        DateTime endDateTime = request.getEndDateTime();
+        if (endDateTime == null) {
+            // This request doesn't use start/endDate time. The logic here can be skipped.
             return ImmutableMap.of();
         }
 
+        // Figure out which studies we need to process.
         List<String> studyIdList = new ArrayList<>();
-
         if (request.getStudyWhitelist() == null) {
             // get the study id list from ddb table
             Iterable<Item> scanOutcomes = ddbScanHelper.scan(ddbStudyTable);
@@ -181,33 +182,40 @@ public class DynamoHelper {
             studyIdList.addAll(request.getStudyWhitelist());
         }
 
+        // Figure out the time range (start time) for each study.
         Map<String, DateTime> studyIdsToQuery = new HashMap<>();
+        if (request.getStartDateTime() != null) {
+            // If we specified the start time, it's easy.
+            for (String oneStudyId : studyIdList) {
+                studyIdsToQuery.put(oneStudyId, request.getStartDateTime());
+            }
+        } else if (request.getUseLastExportTime()) {
+            for (String studyId : studyIdList) {
+                // If we're using last export time, query that for each study.
+                DateTime lastExportDateTime;
+                Item studyIdItem = ddbExportTimeTable.getItem(STUDY_ID, studyId);
+                if (studyIdItem != null) {
+                    lastExportDateTime = new DateTime(studyIdItem.getLong(LAST_EXPORT_DATE_TIME), timeZone);
+                } else {
+                    // If there's no last export time, bootstrap by exporting everything since the beginning of
+                    // yesterday.
+                    lastExportDateTime = endDateTime.minusDays(1).withTimeAtStartOfDay();
+                }
 
-        for (String studyId : studyIdList) {
-            Item studyIdItem = ddbExportTimeTable.getItem(STUDY_ID, studyId);
-            if (studyIdItem != null && !request.getIgnoreLastExportTime()) {
-                DateTime lastExportDateTime = new DateTime(studyIdItem.getLong(LAST_EXPORT_DATE_TIME), timeZone);
-                if (!endDateTime.isBefore(lastExportDateTime)) {
+                // If the time range is zero, don't export.
+                if (lastExportDateTime.isBefore(endDateTime)) {
                     studyIdsToQuery.put(studyId, lastExportDateTime);
                 }
-            } else {
-                if (request.getStartDateTime() != null) {
-                    // if we setup a start date time, just use it -- normally we will not setup this field.
-                    studyIdsToQuery.put(studyId, request.getStartDateTime());
-                } else {
-                    // bootstrap startDateTime with the exportType in request
-                    ExportType exportType = request.getExportType();
-                    studyIdsToQuery.put(studyId, exportType.getStartDateTime(endDateTime));
+
+                // then sleep 1 sec before next read
+                try {
+                    TimeUnit.SECONDS.sleep(1);
+                } catch (InterruptedException e) {
+                    LOG.error("Unable to sleep thread: " + e.getMessage(), e);
                 }
             }
-
-            // then sleep 1 sec before next read
-            try {
-                TimeUnit.SECONDS.sleep(1);
-            } catch (InterruptedException e) {
-                LOG.error("Unable to sleep thread: " +
-                        e.getMessage(), e);
-            }
+        } else {
+            throw new PollSqsWorkerBadRequestException("Request has neither startDateTime nor useLastExportTime=true");
         }
 
         return studyIdsToQuery;
@@ -215,8 +223,6 @@ public class DynamoHelper {
 
     /**
      * Helper method to update ddb exportTimeTable
-     * @param studyIdsToUpdate
-     * @param endDateTime
      */
     public void updateExportTimeTable(List<String> studyIdsToUpdate, DateTime endDateTime) {
         if (!studyIdsToUpdate.isEmpty() && endDateTime != null) {
@@ -241,7 +247,6 @@ public class DynamoHelper {
 
     /**
      * Helper function to parse ddb boolean value into boolean
-     * @return
      */
     private boolean parseDdbBoolean(Item item, String attributeName) {
         return item.getInt(attributeName) != 0;

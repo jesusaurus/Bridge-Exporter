@@ -23,7 +23,7 @@ public class BridgeExporterSqsCallbackTest {
         callback.setRecordProcessor(mockRecordProcessor);
 
         // execute and verify
-        callback.callback("{\"endDateTime\":\"2015-10-31T23:59:59.000Z\", \"exportType\":\"DAILY\"}");
+        callback.callback("{\"endDateTime\":\"2015-10-31T23:59:59.000Z\", \"useLastExportTime\":true}");
 
         ArgumentCaptor<BridgeExporterRequest> requestCaptor = ArgumentCaptor.forClass(BridgeExporterRequest.class);
         verify(mockRecordProcessor).processRecordsForRequest(requestCaptor.capture());

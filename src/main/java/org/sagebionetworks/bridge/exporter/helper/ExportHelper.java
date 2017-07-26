@@ -11,8 +11,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Charsets;
 import com.google.common.collect.ImmutableMap;
 import org.apache.commons.lang.StringUtils;
-import org.joda.time.DateTime;
-import org.joda.time.DateTimeZone;
 import org.sagebionetworks.repo.model.table.ColumnType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,8 +19,6 @@ import org.springframework.stereotype.Component;
 
 import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
-import org.sagebionetworks.bridge.exporter.record.ExportType;
-import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
 import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
@@ -55,7 +51,6 @@ public class ExportHelper {
 
     // config attributes
     private String attachmentBucket;
-    private DateTimeZone timeZone;
 
     // Spring helpers
     private Table ddbAttachmentTable;
@@ -65,7 +60,6 @@ public class ExportHelper {
     @Autowired
     public final void setConfig(Config config) {
         this.attachmentBucket = config.get(BridgeExporterUtil.CONFIG_KEY_ATTACHMENT_S3_BUCKET);
-        timeZone = DateTimeZone.forID(config.get(BridgeExporterUtil.CONFIG_KEY_TIME_ZONE_NAME));
     }
 
     /** DDB Attachments table, for uploading and downloading attachments. */
@@ -221,21 +215,5 @@ public class ExportHelper {
         // upload to S3
         s3Helper.writeBytesToS3(attachmentBucket, attachmentId, text.getBytes(Charsets.UTF_8));
         return attachmentId;
-    }
-
-    /**
-     * Helper method to get end date time from sqs request
-     * @param request
-     * @return
-     */
-    public DateTime getEndDateTime(BridgeExporterRequest request) {
-        ExportType exportType = request.getExportType();
-
-        if (exportType != null && exportType == ExportType.INSTANT) {
-            // set end date time to 1 min ago to avoid clock skew issue for instant export
-            return DateTime.now().minusMinutes(1);
-        } else {
-            return request.getEndDateTime();
-        }
     }
 }
