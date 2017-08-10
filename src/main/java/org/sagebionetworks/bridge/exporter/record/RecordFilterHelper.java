@@ -10,7 +10,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import org.sagebionetworks.bridge.exporter.dynamo.DynamoHelper;
-import org.sagebionetworks.bridge.exporter.dynamo.StudyInfo;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterSharingMode;
@@ -70,12 +69,9 @@ public class RecordFilterHelper {
                     BridgeExporterUtil.getSchemaKeyForRecord(record));
         }
 
-        // filter based on study configuration
-        boolean excludeByStudyConfig = shouldExcludeByStudyConfiguration(metrics, studyWhitelist, studyId);
-
         // If any of the filters are hit, we filter the record. (We don't use short-circuiting because we want to
         // collect the metrics.)
-        return excludeBySharingScope || excludeByStudy || excludeByTable || excludeByStudyConfig;
+        return excludeBySharingScope || excludeByStudy || excludeByTable;
     }
 
     // Helper method that handles the sharing filter.
@@ -145,39 +141,6 @@ public class RecordFilterHelper {
             return false;
         } else {
             metrics.incrementCounter("excluded[" + schemaKey + "]");
-            return true;
-        }
-    }
-
-    // Helper method that fetches and filters based on study configuration
-    private boolean shouldExcludeByStudyConfiguration(Metrics metrics, Set<String> studyWhitelist, String studyId) {
-        StudyInfo studyInfo = dynamoHelper.getStudyInfo(studyId);
-
-        // Configured studies will return non-null studyInfo. Unconfigured studies will return null ones.
-        if (studyInfo == null) {
-            metrics.incrementCounter("unconfigured[" + studyId + "]");
-            return true;
-        }
-
-        if (studyInfo.getDisableExport()) {
-            metrics.incrementCounter("disabled-export study[" + studyId + "]");
-            return true;
-        }
-
-        // If the study doesn't have a custom export schedule, it's included.
-        if (!studyInfo.getUsesCustomExportSchedule()) {
-            metrics.incrementCounter("configured[" + studyId + "]");
-            return false;
-        }
-
-        if (studyWhitelist != null && studyWhitelist.contains(studyId)) {
-            // If there is a study whitelist that includes this study, then this is a custom export job. Include the
-            // record.
-            metrics.incrementCounter("custom-export-accepted[" + studyId + "]");
-            return false;
-        } else {
-            // This is not a custom job. We shouldn't include the record.
-            metrics.incrementCounter("custom-export-excluded[" + studyId + "]");
             return true;
         }
     }

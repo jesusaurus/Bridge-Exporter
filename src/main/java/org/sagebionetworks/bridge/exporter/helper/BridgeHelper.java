@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import com.google.common.collect.Lists;
+import com.google.common.util.concurrent.RateLimiter;
 import com.jcabi.aspects.Cacheable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,6 +35,10 @@ public class BridgeHelper {
 
     private ClientManager bridgeClientManager;
     private SignIn bridgeCredentials;
+
+    // Rate limiter, used to limit the amount of traffic to Bridge, specifically for when we loop over a potentially
+    // unbounded series of studies. Conservatively limit at 1 req/sec.
+    private final RateLimiter rateLimiter = RateLimiter.create(1.0);
 
     /** Bridge Client Manager, with credentials for Exporter account. This is used to refresh the session. */
     @Autowired
@@ -71,6 +76,8 @@ public class BridgeHelper {
         // breaking down the list into batches whenever the list size exceeds the batch size
         List<List<String>> batches = Lists.partition(recordIds, MAX_BATCH_SIZE);
         batches.forEach(batch-> {
+            rateLimiter.acquire();
+
             RecordExportStatusRequest request = new RecordExportStatusRequest().recordIds(batch).synapseExporterStatus(
                     status);
             try {
@@ -78,12 +85,6 @@ public class BridgeHelper {
                         .updateRecordExportStatuses(request).execute());
             } catch (IOException ex) {
                 throw new BridgeSDKException("Error sending record export statuses to Bridge: " + ex.getMessage(), ex);
-            }
-
-            try {
-                TimeUnit.SECONDS.sleep(1);
-            } catch (InterruptedException e) {
-                LOG.warn("Error sleeping while sending export statuses: " + e.getMessage(), e);
             }
         });
     }

@@ -160,6 +160,8 @@ public class BridgeExporterRecordProcessor {
         try {
             // determine study ids and their corresponding start date time
             Map<String, DateTime> studyIdsToQuery = dynamoHelper.bootstrapStudyIdsToQuery(request);
+            LOG.info("Exporting the following studies: " + BridgeExporterUtil.COMMA_SPACE_JOINER.join(studyIdsToQuery
+                    .keySet()));
 
             Iterable<String> recordIdIterable = recordIdSourceFactory.getRecordSourceForRequest(request,
                     studyIdsToQuery);

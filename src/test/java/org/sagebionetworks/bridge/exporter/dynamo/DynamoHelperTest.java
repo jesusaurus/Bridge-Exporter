@@ -1,8 +1,10 @@
 package org.sagebionetworks.bridge.exporter.dynamo;
 
 import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
@@ -157,7 +159,22 @@ public class DynamoHelperTest {
     }
 
     @Test
-    public void getStudyInfoDisableExport() {
+    public void getStudyInfoNullStudy() {
+        // mock DDB Study table
+        Table mockStudyTable = mock(Table.class);
+        when(mockStudyTable.getItem("identifier", "test-study")).thenReturn(null);
+
+        // set up Dynamo Helper
+        DynamoHelper helper = new DynamoHelper();
+        helper.setDdbStudyTable(mockStudyTable);
+
+        // execute and validate - should return null instead of crashing
+        StudyInfo studyInfo = helper.getStudyInfo("test-study");
+        assertNull(studyInfo);
+    }
+
+    @Test
+    public void getStudyInfoDisableExportFalse() {
         // set disable export to false, proceeds as normal
         Item studyItem = new Item().withLong("synapseDataAccessTeamId", 1337)
                 .withString("synapseProjectId", "test-synapse-table")
@@ -179,7 +196,7 @@ public class DynamoHelperTest {
     }
 
     @Test
-    public void getStudyInfoEnableExport() {
+    public void getStudyInfoDisableExportTrue() {
         // set disable export to true, should have no study info
         Item studyItem = new Item().withLong("synapseDataAccessTeamId", 1337)
                 .withString("synapseProjectId", "test-synapse-table")
@@ -283,15 +300,6 @@ public class DynamoHelperTest {
 
     @Test
     public void bootstrapStudyIdsToQueryTestNormal() throws Exception {
-        // mock study table and study id list
-        Table mockStudyTable = mock(Table.class);
-        DynamoScanHelper mockDdbScanHelper = mock(DynamoScanHelper.class);
-
-        Item item1 = new Item().withString(IDENTIFIER, "ddb-foo");
-        Item item2 = new Item().withString(IDENTIFIER, "ddb-bar");
-        List<Item> studyIdList = ImmutableList.of(item1, item2);
-        when(mockDdbScanHelper.scan(mockStudyTable)).thenReturn(studyIdList);
-
         // mock exportTime ddb table with mock items
         Table mockExportTimeTable = mock(Table.class);
         Item fooItem = new Item().withString(STUDY_ID, "ddb-foo").withLong(
@@ -301,11 +309,27 @@ public class DynamoHelperTest {
         when(mockExportTimeTable.getItem(STUDY_ID, "ddb-foo")).thenReturn(fooItem);
         when(mockExportTimeTable.getItem(STUDY_ID, "ddb-bar")).thenReturn(barItem);
 
-        DynamoHelper dynamoHelper = new DynamoHelper();
-        dynamoHelper.setDdbStudyTable(mockStudyTable);
-        dynamoHelper.setDdbScanHelper(mockDdbScanHelper);
+        // Spy DynamoHelper, so we can mock getStudyInfo() and not entwine the implementation of that with this test.
+        DynamoHelper dynamoHelper = spy(new DynamoHelper());
         dynamoHelper.setDdbExportTimeTable(mockExportTimeTable);
         dynamoHelper.setConfig(mockConfig());
+        mockDdbScanHelperWithStudies(dynamoHelper, "ddb-foo", "ddb-bar", "unconfigured-study", "disabled-study",
+                "custom-export-study");
+
+        // mock getStudyInfo()
+        doReturn(new StudyInfo.Builder().withSynapseProjectId("foo-synapse-project").withDataAccessTeamId(1111L)
+                .withDisableExport(false).withUsesCustomExportSchedule(false).build())
+                .when(dynamoHelper).getStudyInfo("ddb-foo");
+        doReturn(new StudyInfo.Builder().withSynapseProjectId("bar-synapse-project").withDataAccessTeamId(2222L)
+                .withDisableExport(false).withUsesCustomExportSchedule(false).build())
+                .when(dynamoHelper).getStudyInfo("ddb-bar");
+        doReturn(null).when(dynamoHelper).getStudyInfo("unconfigured-study");
+        doReturn(new StudyInfo.Builder().withSynapseProjectId("disabled-project").withDataAccessTeamId(4444L)
+                .withDisableExport(true).withUsesCustomExportSchedule(false).build())
+                .when(dynamoHelper).getStudyInfo("disabled-study");
+        doReturn(new StudyInfo.Builder().withSynapseProjectId("custom-export-project").withDataAccessTeamId(5555L)
+                .withDisableExport(false).withUsesCustomExportSchedule(true).build())
+                .when(dynamoHelper).getStudyInfo("custom-export-study");
 
         // mock request
         BridgeExporterRequest request = new BridgeExporterRequest.Builder().withEndDateTime(END_DATE_TIME)
@@ -324,26 +348,36 @@ public class DynamoHelperTest {
 
         // mock exportTime ddb table with mock items
         Table mockExportTimeTable = mock(Table.class);
-        Item fooItem = new Item().withString(STUDY_ID, "ddb-foo").withLong(
+        Item fooItem = new Item().withString(STUDY_ID, "normal-study-foo").withLong(
                 LAST_EXPORT_DATE_TIME, FOO_LAST_EXPORT_TIME.getMillis());
-        Item barItem = new Item().withString(STUDY_ID, "ddb-bar").withLong(
+        Item barItem = new Item().withString(STUDY_ID, "custom-export-study-bar").withLong(
                 LAST_EXPORT_DATE_TIME, BAR_LAST_EXPORT_TIME.getMillis());
-        when(mockExportTimeTable.getItem(STUDY_ID, "ddb-foo")).thenReturn(fooItem);
-        when(mockExportTimeTable.getItem(STUDY_ID, "ddb-bar")).thenReturn(barItem);
+        when(mockExportTimeTable.getItem(STUDY_ID, "normal-study-foo")).thenReturn(fooItem);
+        when(mockExportTimeTable.getItem(STUDY_ID, "custom-export-study-bar")).thenReturn(barItem);
 
-        DynamoHelper dynamoHelper = new DynamoHelper();
+        // Spy DynamoHelper, so we can mock getStudyInfo() and not entwine the implementation of that with this test.
+        DynamoHelper dynamoHelper = spy(new DynamoHelper());
         dynamoHelper.setDdbScanHelper(mockDdbScanHelper);
         dynamoHelper.setDdbExportTimeTable(mockExportTimeTable);
         dynamoHelper.setConfig(mockConfig());
 
+        // mock getStudyInfo()
+        doReturn(new StudyInfo.Builder().withSynapseProjectId("normal-synapse-project").withDataAccessTeamId(1111L)
+                .withDisableExport(false).withUsesCustomExportSchedule(false).build())
+                .when(dynamoHelper).getStudyInfo("normal-study-foo");
+        doReturn(new StudyInfo.Builder().withSynapseProjectId("custom-export-project").withDataAccessTeamId(2222L)
+                .withDisableExport(false).withUsesCustomExportSchedule(true).build())
+                .when(dynamoHelper).getStudyInfo("custom-export-study-bar");
+
         // mock request
         BridgeExporterRequest request = new BridgeExporterRequest.Builder().withEndDateTime(END_DATE_TIME)
-                .withUseLastExportTime(true).withStudyWhitelist(ImmutableSet.of("ddb-foo", "ddb-bar")).build();
+                .withUseLastExportTime(true)
+                .withStudyWhitelist(ImmutableSet.of("normal-study-foo", "custom-export-study-bar")).build();
         Map<String, DateTime> studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request);
 
         assertEquals(studyIdsToUpdate.size(), 2);
-        assertEquals(studyIdsToUpdate.get("ddb-foo").toString(), FOO_LAST_EXPORT_TIME.toString());
-        assertEquals(studyIdsToUpdate.get("ddb-bar").toString(), BAR_LAST_EXPORT_TIME.toString());
+        assertEquals(studyIdsToUpdate.get("normal-study-foo").toString(), FOO_LAST_EXPORT_TIME.toString());
+        assertEquals(studyIdsToUpdate.get("custom-export-study-bar").toString(), BAR_LAST_EXPORT_TIME.toString());
 
         // We never scan the study table.
         verify(mockDdbScanHelper, never()).scan(any());
@@ -351,23 +385,22 @@ public class DynamoHelperTest {
 
     @Test
     public void bootstrapStudyIdsToQueryTestWithStartDateTime() throws Exception {
-        // mock study table and study id list
-        Table mockStudyTable = mock(Table.class);
-        DynamoScanHelper mockDdbScanHelper = mock(DynamoScanHelper.class);
-
-        Item item1 = new Item().withString(IDENTIFIER, "ddb-foo");
-        Item item2 = new Item().withString(IDENTIFIER, "ddb-bar");
-        List<Item> studyIdList = ImmutableList.of(item1, item2);
-        when(mockDdbScanHelper.scan(mockStudyTable)).thenReturn(studyIdList);
-
         // mock exportTime ddb table with mock items
         Table mockExportTimeTable = mock(Table.class);
 
-        DynamoHelper dynamoHelper = new DynamoHelper();
-        dynamoHelper.setDdbStudyTable(mockStudyTable);
-        dynamoHelper.setDdbScanHelper(mockDdbScanHelper);
+        // Spy DynamoHelper, so we can mock getStudyInfo() and not entwine the implementation of that with this test.
+        DynamoHelper dynamoHelper = spy(new DynamoHelper());
         dynamoHelper.setDdbExportTimeTable(mockExportTimeTable);
         dynamoHelper.setConfig(mockConfig());
+        mockDdbScanHelperWithStudies(dynamoHelper, "ddb-foo", "ddb-bar");
+
+        // mock getStudyInfo()
+        doReturn(new StudyInfo.Builder().withSynapseProjectId("foo-synapse-project").withDataAccessTeamId(1111L)
+                .withDisableExport(false).withUsesCustomExportSchedule(false).build())
+                .when(dynamoHelper).getStudyInfo("ddb-foo");
+        doReturn(new StudyInfo.Builder().withSynapseProjectId("bar-synapse-project").withDataAccessTeamId(2222L)
+                .withDisableExport(false).withUsesCustomExportSchedule(false).build())
+                .when(dynamoHelper).getStudyInfo("ddb-bar");
 
         // mock request
         BridgeExporterRequest request = new BridgeExporterRequest.Builder().withStartDateTime(START_DATE_TIME)
@@ -384,23 +417,22 @@ public class DynamoHelperTest {
 
     @Test
     public void bootstrapStudyIdsToQueryTestNullItem() throws Exception {
-        // mock study table and study id list
-        Table mockStudyTable = mock(Table.class);
-        DynamoScanHelper mockDdbScanHelper = mock(DynamoScanHelper.class);
-
-        Item item1 = new Item().withString(IDENTIFIER, "ddb-foo");
-        Item item2 = new Item().withString(IDENTIFIER, "ddb-bar");
-        List<Item> studyIdList = ImmutableList.of(item1, item2);
-        when(mockDdbScanHelper.scan(mockStudyTable)).thenReturn(studyIdList);
-
         // mock exportTime ddb table with mock items
         Table mockExportTimeTable = mock(Table.class);
 
-        DynamoHelper dynamoHelper = new DynamoHelper();
-        dynamoHelper.setDdbStudyTable(mockStudyTable);
-        dynamoHelper.setDdbScanHelper(mockDdbScanHelper);
+        // Spy DynamoHelper, so we can mock getStudyInfo() and not entwine the implementation of that with this test.
+        DynamoHelper dynamoHelper = spy(new DynamoHelper());
         dynamoHelper.setDdbExportTimeTable(mockExportTimeTable);
         dynamoHelper.setConfig(mockConfig());
+        mockDdbScanHelperWithStudies(dynamoHelper, "ddb-foo", "ddb-bar");
+
+        // mock getStudyInfo()
+        doReturn(new StudyInfo.Builder().withSynapseProjectId("foo-synapse-project").withDataAccessTeamId(1111L)
+                .withDisableExport(false).withUsesCustomExportSchedule(false).build())
+                .when(dynamoHelper).getStudyInfo("ddb-foo");
+        doReturn(new StudyInfo.Builder().withSynapseProjectId("bar-synapse-project").withDataAccessTeamId(2222L)
+                .withDisableExport(false).withUsesCustomExportSchedule(false).build())
+                .when(dynamoHelper).getStudyInfo("ddb-bar");
 
         // mock request
         BridgeExporterRequest request = new BridgeExporterRequest.Builder().withEndDateTime(END_DATE_TIME)
@@ -414,15 +446,6 @@ public class DynamoHelperTest {
 
     @Test
     public void bootstrapStudyIdsToQueryTestEndDateTimeBeforeLastExportDateTime() throws Exception {
-        // mock study table and study id list
-        Table mockStudyTable = mock(Table.class);
-        DynamoScanHelper mockDdbScanHelper = mock(DynamoScanHelper.class);
-
-        Item item1 = new Item().withString(IDENTIFIER, "ddb-foo");
-        Item item2 = new Item().withString(IDENTIFIER, "ddb-bar");
-        List<Item> studyIdList = ImmutableList.of(item1, item2);
-        when(mockDdbScanHelper.scan(mockStudyTable)).thenReturn(studyIdList);
-
         // mock exportTime ddb table with mock items
         Table mockExportTimeTable = mock(Table.class);
         Item fooItem = new Item().withString(STUDY_ID, "ddb-foo").withLong(
@@ -432,11 +455,19 @@ public class DynamoHelperTest {
         when(mockExportTimeTable.getItem(STUDY_ID, "ddb-foo")).thenReturn(fooItem);
         when(mockExportTimeTable.getItem(STUDY_ID, "ddb-bar")).thenReturn(barItem);
 
-        DynamoHelper dynamoHelper = new DynamoHelper();
-        dynamoHelper.setDdbStudyTable(mockStudyTable);
-        dynamoHelper.setDdbScanHelper(mockDdbScanHelper);
+        // Spy DynamoHelper, so we can mock getStudyInfo() and not entwine the implementation of that with this test.
+        DynamoHelper dynamoHelper = spy(new DynamoHelper());
         dynamoHelper.setDdbExportTimeTable(mockExportTimeTable);
         dynamoHelper.setConfig(mockConfig());
+        mockDdbScanHelperWithStudies(dynamoHelper, "ddb-foo", "ddb-bar");
+
+        // mock getStudyInfo()
+        doReturn(new StudyInfo.Builder().withSynapseProjectId("foo-synapse-project").withDataAccessTeamId(1111L)
+                .withDisableExport(false).withUsesCustomExportSchedule(false).build())
+                .when(dynamoHelper).getStudyInfo("ddb-foo");
+        doReturn(new StudyInfo.Builder().withSynapseProjectId("bar-synapse-project").withDataAccessTeamId(2222L)
+                .withDisableExport(false).withUsesCustomExportSchedule(false).build())
+                .when(dynamoHelper).getStudyInfo("ddb-bar");
 
         // mock request
         BridgeExporterRequest request = new BridgeExporterRequest.Builder().withEndDateTime(END_DATE_TIME)
@@ -445,6 +476,24 @@ public class DynamoHelperTest {
 
         // should output an empty study ids map since given end date time is before last export date time
         assertEquals(studyIdsToUpdate.size(), 0);
+    }
+
+    private static void mockDdbScanHelperWithStudies(DynamoHelper helper, String... studyIdVarArgs) {
+        // create mocks
+        Table mockStudyTable = mock(Table.class);
+        DynamoScanHelper mockDdbScanHelper = mock(DynamoScanHelper.class);
+
+        // create study entries in mock DDB
+        List<Item> itemList = new ArrayList<>();
+        for (String oneStudyId : studyIdVarArgs) {
+            Item item = new Item().withString(IDENTIFIER, oneStudyId);
+            itemList.add(item);
+        }
+        when(mockDdbScanHelper.scan(mockStudyTable)).thenReturn(itemList);
+
+        // add mocks to helper
+        helper.setDdbScanHelper(mockDdbScanHelper);
+        helper.setDdbStudyTable(mockStudyTable);
     }
 
     @Test
