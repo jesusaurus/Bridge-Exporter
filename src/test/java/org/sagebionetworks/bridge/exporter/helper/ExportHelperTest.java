@@ -5,21 +5,20 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
 import com.google.common.base.Charsets;
-import com.google.common.collect.ImmutableSet;
 import org.apache.commons.lang3.StringUtils;
 import org.joda.time.DateTime;
-import org.joda.time.LocalDate;
+import org.joda.time.DateTimeUtils;
 import org.mockito.ArgumentCaptor;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.config.Config;
-import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.s3.S3Helper;
 
@@ -28,13 +27,19 @@ public class ExportHelperTest {
     private static final String DUMMY_RECORD_ID = "dummy-record-id";
     private static final String DUMMY_ATTACHMENT_CONTENT = "dummy attachment content";
 
-    private static final String UPLOAD_DATE = "2016-05-09";
-    private static final String UPLOAD_START_DATE_TIME = "2016-05-09T00:00:00.000+0900";
-    private static final String UPLOAD_END_DATE_TIME = "2016-05-09T23:59:59.999+0900";
+    private static final String UPLOAD_END_DATE_TIME = "2016-05-09T23:59:59.999-0700";
 
-    private static final DateTime UPLOAD_START_DATE_TIME_OBJ = DateTime.parse(UPLOAD_START_DATE_TIME);
     private static final DateTime UPLOAD_END_DATE_TIME_OBJ = DateTime.parse(UPLOAD_END_DATE_TIME);
-    private static final LocalDate UPLOAD_DATE_OBJ = LocalDate.parse(UPLOAD_DATE);
+
+    @BeforeClass
+    public void mockTime() {
+        DateTimeUtils.setCurrentMillisFixed(UPLOAD_END_DATE_TIME_OBJ.getMillis());
+    }
+
+    @AfterClass
+    public void cleanupTime() {
+        DateTimeUtils.setCurrentMillisSystem();
+    }
 
     @Test
     public void uploadFreeformText() throws Exception {
@@ -73,38 +78,5 @@ public class ExportHelperTest {
 
         String attachmentText = new String(attachmentBytesCaptor.getValue(), Charsets.UTF_8);
         assertEquals(attachmentText, DUMMY_ATTACHMENT_CONTENT);
-    }
-
-    @Test
-    public void getEndDateTimeTest() {
-        // mock Config - Use a timezone other than PST or UTC to make sure we handle timezones correctly
-        Config mockConfig = mock(Config.class);
-        when(mockConfig.get(BridgeExporterUtil.CONFIG_KEY_TIME_ZONE_NAME)).thenReturn("Asia/Tokyo");
-
-        BridgeExporterRequest request;
-        DateTime endDateTime;
-        ExportHelper exportHelper = new ExportHelper();
-        exportHelper.setConfig(mockConfig);
-
-        // DAILY
-        request = new BridgeExporterRequest.Builder().withDate(UPLOAD_DATE_OBJ).build();
-        endDateTime = exportHelper.getEndDateTime(request);
-
-        assertEquals(endDateTime.getMillis(), UPLOAD_END_DATE_TIME_OBJ.getMillis());
-
-        // HOURLY
-        request = new BridgeExporterRequest.Builder().withStartDateTime(UPLOAD_START_DATE_TIME_OBJ)
-                .withEndDateTime(UPLOAD_END_DATE_TIME_OBJ)
-                .withStudyWhitelist(ImmutableSet.of("dummy-whitelist"))
-                .build();
-        endDateTime = exportHelper.getEndDateTime(request);
-
-        assertEquals(endDateTime.getMillis(), UPLOAD_END_DATE_TIME_OBJ.getMillis());
-
-        // s3 override
-        request = new BridgeExporterRequest.Builder().withRecordIdS3Override("dummy-override").build();
-        endDateTime = exportHelper.getEndDateTime(request);
-
-        assertNull(endDateTime);
     }
 }

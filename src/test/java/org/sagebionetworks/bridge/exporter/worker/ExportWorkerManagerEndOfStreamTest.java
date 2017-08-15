@@ -12,6 +12,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
@@ -47,6 +48,7 @@ import org.sagebionetworks.bridge.exporter.handler.HealthDataExportHandler;
 import org.sagebionetworks.bridge.exporter.handler.SynapseExportHandler;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
+import org.sagebionetworks.bridge.exporter.request.BridgeExporterSharingMode;
 import org.sagebionetworks.bridge.exporter.synapse.SynapseStatusTableHelper;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.rest.exceptions.BadRequestException;
@@ -57,8 +59,15 @@ import org.sagebionetworks.bridge.sqs.SqsHelper;
 public class ExportWorkerManagerEndOfStreamTest {
     private static final String DUMMY_JSON_TEXT = "{\"key\":\"value\"}";
     private static final String DUMMY_RECORD_ID_OVERRIDE_BUCKET = "dummy-bucket";
+    private static final DateTime START_DATE_TIME = DateTime.parse("2015-12-08T09:19:11.193-0700");
+    private static final DateTime END_DATE_TIME = DateTime.parse("2015-12-08T23:31:01.799-0700");
+    private static final String TEST_STUDY = "test-study";
+
+    private static final Map<String, DateTime> START_DATES_BY_STUDY = ImmutableMap.<String, DateTime>builder()
+            .put(TEST_STUDY, START_DATE_TIME).build();
+
     private static final BridgeExporterRequest DUMMY_REQUEST = new BridgeExporterRequest.Builder()
-            .withDate(LocalDate.parse("2015-12-08")).withTag("test tag").build();
+            .withEndDateTime(END_DATE_TIME).withTag("test tag").withUseLastExportTime(true).build();
 
     private static final String DUMMY_SQS_QUEUE_URL = "dummy-sqs-url";
 
@@ -73,7 +82,7 @@ public class ExportWorkerManagerEndOfStreamTest {
 
     @BeforeClass
     public void mockTime() {
-        DateTimeUtils.setCurrentMillisFixed(DateTime.parse("2016-08-16T01:30:00.001Z").getMillis());
+        DateTimeUtils.setCurrentMillisFixed(DateTime.parse("2016-08-15T18:30:00.001-0700").getMillis());
     }
 
     @AfterClass
@@ -212,12 +221,22 @@ public class ExportWorkerManagerEndOfStreamTest {
                 .put("study-E", new BridgeExporterTsvException(new BridgeExporterException())).build());
 
         // Create task. We'll want to use a real task here, since it tracks state that we need to test.
-        // Study whitelist is mainly there to make sure we're copying over request params to our redrives.
-        Set<String> studyWhitelist = ImmutableSet.of("study-A", "study-B", "study-C", "study-D", "study-Z");
-        BridgeExporterRequest request = new BridgeExporterRequest.Builder().withDate(LocalDate.parse("2015-12-08"))
-                .withTag("test tag").withStudyWhitelist(studyWhitelist).build();
+        // Sharing Mode is mainly there to make sure we're copying over request params to our redrives.
+        BridgeExporterRequest request = new BridgeExporterRequest.Builder().withEndDateTime(END_DATE_TIME)
+                .withSharingMode(BridgeExporterSharingMode.PUBLIC_ONLY).withTag("test tag").withUseLastExportTime(true)
+                .build();
         ExportTask task = new ExportTask.Builder().withExporterDate(LocalDate.parse("2015-12-09"))
                 .withMetrics(new Metrics()).withRequest(request).withTmpDir(mock(File.class)).build();
+
+        // create startDateTimeByStudy map for test
+        Map<String, DateTime> startDateTimeByStudy = ImmutableMap.<String, DateTime>builder()
+                .put("study-A", DateTime.parse("2015-12-08T10:19:55.082-0700"))
+                .put("study-B", DateTime.parse("2015-12-08T15:27:11.844-0700"))
+                .put("study-C", DateTime.parse("2015-12-08T01:45:45.973-0700"))
+                .put("study-D", DateTime.parse("2015-12-08T08:52:50.540-0700"))
+                .put("study-E", DateTime.parse("2015-12-08T21:19:51.617-0700"))
+                .put("study-Z", DateTime.parse("2015-12-08T17:17:34.278-0700"))
+                .build();
 
         // set up test
         // Record A is executed twice, just to test the dedupe logic in our error handling.
@@ -230,7 +249,7 @@ public class ExportWorkerManagerEndOfStreamTest {
         manager.addSubtaskForRecord(task, zRecord);
 
         // end of stream
-        manager.endOfStream(task);
+        manager.endOfStream(task, startDateTimeByStudy);
 
         // verify futures processed (6 records, plus 1 duplicate A, doubled for the appVersion handlers)
         assertEquals(mockFutureList.size(), 14);
@@ -264,37 +283,162 @@ public class ExportWorkerManagerEndOfStreamTest {
 
         ArgumentCaptor<BridgeExporterRequest> redriveRequestCaptor = ArgumentCaptor.forClass(
                 BridgeExporterRequest.class);
-        verify(mockSqsHelper, times(2)).sendMessageAsJson(eq(DUMMY_SQS_QUEUE_URL), redriveRequestCaptor.capture(),
+        verify(mockSqsHelper, times(4)).sendMessageAsJson(eq(DUMMY_SQS_QUEUE_URL), redriveRequestCaptor.capture(),
                 eq(ExportWorkerManager.REDRIVE_DELAY_SECONDS));
         List<BridgeExporterRequest> redriveRequestList = redriveRequestCaptor.getAllValues();
 
         BridgeExporterRequest redriveRecordRequest = redriveRequestList.get(0);
-        assertNull(redriveRecordRequest.getDate());
         assertNull(redriveRecordRequest.getStartDateTime());
         assertNull(redriveRecordRequest.getEndDateTime());
         assertEquals(redriveRecordRequest.getRecordIdS3Override(), "redrive-record-ids.2016-08-16T01:30:00.001Z");
         assertEquals(redriveRecordRequest.getRedriveCount(), 1);
-        assertEquals(redriveRecordRequest.getStudyWhitelist(), request.getStudyWhitelist());
+        assertEquals(redriveRecordRequest.getSharingMode(), request.getSharingMode());
         assertEquals(redriveRecordRequest.getTag(), ExportWorkerManager.REDRIVE_TAG_PREFIX + request.getTag());
-
-        BridgeExporterRequest redriveTableRequest = redriveRequestList.get(1);
-        assertEquals(redriveTableRequest.getDate(), request.getDate());
-        assertEquals(redriveTableRequest.getRedriveCount(), 1);
-        assertEquals(redriveTableRequest.getStudyWhitelist(), request.getStudyWhitelist());
-        assertEquals(redriveTableRequest.getTag(), ExportWorkerManager.REDRIVE_TAG_PREFIX + request.getTag());
+        assertFalse(redriveRecordRequest.getUseLastExportTime());
 
         // For tables, we redrive A, C, and E. Note that this causes A and C to be double-redriven. This is because the
         // test is contrived. In practice, it's rare for a record and its table to independently fail. We only special
         // case TSV failures because if the TSV fails to initialize, then every record in that table as well as the
         // table itself are guaranteed to fail.
-        Set<UploadSchemaKey> redriveTableWhitelist = redriveTableRequest.getTableWhitelist();
-        assertEquals(redriveTableWhitelist.size(), 3);
-        assertTrue(redriveTableWhitelist.contains(new UploadSchemaKey.Builder().withStudyId("study-A")
-                .withSchemaId("schema-A").withRevision(1).build()));
-        assertTrue(redriveTableWhitelist.contains(new UploadSchemaKey.Builder().withStudyId("study-C")
-                .withSchemaId("schema-C").withRevision(1).build()));
-        assertTrue(redriveTableWhitelist.contains(new UploadSchemaKey.Builder().withStudyId("study-E")
-                .withSchemaId("schema-E").withRevision(1).build()));
+
+        // All table redrives have the same properties except table whitelist, study whitelist, and startDateTime.
+        for (int i = 1; i < 4; i++) {
+            BridgeExporterRequest oneRedriveTableRequest = redriveRequestList.get(i);
+            assertEquals(oneRedriveTableRequest.getEndDateTime(), END_DATE_TIME);
+            assertEquals(oneRedriveTableRequest.getRedriveCount(), 1);
+            assertEquals(oneRedriveTableRequest.getSharingMode(), request.getSharingMode());
+            assertEquals(oneRedriveTableRequest.getTag(), ExportWorkerManager.REDRIVE_TAG_PREFIX + request.getTag());
+            assertFalse(oneRedriveTableRequest.getUseLastExportTime());
+        }
+
+        BridgeExporterRequest redriveTableARequest = redriveRequestList.get(1);
+        assertEquals(redriveTableARequest.getStartDateTime(), startDateTimeByStudy.get("study-A"));
+        assertEquals(redriveTableARequest.getStudyWhitelist(), ImmutableSet.of("study-A"));
+        assertEquals(redriveTableARequest.getTableWhitelist(), ImmutableSet.of(new UploadSchemaKey.Builder()
+                .withStudyId("study-A").withSchemaId("schema-A").withRevision(1).build()));
+
+        BridgeExporterRequest redriveTableCRequest = redriveRequestList.get(2);
+        assertEquals(redriveTableCRequest.getStartDateTime(), startDateTimeByStudy.get("study-C"));
+        assertEquals(redriveTableCRequest.getStudyWhitelist(), ImmutableSet.of("study-C"));
+        assertEquals(redriveTableCRequest.getTableWhitelist(), ImmutableSet.of(new UploadSchemaKey.Builder()
+                .withStudyId("study-C").withSchemaId("schema-C").withRevision(1).build()));
+
+        BridgeExporterRequest redriveTableERequest = redriveRequestList.get(3);
+        assertEquals(redriveTableERequest.getStartDateTime(), startDateTimeByStudy.get("study-E"));
+        assertEquals(redriveTableERequest.getStudyWhitelist(), ImmutableSet.of("study-E"));
+        assertEquals(redriveTableERequest.getTableWhitelist(), ImmutableSet.of(new UploadSchemaKey.Builder()
+                .withStudyId("study-E").withSchemaId("schema-E").withRevision(1).build()));
+    }
+
+    @Test
+    public void redriveTablesWithStartAndEndDate() throws Exception {
+        // This test is simpler. One study, two tables, both tables fail.
+        Item aRecord = new Item().withString("studyId", TEST_STUDY).withString("schemaId", "schema-A")
+                .withInt("schemaRevision", 1).withString("data", DUMMY_JSON_TEXT).withString("id", "record-A");
+        Item bRecord = new Item().withString("studyId", TEST_STUDY).withString("schemaId", "schema-B")
+                .withInt("schemaRevision", 1).withString("data", DUMMY_JSON_TEXT).withString("id", "record-B");
+
+        // mock table exceptions
+        mockSchemaIdExceptions(ImmutableMap.<String, Exception>builder()
+                .put("schema-A", new BridgeExporterException())
+                .put("schema-B", new BridgeExporterException()).build());
+
+        // mock no record or study exceptions - This is done to mock our dependencies.
+        mockRecordIdExceptions(ImmutableMap.of());
+        mockStudyIdExceptions(ImmutableMap.of());
+
+        // Create task. We'll want to use a real task here, since it tracks state that we need to test.
+        // Sharing Mode is mainly there to make sure we're copying over request params to our redrives.
+        BridgeExporterRequest request = new BridgeExporterRequest.Builder().withStartDateTime(START_DATE_TIME)
+                .withEndDateTime(END_DATE_TIME).withSharingMode(BridgeExporterSharingMode.PUBLIC_ONLY)
+                .withTag("test tag").withUseLastExportTime(false).build();
+        ExportTask task = new ExportTask.Builder().withExporterDate(LocalDate.parse("2015-12-09"))
+                .withMetrics(new Metrics()).withRequest(request).withTmpDir(mock(File.class)).build();
+
+        // set up test and execute
+        manager.addSubtaskForRecord(task, aRecord);
+        manager.addSubtaskForRecord(task, bRecord);
+        manager.endOfStream(task, START_DATES_BY_STUDY);
+
+        // Skip verifying futures and handlers. This is tested elsewhere.
+
+        // verify redrives - No record redrives and one study redrive for 2 tables.
+        ArgumentCaptor<BridgeExporterRequest> redriveRequestCaptor = ArgumentCaptor.forClass(
+                BridgeExporterRequest.class);
+        verify(mockSqsHelper, times(1)).sendMessageAsJson(eq(DUMMY_SQS_QUEUE_URL), redriveRequestCaptor.capture(),
+                eq(ExportWorkerManager.REDRIVE_DELAY_SECONDS));
+
+        BridgeExporterRequest redriveTableRequest = redriveRequestCaptor.getValue();
+        assertEquals(redriveTableRequest.getStartDateTime(), START_DATE_TIME);
+        assertEquals(redriveTableRequest.getEndDateTime(), END_DATE_TIME);
+        assertEquals(redriveTableRequest.getRedriveCount(), 1);
+        assertEquals(redriveTableRequest.getSharingMode(), request.getSharingMode());
+        assertEquals(redriveTableRequest.getStudyWhitelist(), ImmutableSet.of(TEST_STUDY));
+        assertEquals(redriveTableRequest.getTableWhitelist(), ImmutableSet.of(
+                new UploadSchemaKey.Builder().withStudyId(TEST_STUDY).withSchemaId("schema-A").withRevision(1)
+                        .build(),
+                new UploadSchemaKey.Builder().withStudyId(TEST_STUDY).withSchemaId("schema-B").withRevision(1)
+                        .build()));
+        assertEquals(redriveTableRequest.getTag(), ExportWorkerManager.REDRIVE_TAG_PREFIX + request.getTag());
+        assertFalse(redriveTableRequest.getUseLastExportTime());
+
+        // no record redrives
+        verify(mockS3Helper, never()).writeLinesToS3(any(), any(), any());
+    }
+
+    @Test
+    public void redriveTablesWithRecordS3Override() throws Exception {
+        // One study, two tables, both tables fail.
+        Item aRecord = new Item().withString("studyId", TEST_STUDY).withString("schemaId", "schema-A")
+                .withInt("schemaRevision", 1).withString("data", DUMMY_JSON_TEXT).withString("id", "record-A");
+        Item bRecord = new Item().withString("studyId", TEST_STUDY).withString("schemaId", "schema-B")
+                .withInt("schemaRevision", 1).withString("data", DUMMY_JSON_TEXT).withString("id", "record-B");
+
+        // mock table exceptions
+        mockSchemaIdExceptions(ImmutableMap.<String, Exception>builder()
+                .put("schema-A", new BridgeExporterException())
+                .put("schema-B", new BridgeExporterException()).build());
+
+        // mock no record or study exceptions - This is done to mock our dependencies.
+        mockRecordIdExceptions(ImmutableMap.of());
+        mockStudyIdExceptions(ImmutableMap.of());
+
+        // Create task. We'll want to use a real task here, since it tracks state that we need to test.
+        // Sharing Mode is mainly there to make sure we're copying over request params to our redrives.
+        BridgeExporterRequest request = new BridgeExporterRequest.Builder().withRecordIdS3Override("dummy-override")
+                .withSharingMode(BridgeExporterSharingMode.PUBLIC_ONLY).withTag("test tag")
+                .withUseLastExportTime(false).build();
+        ExportTask task = new ExportTask.Builder().withExporterDate(LocalDate.parse("2015-12-09"))
+                .withMetrics(new Metrics()).withRequest(request).withTmpDir(mock(File.class)).build();
+
+        // set up test and execute
+        manager.addSubtaskForRecord(task, aRecord);
+        manager.addSubtaskForRecord(task, bRecord);
+        manager.endOfStream(task, ImmutableMap.of());
+
+        // Skip verifying futures and handlers. This is tested elsewhere.
+
+        // verify redrives - No record redrives and one study redrive for 2 tables.
+        ArgumentCaptor<BridgeExporterRequest> redriveRequestCaptor = ArgumentCaptor.forClass(
+                BridgeExporterRequest.class);
+        verify(mockSqsHelper, times(1)).sendMessageAsJson(eq(DUMMY_SQS_QUEUE_URL), redriveRequestCaptor.capture(),
+                eq(ExportWorkerManager.REDRIVE_DELAY_SECONDS));
+
+        BridgeExporterRequest redriveTableRequest = redriveRequestCaptor.getValue();
+        assertEquals(redriveTableRequest.getRecordIdS3Override(), "dummy-override");
+        assertEquals(redriveTableRequest.getRedriveCount(), 1);
+        assertEquals(redriveTableRequest.getSharingMode(), request.getSharingMode());
+        assertEquals(redriveTableRequest.getStudyWhitelist(), ImmutableSet.of(TEST_STUDY));
+        assertEquals(redriveTableRequest.getTableWhitelist(), ImmutableSet.of(
+                new UploadSchemaKey.Builder().withStudyId(TEST_STUDY).withSchemaId("schema-A").withRevision(1)
+                        .build(),
+                new UploadSchemaKey.Builder().withStudyId(TEST_STUDY).withSchemaId("schema-B").withRevision(1)
+                        .build()));
+        assertEquals(redriveTableRequest.getTag(), ExportWorkerManager.REDRIVE_TAG_PREFIX + request.getTag());
+        assertFalse(redriveTableRequest.getUseLastExportTime());
+
+        // no record redrives
+        verify(mockS3Helper, never()).writeLinesToS3(any(), any(), any());
     }
 
     @Test
@@ -304,7 +448,7 @@ public class ExportWorkerManagerEndOfStreamTest {
         // generate redrives for both, again, only because this specific test is contrived.
 
         // create test record
-        Item record = new Item().withString("studyId", "test-study").withString("schemaId", "test-schema")
+        Item record = new Item().withString("studyId", TEST_STUDY).withString("schemaId", "test-schema")
                 .withInt("schemaRevision", 1).withString("data", DUMMY_JSON_TEXT).withString("id", "test-record");
 
         // mock exceptions
@@ -316,14 +460,15 @@ public class ExportWorkerManagerEndOfStreamTest {
 
         // Create request and task. Minimal request needs date (required), as well as redriveCount and tag (part of our
         // test).
-        BridgeExporterRequest request = new BridgeExporterRequest.Builder().withDate(LocalDate.parse("2015-12-08"))
-                .withTag(ExportWorkerManager.REDRIVE_TAG_PREFIX + "redrive test").withRedriveCount(1).build();
+        BridgeExporterRequest request = new BridgeExporterRequest.Builder().withEndDateTime(END_DATE_TIME)
+                .withTag(ExportWorkerManager.REDRIVE_TAG_PREFIX + "redrive test").withRedriveCount(1)
+                .withUseLastExportTime(true).build();
         ExportTask task = new ExportTask.Builder().withExporterDate(LocalDate.parse("2015-12-09"))
                 .withMetrics(new Metrics()).withRequest(request).withTmpDir(mock(File.class)).build();
 
         // set up test and execute
         manager.addSubtaskForRecord(task, record);
-        manager.endOfStream(task);
+        manager.endOfStream(task, START_DATES_BY_STUDY);
 
         // Skip verifying futures and handlers. This is tested elsewhere.
 
@@ -344,13 +489,12 @@ public class ExportWorkerManagerEndOfStreamTest {
         assertEquals(redriveRecordRequest.getTag(), request.getTag());
 
         BridgeExporterRequest redriveTableRequest = redriveRequestList.get(1);
-        assertEquals(redriveTableRequest.getDate(), request.getDate());
         assertEquals(redriveTableRequest.getRedriveCount(), 2);
         assertEquals(redriveTableRequest.getTag(), request.getTag());
 
         Set<UploadSchemaKey> redriveTableWhitelist = redriveTableRequest.getTableWhitelist();
         assertEquals(redriveTableWhitelist.size(), 1);
-        assertTrue(redriveTableWhitelist.contains(new UploadSchemaKey.Builder().withStudyId("test-study")
+        assertTrue(redriveTableWhitelist.contains(new UploadSchemaKey.Builder().withStudyId(TEST_STUDY)
                 .withSchemaId("test-schema").withRevision(1).build()));
     }
 
@@ -359,7 +503,7 @@ public class ExportWorkerManagerEndOfStreamTest {
         // This tests the second redrive. Since in our tests, max redrive count is 2, we won't redrive again.
 
         // create test record
-        Item record = new Item().withString("studyId", "test-study").withString("schemaId", "test-schema")
+        Item record = new Item().withString("studyId", TEST_STUDY).withString("schemaId", "test-schema")
                 .withInt("schemaRevision", 1).withString("data", DUMMY_JSON_TEXT).withString("id", "test-record");
 
         // mock exceptions
@@ -371,14 +515,15 @@ public class ExportWorkerManagerEndOfStreamTest {
 
         // Create request and task. Minimal request needs date (required), as well as redriveCount and tag (part of our
         // test).
-        BridgeExporterRequest request = new BridgeExporterRequest.Builder().withDate(LocalDate.parse("2015-12-08"))
-                .withTag(ExportWorkerManager.REDRIVE_TAG_PREFIX + "redrive test").withRedriveCount(2).build();
+        BridgeExporterRequest request = new BridgeExporterRequest.Builder().withEndDateTime(END_DATE_TIME)
+                .withTag(ExportWorkerManager.REDRIVE_TAG_PREFIX + "redrive test").withRedriveCount(2)
+                .withUseLastExportTime(true).build();
         ExportTask task = new ExportTask.Builder().withExporterDate(LocalDate.parse("2015-12-09"))
                 .withMetrics(new Metrics()).withRequest(request).withTmpDir(mock(File.class)).build();
 
         // set up test and execute
         manager.addSubtaskForRecord(task, record);
-        manager.endOfStream(task);
+        manager.endOfStream(task, START_DATES_BY_STUDY);
 
         // Skip verifying futures and handlers. This is tested elsewhere.
 
@@ -390,9 +535,9 @@ public class ExportWorkerManagerEndOfStreamTest {
     @Test
     public void recordFailureSynapse503() throws Exception {
         // "Bad record" fails with a Synapse 503. "Good record" is never processed.
-        Item badRecord = new Item().withString("studyId", "test-study").withString("schemaId", "test-schema")
+        Item badRecord = new Item().withString("studyId", TEST_STUDY).withString("schemaId", "test-schema")
                 .withInt("schemaRevision", 1).withString("data", DUMMY_JSON_TEXT).withString("id", "bad-record");
-        Item goodRecord = new Item().withString("studyId", "test-study").withString("schemaId", "test-schema")
+        Item goodRecord = new Item().withString("studyId", TEST_STUDY).withString("schemaId", "test-schema")
                 .withInt("schemaRevision", 1).withString("data", DUMMY_JSON_TEXT).withString("id", "good-record");
 
         // mock executor to throw 503 on "bad record"
@@ -413,7 +558,7 @@ public class ExportWorkerManagerEndOfStreamTest {
 
         // end of stream
         try {
-            manager.endOfStream(task);
+            manager.endOfStream(task, START_DATES_BY_STUDY);
             fail("expected exception");
         } catch (RestartBridgeExporterException ex) {
             assertEquals(ex.getMessage(), "Restarting Bridge Exporter; last recordId=bad-record: test exception");
@@ -447,9 +592,9 @@ public class ExportWorkerManagerEndOfStreamTest {
     public void tableFailureSynapse503() throws Exception {
         // "Bad schema" upload TSV fails with a 503. "Good schema" is never uploaded. This happens after both records
         // are processed.
-        Item badRecord = new Item().withString("studyId", "test-study").withString("schemaId", "bad-schema")
+        Item badRecord = new Item().withString("studyId", TEST_STUDY).withString("schemaId", "bad-schema")
                 .withInt("schemaRevision", 1).withString("data", DUMMY_JSON_TEXT).withString("id", "bad-record");
-        Item goodRecord = new Item().withString("studyId", "test-study").withString("schemaId", "good-schema")
+        Item goodRecord = new Item().withString("studyId", TEST_STUDY).withString("schemaId", "good-schema")
                 .withInt("schemaRevision", 1).withString("data", DUMMY_JSON_TEXT).withString("id", "good-record");
 
         // Upload TSV throws Synapse 503 on "bad schema"
@@ -469,7 +614,7 @@ public class ExportWorkerManagerEndOfStreamTest {
 
         // end of stream
         try {
-            manager.endOfStream(task);
+            manager.endOfStream(task, START_DATES_BY_STUDY);
             fail("expected exception");
         } catch (RestartBridgeExporterException ex) {
             assertEquals(ex.getMessage(),

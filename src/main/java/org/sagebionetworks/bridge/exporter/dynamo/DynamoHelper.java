@@ -2,13 +2,18 @@ package org.sagebionetworks.bridge.exporter.dynamo;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import javax.annotation.Resource;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.util.concurrent.RateLimiter;
 import com.jcabi.aspects.Cacheable;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
@@ -22,6 +27,7 @@ import org.sagebionetworks.bridge.dynamodb.DynamoScanHelper;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
+import org.sagebionetworks.bridge.sqs.PollSqsWorkerBadRequestException;
 
 /**
  * Encapsulates common calls Bridge-EX makes to DDB. Some of these have a little bit of logic or require marshalling
@@ -47,6 +53,11 @@ public class DynamoHelper {
     private DynamoScanHelper ddbScanHelper;
     private DateTimeZone timeZone;
 
+    // Rate limiter, used to limit the amount of traffic to DDB, specifically for when we loop over a potentially
+    // unbounded series of studies. Conservatively limit at 1 req/sec.
+    private final RateLimiter rateLimiter = RateLimiter.create(1.0);
+
+    /** Config, used to get S3 bucket for record ID override files. */
     @Autowired
     final void setConfig(Config config) {
         timeZone = DateTimeZone.forID(config.get(BridgeExporterUtil.CONFIG_KEY_TIME_ZONE_NAME));
@@ -122,6 +133,9 @@ public class DynamoHelper {
     @Cacheable(lifetime = 5, unit = TimeUnit.MINUTES)
     public StudyInfo getStudyInfo(String studyId) {
         Item studyItem = ddbStudyTable.getItem("identifier", studyId);
+        if (studyItem == null) {
+            return null;
+        }
 
         // DDB's Item.getLong() will throw if the value is null. For robustness, check get() the value and check that
         // it's not null. (This should cover both cases where the attribute doesn't exist and cases where the attribute
@@ -154,42 +168,83 @@ public class DynamoHelper {
     }
 
     /**
-     * Helper method to generate study ids for query
-     * @param request
-     * @return
+     * Helper method to generate study ids for query.
+     *
+     * @return A Map with key is study id, value is the start date time to query ddb table.
      */
-    public List<String> bootstrapStudyIdsToQuery(BridgeExporterRequest request, DateTime endDateTime) {
-        List<String> studyIdList = new ArrayList<>();
+    public Map<String, DateTime> bootstrapStudyIdsToQuery(BridgeExporterRequest request)
+            throws PollSqsWorkerBadRequestException {
+        DateTime endDateTime = request.getEndDateTime();
+        if (endDateTime == null) {
+            // This request doesn't use start/endDate time. The logic here can be skipped.
+            return ImmutableMap.of();
+        }
 
-        if (request.getStudyWhitelist() == null) {
+        // Is this a custom job? A custom job is defined as a job that specifies the study whitelist instead of
+        // exporting all studies.
+        Set<String> studyWhitelist = request.getStudyWhitelist();
+        boolean isCustomJob = (studyWhitelist != null);
+
+        // Figure out which studies we need to process.
+        List<String> studyIdList = new ArrayList<>();
+        if (studyWhitelist == null) {
             // get the study id list from ddb table
             Iterable<Item> scanOutcomes = ddbScanHelper.scan(ddbStudyTable);
             for (Item item: scanOutcomes) {
                 studyIdList.add(item.getString(IDENTIFIER));
             }
         } else {
-            studyIdList.addAll(request.getStudyWhitelist());
+            studyIdList.addAll(studyWhitelist);
         }
 
-        List<String> studyIdsToQuery = new ArrayList<>();
+        // Filter out studies based on study configuration.
+        Iterator<String> studyIdListIter = studyIdList.iterator();
+        while (studyIdListIter.hasNext()) {
+            rateLimiter.acquire();
 
-        for (String studyId : studyIdList) {
-            Item studyIdItem = ddbExportTimeTable.getItem(STUDY_ID, studyId);
-            if (studyIdItem != null) {
-                DateTime lastExportDateTime = new DateTime(studyIdItem.getLong(LAST_EXPORT_DATE_TIME), timeZone);
-                if (!endDateTime.isBefore(lastExportDateTime)) {
-                    studyIdsToQuery.add(studyId);
+            String studyId = studyIdListIter.next();
+
+            // Get study info to determine whether to include this study in the export job.
+            StudyInfo studyInfo = getStudyInfo(studyId);
+            if (studyInfo == null || studyInfo.getDisableExport()) {
+                // Unconfigured or disabled. Skip study.
+                studyIdListIter.remove();
+            } else if (studyInfo.getUsesCustomExportSchedule() && !isCustomJob) {
+                // This study requires a study whitelist, but we don't have one. (If we *do* have a study
+                // whitelist, because of the logic above, this study must be in that whitelist.)
+                studyIdListIter.remove();
+            }
+        }
+
+        // Figure out the time range (start time) for each study.
+        Map<String, DateTime> studyIdsToQuery = new HashMap<>();
+        if (request.getStartDateTime() != null) {
+            // If we specified the start time, it's easy.
+            for (String oneStudyId : studyIdList) {
+                studyIdsToQuery.put(oneStudyId, request.getStartDateTime());
+            }
+        } else if (request.getUseLastExportTime()) {
+            for (String studyId : studyIdList) {
+                rateLimiter.acquire();
+
+                // If we're using last export time, query that for each study.
+                DateTime lastExportDateTime;
+                Item studyIdItem = ddbExportTimeTable.getItem(STUDY_ID, studyId);
+                if (studyIdItem != null) {
+                    lastExportDateTime = new DateTime(studyIdItem.getLong(LAST_EXPORT_DATE_TIME), timeZone);
+                } else {
+                    // If there's no last export time, bootstrap by exporting everything since the beginning of
+                    // yesterday.
+                    lastExportDateTime = endDateTime.minusDays(1).withTimeAtStartOfDay();
                 }
-            } else {
-                studyIdsToQuery.add(studyId);
-            }
 
-            try {
-                TimeUnit.SECONDS.sleep(1);
-            } catch (InterruptedException e) {
-                LOG.error("Unable to sleep thread: " +
-                        e.getMessage(), e);
+                // If the time range is zero, don't export.
+                if (lastExportDateTime.isBefore(endDateTime)) {
+                    studyIdsToQuery.put(studyId, lastExportDateTime);
+                }
             }
+        } else {
+            throw new PollSqsWorkerBadRequestException("Request has neither startDateTime nor useLastExportTime=true");
         }
 
         return studyIdsToQuery;
@@ -197,24 +252,17 @@ public class DynamoHelper {
 
     /**
      * Helper method to update ddb exportTimeTable
-     * @param studyIdsToUpdate
-     * @param endDateTime
      */
     public void updateExportTimeTable(List<String> studyIdsToUpdate, DateTime endDateTime) {
         if (!studyIdsToUpdate.isEmpty() && endDateTime != null) {
             for (String studyId: studyIdsToUpdate) {
+                rateLimiter.acquire();
+
                 try {
                     ddbExportTimeTable.putItem(new Item().withPrimaryKey(STUDY_ID, studyId).withNumber(LAST_EXPORT_DATE_TIME, endDateTime.getMillis()));
                 } catch (RuntimeException ex) {
                     LOG.error("Unable to update export time table for study id: " + studyId +
                             ex.getMessage(), ex);
-                }
-
-                try {
-                    TimeUnit.SECONDS.sleep(1);
-                } catch (InterruptedException e) {
-                    LOG.error("Unable to sleep thread: " +
-                            e.getMessage(), e);
                 }
             }
         }
@@ -222,7 +270,6 @@ public class DynamoHelper {
 
     /**
      * Helper function to parse ddb boolean value into boolean
-     * @return
      */
     private boolean parseDdbBoolean(Item item, String attributeName) {
         return item.getInt(attributeName) != 0;

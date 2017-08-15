@@ -2,7 +2,8 @@ package org.sagebionetworks.bridge.exporter.record;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.List;
+import java.util.ArrayList;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import javax.annotation.Resource;
 
@@ -24,7 +25,6 @@ import org.sagebionetworks.bridge.exporter.dynamo.DynamoHelper;
 import org.sagebionetworks.bridge.exporter.exceptions.RestartBridgeExporterException;
 import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
 import org.sagebionetworks.bridge.exporter.exceptions.SynapseUnavailableException;
-import org.sagebionetworks.bridge.exporter.helper.ExportHelper;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.metrics.MetricsHelper;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
@@ -33,6 +33,7 @@ import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.exporter.worker.ExportTask;
 import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
 import org.sagebionetworks.bridge.file.FileHelper;
+import org.sagebionetworks.bridge.sqs.PollSqsWorkerBadRequestException;
 
 /**
  * This is the main entry point into Bridge EX. This record processor class is called for each request, and loops over
@@ -60,7 +61,6 @@ public class BridgeExporterRecordProcessor {
     private RecordIdSourceFactory recordIdSourceFactory;
     private SynapseHelper synapseHelper;
     private ExportWorkerManager workerManager;
-    private ExportHelper exportHelper;
     private DynamoHelper dynamoHelper;
 
     /** Config, used to get attributes for loop control and time zone. */
@@ -120,11 +120,6 @@ public class BridgeExporterRecordProcessor {
     }
 
     @Autowired
-    public final void setExportHelper(ExportHelper exportHelper) {
-        this.exportHelper = exportHelper;
-    }
-
-    @Autowired
     public final void setDynamoHelper(DynamoHelper dynamoHelper) {
         this.dynamoHelper = dynamoHelper;
     }
@@ -140,7 +135,7 @@ public class BridgeExporterRecordProcessor {
      *         if Synapse is not available in read/write mode
      */
     public void processRecordsForRequest(BridgeExporterRequest request) throws IOException,
-            RestartBridgeExporterException, SynapseUnavailableException {
+            PollSqsWorkerBadRequestException, RestartBridgeExporterException, SynapseUnavailableException {
         LOG.info("Received request " + request.toString());
 
         // Check to see that Synapse is up and availabe for read/write. If it isn't, throw an exception, so the
@@ -163,7 +158,13 @@ public class BridgeExporterRecordProcessor {
 
         Stopwatch stopwatch = Stopwatch.createStarted();
         try {
-            Iterable<String> recordIdIterable = recordIdSourceFactory.getRecordSourceForRequest(request);
+            // determine study ids and their corresponding start date time
+            Map<String, DateTime> studyIdsToQuery = dynamoHelper.bootstrapStudyIdsToQuery(request);
+            LOG.info("Exporting the following studies: " + BridgeExporterUtil.COMMA_SPACE_JOINER.join(studyIdsToQuery
+                    .keySet()));
+
+            Iterable<String> recordIdIterable = recordIdSourceFactory.getRecordSourceForRequest(request,
+                    studyIdsToQuery);
             for (String oneRecordId : recordIdIterable) {
                 // Count total number of records. Also, log at regular intervals, so people tailing the logs can follow
                 // progress.
@@ -205,16 +206,15 @@ public class BridgeExporterRecordProcessor {
                 }
             }
 
-            workerManager.endOfStream(task);
+            workerManager.endOfStream(task, studyIdsToQuery);
 
             // We made it to the end. Set the success flag on the task.
             setTaskSuccess(task);
 
             // finally modify export time table in ddb
-            DateTime endDateTime = exportHelper.getEndDateTime(request);
-            if (endDateTime != null) {
-                List<String> studyIdsToUpdate = dynamoHelper.bootstrapStudyIdsToQuery(request, endDateTime);
-                dynamoHelper.updateExportTimeTable(studyIdsToUpdate, endDateTime);
+            if (request.getUseLastExportTime()) {
+                dynamoHelper.updateExportTimeTable(new ArrayList<>(studyIdsToQuery.keySet()),
+                        request.getEndDateTime());
             }
         } finally {
             long elapsedTime = stopwatch.elapsed(TimeUnit.SECONDS);
