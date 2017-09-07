@@ -115,7 +115,7 @@ public class SynapseExportHandlerNewTableTest {
         when(mockSynapseHelper.createTableWithColumnsAndAcls(columnModelList,
                 SynapseExportHandlerTest.TEST_SYNAPSE_DATA_ACCESS_TEAM_ID,
                 SynapseExportHandlerTest.TEST_SYNAPSE_PRINCIPAL_ID, SynapseExportHandlerTest.TEST_SYNAPSE_PROJECT_ID,
-                handler.getDdbTableKeyValue())).thenReturn(SynapseExportHandlerTest.TEST_SYNAPSE_TABLE_ID);
+                handler.getSynapseTableName())).thenReturn(SynapseExportHandlerTest.TEST_SYNAPSE_TABLE_ID);
 
         // mock get column model list
         when(mockSynapseHelper.getColumnModelsForTableWithRetry(SynapseExportHandlerTest.TEST_SYNAPSE_TABLE_ID))

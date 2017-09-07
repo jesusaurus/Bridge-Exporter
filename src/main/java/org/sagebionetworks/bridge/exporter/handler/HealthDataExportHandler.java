@@ -79,6 +79,11 @@ public class HealthDataExportHandler extends SynapseExportHandler {
     }
 
     @Override
+    protected String getSynapseTableName() {
+        return schemaKey.getSchemaId() + "-v" + schemaKey.getRevision();
+    }
+
+    @Override
     protected List<ColumnModel> getSynapseTableColumnList(ExportTask task) throws SchemaNotFoundException {
         List<UploadFieldDefinition> schemaFieldDefList = getSchemaFieldDefList(task.getMetrics());
         return getSynapseTableColumnListCached(schemaFieldDefList);

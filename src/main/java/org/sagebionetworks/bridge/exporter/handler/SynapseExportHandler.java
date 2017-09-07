@@ -204,9 +204,8 @@ public abstract class SynapseExportHandler extends ExportHandler {
         long dataAccessTeamId = manager.getDataAccessTeamIdForStudy(getStudyId());
         long principalId = manager.getSynapsePrincipalId();
         String projectId = manager.getSynapseProjectIdForStudyAndTask(getStudyId(), task);
-        String tableName = getDdbTableKeyValue();
         String synapseTableId = synapseHelper.createTableWithColumnsAndAcls(columnDefList, dataAccessTeamId,
-                principalId, projectId, tableName);
+                principalId, projectId, getSynapseTableName());
 
         // write back to DDB table
         manager.setSynapseTableIdToDdb(task, getDdbTableName(), getDdbTableKeyName(), getDdbTableKeyValue(),
@@ -366,6 +365,12 @@ public abstract class SynapseExportHandler extends ExportHandler {
      * table, and since Synapse table names need to be unique, this is also used as the Synapse table name.
      */
     protected abstract String getDdbTableKeyValue();
+
+    /**
+     * Unique name for the table to be created in Synapse. This name may be different from the table key in DDB, as
+     * (for example) the table name doesn't need to include the study ID.
+     */
+    protected abstract String getSynapseTableName();
 
     /**
      * List of Synapse table column model objects, to be used to create both the column models and the Synapse table.
