@@ -49,6 +49,11 @@ public class AppVersionExportHandler extends SynapseExportHandler {
     }
 
     @Override
+    protected String getSynapseTableName() {
+        return "Health Data Summary Table";
+    }
+
+    @Override
     protected List<ColumnModel> getSynapseTableColumnList(ExportTask task) {
         return APPVERSION_COLUMN_LIST;
     }

@@ -34,6 +34,11 @@ public class TestSynapseHandler extends SynapseExportHandler {
     }
 
     @Override
+    protected String getSynapseTableName() {
+        return "Test Synapse Table Name";
+    }
+
+    @Override
     protected List<ColumnModel> getSynapseTableColumnList(ExportTask task) {
         List<ColumnModel> columnList = new ArrayList<>();
 
