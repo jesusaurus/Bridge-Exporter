@@ -116,6 +116,7 @@ public class SynapseExportHandlerTest {
     public static final String TEST_SYNAPSE_PROJECT_ID = "test-synapse-project-id";
     public static final String TEST_SYNAPSE_TABLE_ID = "test-synapse-table-id";
 
+    private ExportWorkerManager manager;
     private InMemoryFileHelper mockFileHelper;
     private SynapseHelper mockSynapseHelper;
     private byte[] tsvBytes;
@@ -156,7 +157,7 @@ public class SynapseExportHandlerTest {
         mockSynapseHelper = mock(SynapseHelper.class);
 
         // setup manager - This is mostly used to get helper objects.
-        ExportWorkerManager manager = spy(new ExportWorkerManager());
+        manager = spy(new ExportWorkerManager());
         manager.setBridgeHelper(mockBridgeHelper);
         manager.setConfig(mockConfig);
         manager.setFileHelper(mockFileHelper);
@@ -174,12 +175,13 @@ public class SynapseExportHandlerTest {
         columnModelList.addAll(handler.getSynapseTableColumnList(task));
         when(mockSynapseHelper.getColumnModelsForTableWithRetry(TEST_SYNAPSE_TABLE_ID)).thenReturn(columnModelList);
 
-        // spy getSynapseProjectId and getDataAccessTeam
+        // spy StudyInfo getters
         // These calls through to a bunch of stuff (which we test in ExportWorkerManagerTest), so to simplify our test,
         // we just use a spy here.
         doReturn(TEST_SYNAPSE_PROJECT_ID).when(manager).getSynapseProjectIdForStudyAndTask(eq(TEST_STUDY_ID),
                 same(task));
-        doReturn(1337L).when(manager).getDataAccessTeamIdForStudy(TEST_STUDY_ID);
+        doReturn(false).when(manager).isStudyIdExcludedInExportForStudy(SynapseExportHandlerTest.TEST_STUDY_ID);
+        doReturn(TEST_SYNAPSE_DATA_ACCESS_TEAM_ID).when(manager).getDataAccessTeamIdForStudy(TEST_STUDY_ID);
 
         // Similarly, spy get/setSynapseTableIdFromDDB.
         doReturn(TEST_SYNAPSE_TABLE_ID).when(manager).getSynapseTableIdFromDdb(task, handler.getDdbTableName(),
@@ -308,11 +310,8 @@ public class SynapseExportHandlerTest {
         setup(handler);
         mockSynapseHelperUploadTsv(1);
 
-        // make subtasks
-        ExportSubtask subtask = makeSubtask(task, "{}");
-
         // execute
-        handler.handle(subtask);
+        handler.handle(makeSubtask(task, "{}"));
         handler.uploadToSynapseForTask(task);
 
         // validate tsv file
@@ -337,6 +336,28 @@ public class SynapseExportHandlerTest {
         assertEquals(tsvInfo.getLineCount(), 1);
 
         postValidation();
+    }
+
+    @Test
+    public void appVersionExportHandlerStudyIdExcludedTest() throws Exception {
+        SynapseExportHandler handler = new AppVersionExportHandler();
+        setup(handler);
+        mockSynapseHelperUploadTsv(1);
+
+        // flip the studyIdExcludedInExport flag to true
+        doReturn(true).when(manager).isStudyIdExcludedInExportForStudy(TEST_STUDY_ID);
+
+        // execute
+        handler.handle(makeSubtask(task, "{}"));
+        handler.uploadToSynapseForTask(task);
+
+        // validate tsv file
+        List<String> tsvLineList = TestUtil.bytesToLines(tsvBytes);
+        assertEquals(tsvLineList.size(), 2);
+        validateTsvHeaders(tsvLineList.get(0), "originalTable");
+        validateTsvRow(tsvLineList.get(1), TEST_SCHEMA_ID + "-v" + TEST_SCHEMA_REV);
+
+        // Don't bother validating metrics, tsvInfo, or anything else. That's tested above.
     }
 
     @Test

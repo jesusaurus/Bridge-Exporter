@@ -14,6 +14,7 @@ import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
 import org.sagebionetworks.bridge.exporter.worker.ExportSubtask;
 import org.sagebionetworks.bridge.exporter.worker.ExportTask;
 import org.sagebionetworks.bridge.exporter.worker.TsvInfo;
+import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
 /**
  * Synapse export worker for app version tables. The app version is a master table keeping track of all records by
@@ -80,9 +81,18 @@ public class AppVersionExportHandler extends SynapseExportHandler {
             task.getMetrics().addKeyValuePair("uniqueAppVersions[" + getStudyId() + "]", appVersion);
         }
 
+        // check isStudyIdExcludedInExport to see how we should format the originalTable value
+        UploadSchemaKey schemaKey = subtask.getSchemaKey();
+        String originalTable;
+        if (getManager().isStudyIdExcludedInExportForStudy(schemaKey.getStudyId())) {
+            originalTable = schemaKey.getSchemaId() + "-v" + schemaKey.getRevision();
+        } else {
+            originalTable = schemaKey.toString();
+        }
+
         // construct row
         Map<String, String> rowValueMap = new HashMap<>();
-        rowValueMap.put("originalTable", subtask.getSchemaKey().toString());
+        rowValueMap.put("originalTable", originalTable);
         return rowValueMap;
     }
 }

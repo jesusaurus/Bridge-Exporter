@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
+import static org.testng.Assert.assertTrue;
 
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -143,6 +144,23 @@ public class ExportWorkerManagerTest {
         // execute and validate
         long teamId = manager.getDataAccessTeamIdForStudy("test-study");
         assertEquals(teamId, 1337L);
+    }
+
+    @Test
+    public void isStudyIdExcludedInExportForStudy() {
+        // mock DynamoHelper
+        StudyInfo testStudyInfo = new StudyInfo.Builder().withDataAccessTeamId(1337L)
+                .withSynapseProjectId("project-id").withStudyIdExcludedInExport(true).build();
+        DynamoHelper mockDynamoHelper = mock(DynamoHelper.class);
+        when(mockDynamoHelper.getStudyInfo("test-study")).thenReturn(testStudyInfo);
+
+        // set up worker manager
+        ExportWorkerManager manager = new ExportWorkerManager();
+        manager.setDynamoHelper(mockDynamoHelper);
+
+        // execute and validate
+        boolean studyIdExcludedInExport = manager.isStudyIdExcludedInExportForStudy("test-study");
+        assertTrue(studyIdExcludedInExport);
     }
 
     @Test

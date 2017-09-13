@@ -305,6 +305,13 @@ public class ExportWorkerManager {
         return studyInfo.getDataAccessTeamId();
     }
 
+    /** Convenience method to get the studyIdExcludedInExport flag for the given study. */
+    public boolean isStudyIdExcludedInExportForStudy(String studyId) {
+        // Study info is cached. No need to worry about repeat calls.
+        StudyInfo studyInfo = dynamoHelper.getStudyInfo(studyId);
+        return studyInfo.isStudyIdExcludedInExport();
+    }
+
     /**
      * The Synapse project ID to export to. This first checks the task's request for the project override, then falls
      * back to Dynamo DB.

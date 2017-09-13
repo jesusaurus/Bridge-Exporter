@@ -132,11 +132,12 @@ public class SynapseExportHandlerNewTableTest {
             return 1;
         });
 
-        // spy getSynapseProjectId and getDataAccessTeam
+        // spy StudyInfo getters
         // These calls through to a bunch of stuff (which we test in ExportWorkerManagerTest), so to simplify our test,
         // we just use a spy here.
         doReturn(SynapseExportHandlerTest.TEST_SYNAPSE_PROJECT_ID).when(manager).getSynapseProjectIdForStudyAndTask(
                 eq(SynapseExportHandlerTest.TEST_STUDY_ID), same(task));
+        doReturn(false).when(manager).isStudyIdExcludedInExportForStudy(SynapseExportHandlerTest.TEST_STUDY_ID);
         doReturn(SynapseExportHandlerTest.TEST_SYNAPSE_DATA_ACCESS_TEAM_ID).when(manager).getDataAccessTeamIdForStudy(
                 SynapseExportHandlerTest.TEST_STUDY_ID);
 
