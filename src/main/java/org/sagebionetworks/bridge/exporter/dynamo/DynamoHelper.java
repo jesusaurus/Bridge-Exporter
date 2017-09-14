@@ -40,8 +40,9 @@ public class DynamoHelper {
 
     private static final String STUDY_INFO_KEY_DATA_ACCESS_TEAM = "synapseDataAccessTeamId";
     private static final String STUDY_INFO_KEY_PROJECT_ID = "synapseProjectId";
+    private static final String STUDY_DISABLE_EXPORT = "disableExport";
+    private static final String STUDY_INFO_KEY_STUDY_ID_EXCLUDED_IN_EXPORT = "studyIdExcludedInExport";
     private static final String STUDY_INFO_KEY_USES_CUSTOM_EXPORT_SCHEDULE = "usesCustomExportSchedule";
-    static final String STUDY_DISABLE_EXPORT = "disableExport";
 
     static final String IDENTIFIER = "identifier";
     static final String LAST_EXPORT_DATE_TIME = "lastExportDateTime";
@@ -153,15 +154,20 @@ public class DynamoHelper {
             studyInfoBuilder.withSynapseProjectId(studyItem.getString(STUDY_INFO_KEY_PROJECT_ID));
         }
 
-        if (studyItem.get(STUDY_INFO_KEY_USES_CUSTOM_EXPORT_SCHEDULE) != null) {
+        if (studyItem.get(STUDY_DISABLE_EXPORT) != null) {
             // For some reason, the mapper saves the value as an int, not as a boolean.
+            boolean disableExport = parseDdbBoolean(studyItem, STUDY_DISABLE_EXPORT);
+            studyInfoBuilder.withDisableExport(disableExport);
+        }
+
+        if (studyItem.get(STUDY_INFO_KEY_USES_CUSTOM_EXPORT_SCHEDULE) != null) {
             boolean usesCustomExportSchedule = parseDdbBoolean(studyItem, STUDY_INFO_KEY_USES_CUSTOM_EXPORT_SCHEDULE);
             studyInfoBuilder.withUsesCustomExportSchedule(usesCustomExportSchedule);
         }
 
-        if (studyItem.get(STUDY_DISABLE_EXPORT) != null) {
-            boolean disableExport = parseDdbBoolean(studyItem, STUDY_DISABLE_EXPORT);
-            studyInfoBuilder.withDisableExport(disableExport);
+        if (studyItem.get(STUDY_INFO_KEY_STUDY_ID_EXCLUDED_IN_EXPORT) != null) {
+            boolean studyIdExcludedInExport = parseDdbBoolean(studyItem, STUDY_INFO_KEY_STUDY_ID_EXCLUDED_IN_EXPORT);
+            studyInfoBuilder.withStudyIdExcludedInExport(studyIdExcludedInExport);
         }
 
         return studyInfoBuilder.build();

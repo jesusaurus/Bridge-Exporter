@@ -11,7 +11,6 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 import static org.sagebionetworks.bridge.exporter.dynamo.DynamoHelper.IDENTIFIER;
 import static org.sagebionetworks.bridge.exporter.dynamo.DynamoHelper.LAST_EXPORT_DATE_TIME;
-import static org.sagebionetworks.bridge.exporter.dynamo.DynamoHelper.STUDY_DISABLE_EXPORT;
 import static org.sagebionetworks.bridge.exporter.dynamo.DynamoHelper.STUDY_ID;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -152,10 +151,13 @@ public class DynamoHelperTest {
 
         // execute and validate
         StudyInfo studyInfo = helper.getStudyInfo("test-study");
-        assertEquals(studyInfo.getDataAccessTeamId().longValue(), 1337);
+        assertEquals(studyInfo.getDataAccessTeamId(), 1337);
         assertEquals(studyInfo.getSynapseProjectId(), "test-synapse-table");
-        assertFalse(studyInfo.getUsesCustomExportSchedule());
+
+        // defaults
         assertFalse(studyInfo.getDisableExport());
+        assertFalse(studyInfo.isStudyIdExcludedInExport());
+        assertFalse(studyInfo.getUsesCustomExportSchedule());
     }
 
     @Test
@@ -171,50 +173,6 @@ public class DynamoHelperTest {
         // execute and validate - should return null instead of crashing
         StudyInfo studyInfo = helper.getStudyInfo("test-study");
         assertNull(studyInfo);
-    }
-
-    @Test
-    public void getStudyInfoDisableExportFalse() {
-        // set disable export to false, proceeds as normal
-        Item studyItem = new Item().withLong("synapseDataAccessTeamId", 1337)
-                .withString("synapseProjectId", "test-synapse-table")
-                .withInt(STUDY_DISABLE_EXPORT, 0);
-
-        Table mockStudyTable = mock(Table.class);
-        when(mockStudyTable.getItem("identifier", "test-study")).thenReturn(studyItem);
-
-        // set up Dynamo Helper
-        DynamoHelper helper = new DynamoHelper();
-        helper.setDdbStudyTable(mockStudyTable);
-
-        // execute and validate
-        StudyInfo studyInfo = helper.getStudyInfo("test-study");
-        assertEquals(studyInfo.getDataAccessTeamId().longValue(), 1337);
-        assertEquals(studyInfo.getSynapseProjectId(), "test-synapse-table");
-        assertFalse(studyInfo.getUsesCustomExportSchedule());
-        assertFalse(studyInfo.getDisableExport());
-    }
-
-    @Test
-    public void getStudyInfoDisableExportTrue() {
-        // set disable export to true, should have no study info
-        Item studyItem = new Item().withLong("synapseDataAccessTeamId", 1337)
-                .withString("synapseProjectId", "test-synapse-table")
-                .withInt(STUDY_DISABLE_EXPORT, 1);
-
-        Table mockStudyTable = mock(Table.class);
-        when(mockStudyTable.getItem("identifier", "test-study")).thenReturn(studyItem);
-
-        // set up Dynamo Helper
-        DynamoHelper helper = new DynamoHelper();
-        helper.setDdbStudyTable(mockStudyTable);
-
-        // execute and validate
-        StudyInfo studyInfo = helper.getStudyInfo("test-study");
-        assertEquals(studyInfo.getDataAccessTeamId().longValue(), 1337);
-        assertEquals(studyInfo.getSynapseProjectId(), "test-synapse-table");
-        assertFalse(studyInfo.getUsesCustomExportSchedule());
-        assertTrue(studyInfo.getDisableExport());
     }
 
     @Test
@@ -253,10 +211,11 @@ public class DynamoHelperTest {
     }
 
     @Test
-    public void getStudyInfoCustomExportFalse() {
-        // mock DDB Study table - only include relevant attributes
+    public void getStudyInfoOptionalParams() {
+        // mock DDB Study table
         Item studyItem = new Item().withLong("synapseDataAccessTeamId", 1337)
-                .withString("synapseProjectId", "test-synapse-table").withInt("usesCustomExportSchedule", 0);
+                .withString("synapseProjectId", "test-synapse-table").withInt("disableExport", 1)
+                .withInt("studyIdExcludedInExport", 1).withInt("usesCustomExportSchedule", 1);
 
         Table mockStudyTable = mock(Table.class);
         when(mockStudyTable.getItem("identifier", "test-study")).thenReturn(studyItem);
@@ -267,24 +226,10 @@ public class DynamoHelperTest {
 
         // execute and validate
         StudyInfo studyInfo = helper.getStudyInfo("test-study");
-        assertFalse(studyInfo.getUsesCustomExportSchedule());
-    }
-
-    @Test
-    public void getStudyInfoCustomExportTrue() {
-        // mock DDB Study table - only include relevant attributes
-        Item studyItem = new Item().withLong("synapseDataAccessTeamId", 1337)
-                .withString("synapseProjectId", "test-synapse-table").withInt("usesCustomExportSchedule", 1);
-
-        Table mockStudyTable = mock(Table.class);
-        when(mockStudyTable.getItem("identifier", "test-study")).thenReturn(studyItem);
-
-        // set up Dynamo Helper
-        DynamoHelper helper = new DynamoHelper();
-        helper.setDdbStudyTable(mockStudyTable);
-
-        // execute and validate
-        StudyInfo studyInfo = helper.getStudyInfo("test-study");
+        assertEquals(studyInfo.getDataAccessTeamId(), 1337);
+        assertEquals(studyInfo.getSynapseProjectId(), "test-synapse-table");
+        assertTrue(studyInfo.getDisableExport());
+        assertTrue(studyInfo.isStudyIdExcludedInExport());
         assertTrue(studyInfo.getUsesCustomExportSchedule());
     }
 

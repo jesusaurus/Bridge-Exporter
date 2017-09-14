@@ -7,27 +7,54 @@ import org.apache.commons.lang.StringUtils;
  * populated, THIS SHOULD NOT BE CHANGED. Otherwise, bad things happen.
  */
 public class StudyInfo {
-    private final Long dataAccessTeamId;
+    private final long dataAccessTeamId;
     private final String synapseProjectId;
-    private final boolean usesCustomExportSchedule;
     private final boolean disableExport;
+    private final boolean studyIdExcludedInExport;
+    private final boolean usesCustomExportSchedule;
 
     /** Private constructor. To construct, see builder. */
-    private StudyInfo(Long dataAccessTeamId, String synapseProjectId, boolean usesCustomExportSchedule, boolean disableExport) {
+    private StudyInfo(long dataAccessTeamId, String synapseProjectId, boolean disableExport,
+            boolean studyIdExcludedInExport, boolean usesCustomExportSchedule) {
         this.dataAccessTeamId = dataAccessTeamId;
         this.synapseProjectId = synapseProjectId;
-        this.usesCustomExportSchedule = usesCustomExportSchedule;
         this.disableExport = disableExport;
+        this.studyIdExcludedInExport = studyIdExcludedInExport;
+        this.usesCustomExportSchedule = usesCustomExportSchedule;
     }
 
     /** The team ID of the team that is granted read access to exported data. */
-    public Long getDataAccessTeamId() {
+    public long getDataAccessTeamId() {
         return dataAccessTeamId;
     }
 
     /** The Synapse project to export the data to. */
     public String getSynapseProjectId() {
         return synapseProjectId;
+    }
+
+    /** Flag indicating if this study should be excluded from exporting. */
+    public boolean getDisableExport() {
+        return disableExport;
+    }
+
+    /**
+     * <p>
+     * True if the Bridge Exporter should include the studyId prefix in the "originalTable" field in the appVersion
+     * (now "Health Data Summary") table in Synapse. This exists primarily because we want to remove redundant prefixes
+     * from the Synapse tables (to improve reporting), but we don't want to break existing studies or partition
+     * existing data.
+     * </p>
+     * <p>
+     * The setting is "reversed" so we don't have to backfill a bunch of old studies.
+     * </p>
+     * <p>
+     * This is a "hidden" setting, primarily to support back-compat for old studies. New studies should be created with
+     * this flag set to true, and only admins can change the flag.
+     * </p>
+     */
+    public boolean isStudyIdExcludedInExport() {
+        return studyIdExcludedInExport;
     }
 
     /**
@@ -38,21 +65,16 @@ public class StudyInfo {
         return usesCustomExportSchedule;
     }
 
-    /** Flag indicating if this study should be excluded from exporting. */
-    public boolean getDisableExport() {
-        return disableExport;
-    }
-
-
     /** StudyInfo Builder. */
     public static class Builder {
         private Long dataAccessTeamId;
         private String synapseProjectId;
-        private Boolean usesCustomExportSchedule;
         private boolean disableExport;
+        private boolean studyIdExcludedInExport;
+        private boolean usesCustomExportSchedule;
 
         /** @see StudyInfo#getDataAccessTeamId */
-        public Builder withDataAccessTeamId(Long dataAccessTeamId) {
+        public Builder withDataAccessTeamId(long dataAccessTeamId) {
             this.dataAccessTeamId = dataAccessTeamId;
             return this;
         }
@@ -64,14 +86,20 @@ public class StudyInfo {
         }
 
         /** @see StudyInfo#getUsesCustomExportSchedule */
-        public Builder withUsesCustomExportSchedule(Boolean usesCustomExportSchedule) {
-            this.usesCustomExportSchedule = usesCustomExportSchedule;
+        public Builder withDisableExport(boolean disableExport) {
+            this.disableExport = disableExport;
+            return this;
+        }
+
+        /** @see StudyInfo#isStudyIdExcludedInExport */
+        public Builder withStudyIdExcludedInExport(boolean studyIdExcludedInExport) {
+            this.studyIdExcludedInExport = studyIdExcludedInExport;
             return this;
         }
 
         /** @see StudyInfo#getUsesCustomExportSchedule */
-        public Builder withDisableExport(boolean disableExport) {
-            this.disableExport = disableExport;
+        public Builder withUsesCustomExportSchedule(boolean usesCustomExportSchedule) {
+            this.usesCustomExportSchedule = usesCustomExportSchedule;
             return this;
         }
 
@@ -85,11 +113,8 @@ public class StudyInfo {
                 return null;
             }
 
-            // usesCustomExportSchedule defaults to false.
-            boolean finalUsesCustomExportSchedule = usesCustomExportSchedule != null ? usesCustomExportSchedule :
-                    false;
-
-            return new StudyInfo(dataAccessTeamId, synapseProjectId, finalUsesCustomExportSchedule, disableExport);
+            return new StudyInfo(dataAccessTeamId, synapseProjectId, disableExport, studyIdExcludedInExport,
+                    usesCustomExportSchedule);
         }
     }
 }

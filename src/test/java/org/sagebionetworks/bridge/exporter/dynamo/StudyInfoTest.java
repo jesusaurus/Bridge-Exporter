@@ -36,31 +36,13 @@ public class StudyInfoTest {
     public void withFields() {
         StudyInfo studyInfo = new StudyInfo.Builder().withDataAccessTeamId(23L)
                 .withSynapseProjectId("test-synapse-project").build();
-        assertEquals(studyInfo.getDataAccessTeamId().longValue(), 23);
+        assertEquals(studyInfo.getDataAccessTeamId(), 23);
         assertEquals(studyInfo.getSynapseProjectId(), "test-synapse-project");
-        assertFalse(studyInfo.getUsesCustomExportSchedule());
+
+        // optional args default to false
         assertFalse(studyInfo.getDisableExport());
-    }
-
-    @Test
-    public void customExportFalse() {
-        StudyInfo studyInfo = new StudyInfo.Builder().withDataAccessTeamId(23L)
-                .withSynapseProjectId("test-synapse-project").withUsesCustomExportSchedule(false).build();
+        assertFalse(studyInfo.isStudyIdExcludedInExport());
         assertFalse(studyInfo.getUsesCustomExportSchedule());
-    }
-
-    @Test
-    public void customExportTrue() {
-        StudyInfo studyInfo = new StudyInfo.Builder().withDataAccessTeamId(23L)
-                .withSynapseProjectId("test-synapse-project").withUsesCustomExportSchedule(true).build();
-        assertTrue(studyInfo.getUsesCustomExportSchedule());
-    }
-
-    @Test
-    public void disableExportFalse() {
-        StudyInfo studyInfo = new StudyInfo.Builder().withDataAccessTeamId(23L)
-                .withSynapseProjectId("test-synapse-project").withDisableExport(false).build();
-        assertFalse(studyInfo.getDisableExport());
     }
 
     @Test
@@ -68,5 +50,19 @@ public class StudyInfoTest {
         StudyInfo studyInfo = new StudyInfo.Builder().withDataAccessTeamId(23L)
                 .withSynapseProjectId("test-synapse-project").withDisableExport(true).build();
         assertTrue(studyInfo.getDisableExport());
+    }
+
+    @Test
+    public void studyIdExcludedInExport() {
+        StudyInfo studyInfo = new StudyInfo.Builder().withDataAccessTeamId(23L)
+                .withSynapseProjectId("test-synapse-project").withStudyIdExcludedInExport(true).build();
+        assertTrue(studyInfo.isStudyIdExcludedInExport());
+    }
+
+    @Test
+    public void customExportTrue() {
+        StudyInfo studyInfo = new StudyInfo.Builder().withDataAccessTeamId(23L)
+                .withSynapseProjectId("test-synapse-project").withUsesCustomExportSchedule(true).build();
+        assertTrue(studyInfo.getUsesCustomExportSchedule());
     }
 }
