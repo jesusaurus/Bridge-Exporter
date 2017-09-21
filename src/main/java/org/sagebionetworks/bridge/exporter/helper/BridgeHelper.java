@@ -21,6 +21,7 @@ import org.sagebionetworks.bridge.rest.exceptions.BridgeSDKException;
 import org.sagebionetworks.bridge.rest.exceptions.NotAuthenticatedException;
 import org.sagebionetworks.bridge.rest.model.RecordExportStatusRequest;
 import org.sagebionetworks.bridge.rest.model.SignIn;
+import org.sagebionetworks.bridge.rest.model.Study;
 import org.sagebionetworks.bridge.rest.model.SynapseExporterStatus;
 import org.sagebionetworks.bridge.rest.model.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
@@ -117,6 +118,17 @@ public class BridgeHelper {
                     schemaKey.getStudyId(), schemaKey.getSchemaId(), (long) schemaKey.getRevision()).execute().body());
         } catch (IOException ex) {
             throw new BridgeSDKException("Error getting schema from Bridge: " + ex.getMessage(), ex);
+        }
+    }
+
+    /** Calls Bridge to get a study by ID. */
+    @Cacheable(lifetime = 5, unit = TimeUnit.MINUTES)
+    public Study getStudy(String studyId) {
+        try {
+            return sessionHelper(() -> bridgeClientManager.getClient(ForWorkersApi.class).getStudy(studyId).execute()
+                    .body());
+        } catch (IOException ex) {
+            throw new BridgeSDKException("Error getting study " + studyId + " from Bridge: " + ex.getMessage(), ex);
         }
     }
 

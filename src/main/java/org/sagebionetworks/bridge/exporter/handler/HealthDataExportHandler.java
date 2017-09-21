@@ -7,12 +7,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
 import com.jcabi.aspects.Cacheable;
+import org.apache.commons.lang3.StringUtils;
 import org.joda.time.DateTime;
 import org.joda.time.format.DateTimeFormat;
 import org.joda.time.format.DateTimeFormatter;
@@ -31,6 +33,8 @@ import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
 import org.sagebionetworks.bridge.exporter.worker.TsvInfo;
 import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
+import org.sagebionetworks.bridge.json.DefaultObjectMapper;
+import org.sagebionetworks.bridge.rest.model.Study;
 import org.sagebionetworks.bridge.rest.model.SynapseExporterStatus;
 import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
 import org.sagebionetworks.bridge.rest.model.UploadFieldType;
@@ -41,6 +45,7 @@ import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 public class HealthDataExportHandler extends SynapseExportHandler {
     private static final Logger LOG = LoggerFactory.getLogger(HealthDataExportHandler.class);
 
+    private static final String METADATA_FIELD_NAME_PREFIX = "metadata.";
     private static final char MULTI_CHOICE_FIELD_SEPARATOR = '.';
     private static final String OTHER_CHOICE_FIELD_SUFFIX = ".other";
     private static final String TIME_ZONE_FIELD_SUFFIX = ".timezone";
@@ -85,16 +90,25 @@ public class HealthDataExportHandler extends SynapseExportHandler {
 
     @Override
     protected List<ColumnModel> getSynapseTableColumnList(ExportTask task) throws SchemaNotFoundException {
+        List<UploadFieldDefinition> studyUploadMetadataFieldDefList = getStudyUploadMetadataFieldDefList();
         List<UploadFieldDefinition> schemaFieldDefList = getSchemaFieldDefList(task.getMetrics());
-        return getSynapseTableColumnListCached(schemaFieldDefList);
+        return getSynapseTableColumnListCached(studyUploadMetadataFieldDefList, schemaFieldDefList);
     }
 
     // Helper method to compute the Synapse column list from the schema field def list. Since this is a non-trivial
     // amount of computation, we also wrap this in a cacheable annotation.
     @Cacheable(forever = true)
-    private List<ColumnModel> getSynapseTableColumnListCached(List<UploadFieldDefinition> schemaFieldDefList) {
+    private List<ColumnModel> getSynapseTableColumnListCached(
+            List<UploadFieldDefinition> studyUploadMetadataFieldDefList,
+            List<UploadFieldDefinition> schemaFieldDefList) {
+
+        // Merge field defs from study upload metadata and from schema.
+        List<UploadFieldDefinition> mergedList = mergeFieldDefLists(studyUploadMetadataFieldDefList,
+                schemaFieldDefList);
+
+        // Convert into Synapse columms.
         List<ColumnModel> columnList = new ArrayList<>();
-        for (UploadFieldDefinition oneFieldDef : schemaFieldDefList) {
+        for (UploadFieldDefinition oneFieldDef : mergedList) {
             String oneFieldName = oneFieldDef.getName();
             UploadFieldType bridgeType = oneFieldDef.getType();
 
@@ -163,6 +177,55 @@ public class HealthDataExportHandler extends SynapseExportHandler {
         return columnList;
     }
 
+    // Helper method that merges the field def list from the study upload metadata and the schema.
+    private static List<UploadFieldDefinition> mergeFieldDefLists(
+            List<UploadFieldDefinition> studyUploadMetadataFieldDefList,
+            List<UploadFieldDefinition> schemaFieldDefList) {
+        // Short-cut: If there are no metadata fields, just return the schema field list verbatim.
+        if (studyUploadMetadataFieldDefList == null || studyUploadMetadataFieldDefList.isEmpty()) {
+            return schemaFieldDefList;
+        }
+
+        // Fields from schema overwrite fields from study. To figure this out, we need a hash set to efficiently look
+        // up name conflicts.
+        Set<String> schemaFieldNameSet = schemaFieldDefList.stream().map(UploadFieldDefinition::getName).collect(
+                Collectors.toSet());
+
+        // Only add metadata fields if they aren't in the schema. Note: Metadata fields need to be pre-pended with the
+        // prefix.
+        List<UploadFieldDefinition> mergedList = new ArrayList<>();
+        for (UploadFieldDefinition oneStudyFieldDef : studyUploadMetadataFieldDefList) {
+            String resolvedName = METADATA_FIELD_NAME_PREFIX + oneStudyFieldDef.getName();
+            if (!schemaFieldNameSet.contains(resolvedName)) {
+                // Need to create a copy before renaming the field. Otherwise, this renamed field might get stuck in the
+                // cache and then bad things happen.
+                UploadFieldDefinition renamedField = copy(oneStudyFieldDef);
+                renamedField.setName(resolvedName);
+                mergedList.add(renamedField);
+            }
+        }
+
+        // Append the fields from the schema.
+        mergedList.addAll(schemaFieldDefList);
+        return mergedList;
+    }
+
+    // Helper method that copies an UploadFieldDefinition.
+    // Package-scoped to facilitate unit tests.
+    static UploadFieldDefinition copy(UploadFieldDefinition other) {
+        UploadFieldDefinition copy = new UploadFieldDefinition();
+        copy.setName(other.getName());
+        copy.setRequired(other.getRequired());
+        copy.setType(other.getType());
+        copy.setAllowOtherChoices(other.getAllowOtherChoices());
+        copy.setFileExtension(other.getFileExtension());
+        copy.setMimeType(other.getMimeType());
+        copy.setMaxLength(other.getMaxLength());
+        copy.setMultiChoiceAnswerList(other.getMultiChoiceAnswerList());
+        copy.setUnboundedText(other.getUnboundedText());
+        return copy;
+    }
+
     @Override
     protected TsvInfo getTsvInfoForTask(ExportTask task) {
         return task.getHealthDataTsvInfoForSchema(schemaKey);
@@ -177,19 +240,56 @@ public class HealthDataExportHandler extends SynapseExportHandler {
     protected Map<String, String> getTsvRowValueMap(ExportSubtask subtask) throws IOException, SchemaNotFoundException,
             SynapseException {
         ExportTask task = subtask.getParentTask();
-        JsonNode dataJson = subtask.getRecordData();
+        Map<String, String> rowValueMap = new HashMap<>();
+
+        // metadata columns
+        String userMetadataJsonText = subtask.getOriginalRecord().getString("userMetadata");
+        if (StringUtils.isNotBlank(userMetadataJsonText)) {
+            // extract and serialize from the raw DDB record
+            JsonNode userMetadataNode = DefaultObjectMapper.INSTANCE.readTree(userMetadataJsonText);
+            List<UploadFieldDefinition> metadataFieldDefList = getStudyUploadMetadataFieldDefList();
+            if (metadataFieldDefList != null && !metadataFieldDefList.isEmpty()) {
+                Map<String, String> metadataFieldMap = extractAndSerializeFields(subtask, metadataFieldDefList,
+                        userMetadataNode);
+
+                // Add to the row value map, but pre-pend the metadata prefix.
+                metadataFieldMap.entrySet().stream().forEach(metadataField -> rowValueMap
+                        .put(METADATA_FIELD_NAME_PREFIX + metadataField.getKey(), metadataField.getValue()));
+            }
+        }
+
+        // schema-specific columns - These write directly to the rowValueMap, possibly overwriting metadata if there's
+        // a name conflict.
+        List<UploadFieldDefinition> schemaFieldDefList = getSchemaFieldDefList(task.getMetrics());
+        Map<String, String> schemaFieldMap = extractAndSerializeFields(subtask, schemaFieldDefList,
+                subtask.getRecordData());
+        rowValueMap.putAll(schemaFieldMap);
+
+        return rowValueMap;
+    }
+
+    /**
+     * Helper method to serialize fields from the given JSON node and return them as a map.
+     *
+     * @param subtask
+     *         export subtask, used for looking up variables and logging info
+     * @param fieldDefList
+     *         field definition list; either study upload metadata fields or schema fields
+     * @param jsonNode
+     *         JSON node containing data; either record data or record user metadata
+     */
+    private Map<String, String> extractAndSerializeFields(ExportSubtask subtask,
+            List<UploadFieldDefinition> fieldDefList, JsonNode jsonNode) throws IOException, SynapseException {
         ExportWorkerManager manager = getManager();
+        ExportTask task = subtask.getParentTask();
         String synapseProjectId = manager.getSynapseProjectIdForStudyAndTask(getStudyId(), task);
         String recordId = subtask.getRecordId();
-        Metrics metrics = task.getMetrics();
 
-        // schema-specific columns
         Map<String, String> rowValueMap = new HashMap<>();
-        List<UploadFieldDefinition> fieldDefList = getSchemaFieldDefList(metrics);
         for (UploadFieldDefinition oneFieldDef : fieldDefList) {
             String oneFieldName = oneFieldDef.getName();
             UploadFieldType bridgeType = oneFieldDef.getType();
-            JsonNode valueNode = dataJson.get(oneFieldName);
+            JsonNode valueNode = jsonNode.get(oneFieldName);
 
             if (BridgeExporterUtil.shouldConvertFreeformTextToAttachment(schemaKey, oneFieldName)) {
                 // special hack, see comments on shouldConvertFreeformTextToAttachment()
@@ -215,7 +315,7 @@ public class HealthDataExportHandler extends SynapseExportHandler {
                 Map<String, String> serializedTimestampFields = serializeTimestamp(recordId, oneFieldName, valueNode);
                 rowValueMap.putAll(serializedTimestampFields);
             } else {
-                String value = manager.getSynapseHelper().serializeToSynapseType(metrics, task.getTmpDir(),
+                String value = manager.getSynapseHelper().serializeToSynapseType(task.getMetrics(), task.getTmpDir(),
                         synapseProjectId, recordId, oneFieldDef, valueNode);
                 rowValueMap.put(oneFieldName, value);
             }
@@ -239,6 +339,13 @@ public class HealthDataExportHandler extends SynapseExportHandler {
     private List<UploadFieldDefinition> getSchemaFieldDefList(Metrics metrics) throws SchemaNotFoundException {
         UploadSchema schema = getManager().getBridgeHelper().getSchema(metrics, schemaKey);
         return schema.getFieldDefinitions();
+    }
+
+    // Helper method for getting the upload metadata field def list from the study. This is similarly cached in
+    // BridgeHelper.
+    private List<UploadFieldDefinition> getStudyUploadMetadataFieldDefList() {
+        Study study = getManager().getBridgeHelper().getStudy(getStudyId());
+        return study.getUploadMetadataFieldDefinitions();
     }
 
     /**

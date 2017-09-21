@@ -35,6 +35,7 @@ import org.sagebionetworks.bridge.exporter.worker.ExportSubtask;
 import org.sagebionetworks.bridge.exporter.worker.ExportTask;
 import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
 import org.sagebionetworks.bridge.file.InMemoryFileHelper;
+import org.sagebionetworks.bridge.rest.model.Study;
 import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
 import org.sagebionetworks.bridge.rest.model.UploadFieldType;
 import org.sagebionetworks.bridge.rest.model.UploadSchema;
@@ -73,8 +74,12 @@ public class SynapseExportHandlerNewTableTest {
         handler.setStudyId(SynapseExportHandlerTest.TEST_STUDY_ID);
 
         // mock BridgeHelper
+        Study study = new Study().identifier(SynapseExportHandlerTest.TEST_STUDY_ID)
+                .uploadMetadataFieldDefinitions(null);
+
         BridgeHelper mockBridgeHelper = mock(BridgeHelper.class);
         when(mockBridgeHelper.getSchema(any(), eq(schemaKey))).thenReturn(schema);
+        when(mockBridgeHelper.getStudy(SynapseExportHandlerTest.TEST_STUDY_ID)).thenReturn(study);
 
         // mock config
         Config mockConfig = mock(Config.class);
