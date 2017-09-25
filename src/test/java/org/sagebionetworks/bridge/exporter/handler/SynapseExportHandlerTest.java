@@ -53,6 +53,7 @@ import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
 import org.sagebionetworks.bridge.exporter.worker.TsvInfo;
 import org.sagebionetworks.bridge.file.InMemoryFileHelper;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
+import org.sagebionetworks.bridge.rest.model.Study;
 import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
 import org.sagebionetworks.bridge.rest.model.UploadFieldType;
 import org.sagebionetworks.bridge.rest.model.UploadSchema;
@@ -83,11 +84,6 @@ public class SynapseExportHandlerTest {
     private static final String DUMMY_DATA_GROUPS_FLATTENED = "bar,baz,foo";
     private static final String DUMMY_HEALTH_CODE = "dummy-health-code";
     private static final String DUMMY_RECORD_ID = "dummy-record-id";
-    public static final Item DUMMY_RECORD = new Item().withLong("createdOn", DUMMY_CREATED_ON)
-            .withString("healthCode", DUMMY_HEALTH_CODE).withString("id", DUMMY_RECORD_ID)
-            .withString("metadata", DUMMY_METADATA_JSON_TEXT).withStringSet("userDataGroups", DUMMY_DATA_GROUPS)
-            .withString("userExternalId", "unsanitized\t\texternal\t\tid")
-            .withString("userSharingScope", DUMMY_USER_SHARING_SCOPE);
 
     // Constants to make a request.
     public static final LocalDate DUMMY_REQUEST_DATE = LocalDate.parse("2015-10-31");
@@ -110,6 +106,7 @@ public class SynapseExportHandlerTest {
     private static final String DUMMY_EXTERNAL_ID = "unsanitized external id";
     private static final String DUMMY_FILEHANDLE_ID = "dummy-filehandle-id";
     private static final String DUMMY_FREEFORM_TEXT_CONTENT = "dummy freeform text content";
+    public static final Study DUMMY_STUDY = new Study().identifier(TEST_STUDY_ID).uploadMetadataFieldDefinitions(null);
     private static final String FREEFORM_FIELD_NAME = "DailyJournalStep103_data.content";
     public static final long TEST_SYNAPSE_DATA_ACCESS_TEAM_ID = 1337;
     public static final int TEST_SYNAPSE_PRINCIPAL_ID = 123456;
@@ -140,6 +137,7 @@ public class SynapseExportHandlerTest {
         // mock BridgeHelper
         BridgeHelper mockBridgeHelper = mock(BridgeHelper.class);
         when(mockBridgeHelper.getSchema(any(), eq(schemaKey))).thenReturn(schema);
+        when(mockBridgeHelper.getStudy(TEST_STUDY_ID)).thenReturn(DUMMY_STUDY);
 
         // mock config
         Config mockConfig = mock(Config.class);
@@ -483,8 +481,16 @@ public class SynapseExportHandlerTest {
 
     public static ExportSubtask makeSubtask(ExportTask parentTask, String recordJsonText) throws IOException {
         JsonNode recordJsonNode = DefaultObjectMapper.INSTANCE.readTree(recordJsonText);
-        return new ExportSubtask.Builder().withOriginalRecord(DUMMY_RECORD).withParentTask(parentTask)
+        return new ExportSubtask.Builder().withOriginalRecord(makeDdbRecord()).withParentTask(parentTask)
                 .withRecordData(recordJsonNode).withSchemaKey(DUMMY_SCHEMA_KEY).build();
+    }
+
+    public static Item makeDdbRecord() {
+        return new Item().withLong("createdOn", DUMMY_CREATED_ON).withString("healthCode", DUMMY_HEALTH_CODE)
+                .withString("id", DUMMY_RECORD_ID).withString("metadata", DUMMY_METADATA_JSON_TEXT)
+                .withStringSet("userDataGroups", DUMMY_DATA_GROUPS)
+                .withString("userExternalId", "unsanitized\t\texternal\t\tid")
+                .withString("userSharingScope", DUMMY_USER_SHARING_SCOPE);
     }
 
     public static void validateTsvHeaders(String line, String... extraColumnNameVarargs) {

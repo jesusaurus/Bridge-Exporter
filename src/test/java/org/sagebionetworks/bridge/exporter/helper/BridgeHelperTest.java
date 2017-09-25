@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
@@ -31,12 +32,12 @@ import org.sagebionetworks.bridge.rest.exceptions.NotAuthenticatedException;
 import org.sagebionetworks.bridge.rest.model.Message;
 import org.sagebionetworks.bridge.rest.model.RecordExportStatusRequest;
 import org.sagebionetworks.bridge.rest.model.SignIn;
+import org.sagebionetworks.bridge.rest.model.Study;
 import org.sagebionetworks.bridge.rest.model.SynapseExporterStatus;
 import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
 import org.sagebionetworks.bridge.rest.model.UploadFieldType;
 import org.sagebionetworks.bridge.rest.model.UploadSchema;
 import org.sagebionetworks.bridge.rest.model.UploadSchemaType;
-import org.sagebionetworks.bridge.rest.model.UploadSession;
 import org.sagebionetworks.bridge.rest.model.UserSessionInfo;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
@@ -91,7 +92,7 @@ public class BridgeHelperTest {
     @Test
     public void completeUpload() throws Exception {
         // mock call
-        Call<UploadSession> mockCall = mock(Call.class);
+        Call<Message> mockCall = mock(Call.class);
         when(mockWorkersApi.completeUploadSession("test-upload")).thenReturn(mockCall);
 
         // execute and verify
@@ -158,6 +159,22 @@ public class BridgeHelperTest {
     }
 
     @Test
+    public void getStudy() throws Exception {
+        // mock Bridge Client
+        Study testStudy = new Study().identifier(TEST_STUDY_ID);
+        Response<Study> response = Response.success(testStudy);
+
+        Call<Study> mockCall = mock(Call.class);
+        when(mockCall.execute()).thenReturn(response);
+
+        when(mockWorkersApi.getStudy(TEST_STUDY_ID)).thenReturn(mockCall);
+
+        // execute and validate
+        Study retVal = bridgeHelper.getStudy(TEST_STUDY_ID);
+        assertSame(retVal, testStudy);
+    }
+
+    @Test
     public void testSessionHelper() throws Exception {
         // 3 test cases:
         // 1. first request initializes session
@@ -171,10 +188,10 @@ public class BridgeHelperTest {
         // 4. Fourth call succeeds, to complete our call pattern.
 
         // Mock ForWorkersApi - third call throws
-        Call<UploadSession> mockUploadCall1 = mock(Call.class);
-        Call<UploadSession> mockUploadCall2 = mock(Call.class);
-        Call<UploadSession> mockUploadCall3a = mock(Call.class);
-        Call<UploadSession> mockUploadCall3b = mock(Call.class);
+        Call<Message> mockUploadCall1 = mock(Call.class);
+        Call<Message> mockUploadCall2 = mock(Call.class);
+        Call<Message> mockUploadCall3a = mock(Call.class);
+        Call<Message> mockUploadCall3b = mock(Call.class);
         when(mockUploadCall3a.execute()).thenThrow(NotAuthenticatedException.class);
 
         when(mockWorkersApi.completeUploadSession("upload1")).thenReturn(mockUploadCall1);

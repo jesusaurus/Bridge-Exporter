@@ -17,15 +17,18 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import com.amazonaws.services.dynamodbv2.document.Item;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.BooleanNode;
 import com.fasterxml.jackson.databind.node.IntNode;
 import com.fasterxml.jackson.databind.node.NullNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import com.google.common.collect.ImmutableList;
 import org.joda.time.DateTime;
 import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
 import org.sagebionetworks.repo.model.table.ColumnModel;
+import org.sagebionetworks.repo.model.table.ColumnType;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -40,8 +43,10 @@ import org.sagebionetworks.bridge.exporter.worker.ExportTask;
 import org.sagebionetworks.bridge.exporter.worker.ExportWorkerManager;
 import org.sagebionetworks.bridge.file.InMemoryFileHelper;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
+import org.sagebionetworks.bridge.rest.model.Study;
 import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
 import org.sagebionetworks.bridge.rest.model.UploadFieldType;
+import org.sagebionetworks.bridge.rest.model.UploadSchema;
 
 public class HealthDataExportHandlerTest {
     private static final List<ColumnModel> MOCK_COLUMN_LIST;
@@ -63,6 +68,41 @@ public class HealthDataExportHandlerTest {
     private static final UploadFieldDefinition OTHER_CHOICE_FIELD_DEF = new UploadFieldDefinition()
             .allowOtherChoices(true).name(FIELD_NAME).type(UploadFieldType.MULTI_CHOICE)
             .multiChoiceAnswerList(ImmutableList.of("one", "two"));
+
+    private HealthDataExportHandler handler;
+    private BridgeHelper mockBridgeHelper;
+    private InMemoryFileHelper mockFileHelper;
+    private byte[] tsvBytes;
+
+    @Test
+    public void copy() {
+        List<String> multiChoiceAnswerList = ImmutableList.of("foo", "bar", "baz");
+
+        // Make original field def. Note some of these attribute combinations are impossible. This test is a bit
+        // contrived.
+        UploadFieldDefinition original = new UploadFieldDefinition();
+        original.setName("test-field");
+        original.setRequired(true);
+        original.setType(UploadFieldType.INLINE_JSON_BLOB);
+        original.setAllowOtherChoices(true);
+        original.setFileExtension(".test");
+        original.setMimeType("application/test");
+        original.setMaxLength(512);
+        original.setMultiChoiceAnswerList(multiChoiceAnswerList);
+        original.setUnboundedText(true);
+
+        // Copy and validate
+        UploadFieldDefinition copy = HealthDataExportHandler.copy(original);
+        assertEquals(copy.getName(), "test-field");
+        assertTrue(copy.getRequired());
+        assertEquals(copy.getType(), UploadFieldType.INLINE_JSON_BLOB);
+        assertTrue(copy.getAllowOtherChoices());
+        assertEquals(copy.getFileExtension(), ".test");
+        assertEquals(copy.getMimeType(), "application/test");
+        assertEquals(copy.getMaxLength().intValue(), 512);
+        assertEquals(copy.getMultiChoiceAnswerList(), multiChoiceAnswerList);
+        assertTrue(copy.getUnboundedText());
+    }
 
     // branch coverage
     @Test
@@ -222,28 +262,18 @@ public class HealthDataExportHandlerTest {
         assertEquals(rowValueMap.get("foo-field.42"), "false");
     }
 
-    // Needs to be a class member for the next test to work.
-    private byte[] tsvBytes;
-
-    // This test is to make sure the handler regularly calls to get the schema instead of holding onto it forever.
-    // BridgeHelper itself caches schemas for 5 minutes, so it's safe to always call BridgeHelper for the schema.
-    //
-    // SynapseExportHandlerTest already tests a lot of stuff in-depth. The purpose of this test it to test the
-    // specific interaction with BridgeHelper.
-    @Test
-    public void updateSchemaTest() throws Exception {
-        // Test cases: 2 tasks, 2 records each (4 records total). This tests getting the schema for each record and
-        // during task initialization.
-
+    // Helper method to set up tests where we export something.
+    private void setupTest(int numRows, UploadSchema schema, Study study, List<ColumnModel> expectedColumnList)
+            throws Exception {
         // Set up handler with the test schema
-        HealthDataExportHandler handler = new HealthDataExportHandler();
+        handler = new HealthDataExportHandler();
         handler.setSchemaKey(BridgeHelperTest.TEST_SCHEMA_KEY);
         handler.setStudyId(BridgeHelperTest.TEST_STUDY_ID);
 
         // mock BridgeHelper
-        BridgeHelper mockBridgeHelper = mock(BridgeHelper.class);
-        when(mockBridgeHelper.getSchema(any(), eq(BridgeHelperTest.TEST_SCHEMA_KEY))).thenReturn(
-                BridgeHelperTest.TEST_SCHEMA);
+        mockBridgeHelper = mock(BridgeHelper.class);
+        when(mockBridgeHelper.getSchema(any(), eq(BridgeHelperTest.TEST_SCHEMA_KEY))).thenReturn(schema);
+        when(mockBridgeHelper.getStudy(BridgeHelperTest.TEST_STUDY_ID)).thenReturn(study);
 
         // mock config
         Config mockConfig = mock(Config.class);
@@ -251,13 +281,13 @@ public class HealthDataExportHandlerTest {
                 SynapseExportHandlerTest.DUMMY_DDB_PREFIX);
 
         // mock file helper
-        InMemoryFileHelper mockFileHelper = new InMemoryFileHelper();
+        mockFileHelper = new InMemoryFileHelper();
 
         // mock Synapse helper
         SynapseHelper mockSynapseHelper = mock(SynapseHelper.class);
         List<ColumnModel> columnModelList = new ArrayList<>();
         columnModelList.addAll(MOCK_COLUMN_LIST);
-        columnModelList.add(BridgeHelperTest.TEST_SYNAPSE_COLUMN);
+        columnModelList.addAll(expectedColumnList);
         when(mockSynapseHelper.getColumnModelsForTableWithRetry(SynapseExportHandlerTest.TEST_SYNAPSE_TABLE_ID))
                 .thenReturn(columnModelList);
 
@@ -273,8 +303,8 @@ public class HealthDataExportHandlerTest {
             File tsvFile = invocation.getArgumentAt(2, File.class);
             tsvBytes = mockFileHelper.getBytes(tsvFile);
 
-            // we processed 2 rows
-            return 2;
+            // we processed numRows rows
+            return numRows;
         });
 
         // setup manager - This is only used to get helper objects.
@@ -297,6 +327,21 @@ public class HealthDataExportHandlerTest {
         // Similarly, spy get/setSynapseTableIdFromDDB.
         doReturn(SynapseExportHandlerTest.TEST_SYNAPSE_TABLE_ID).when(manager).getSynapseTableIdFromDdb(any(),
                 eq(handler.getDdbTableName()), eq(handler.getDdbTableKeyName()), eq(handler.getDdbTableKeyValue()));
+    }
+
+    // This test is to make sure the handler regularly calls to get the schema instead of holding onto it forever.
+    // BridgeHelper itself caches schemas for 5 minutes, so it's safe to always call BridgeHelper for the schema.
+    //
+    // SynapseExportHandlerTest already tests a lot of stuff in-depth. The purpose of this test it to test the
+    // specific interaction with BridgeHelper.
+    @Test
+    public void updateSchemaTest() throws Exception {
+        // Test cases: 2 tasks, 2 records each (4 records total). This tests getting the schema for each record and
+        // during task initialization.
+
+        Study study = new Study().identifier(BridgeHelperTest.TEST_STUDY_ID).uploadMetadataFieldDefinitions(null);
+        List<ColumnModel> expectedColumnList = ImmutableList.of(BridgeHelperTest.TEST_SYNAPSE_COLUMN);
+        setupTest(2, BridgeHelperTest.TEST_SCHEMA, study, expectedColumnList);
 
         // This is not realistic, but for testing simplicity, all four records will have the same JSON.
         String recordJsonText = "{\n" +
@@ -315,7 +360,8 @@ public class HealthDataExportHandlerTest {
                     .build();
 
             // However, for the purposes of our tests, we can re-use subtasks.
-            ExportSubtask subtask = new ExportSubtask.Builder().withOriginalRecord(SynapseExportHandlerTest.DUMMY_RECORD)
+            ExportSubtask subtask = new ExportSubtask.Builder()
+                    .withOriginalRecord(SynapseExportHandlerTest.makeDdbRecord())
                     .withParentTask(task).withRecordData(recordJsonNode).withSchemaKey(BridgeHelperTest.TEST_SCHEMA_KEY)
                     .build();
 
@@ -341,5 +387,140 @@ public class HealthDataExportHandlerTest {
 
         // Sanity check to make sure we have the expected number of getSchema calls.
         assertEquals(numGetSchemaCalls, 6);
+    }
+
+    // Similarly, this test primarily tests upload metadata. Most of the other stuff is tested in other tests.
+    @Test
+    public void metadataTest() throws Exception {
+        // We only have 1 row and 1 task in our test, but we will have 4 metadata fields to cover everything:
+        // 1. multi-choice field
+        // 2. timestamp field
+        // 3. single-column field
+        // 4. field with name conflict
+
+        // Make study w/ metadata fields and schema for test.
+        List<UploadFieldDefinition> metadataFieldDefList = ImmutableList.of(
+                new UploadFieldDefinition().name("choose-one").type(UploadFieldType.MULTI_CHOICE)
+                        .multiChoiceAnswerList(ImmutableList.of("A", "B", "C")).allowOtherChoices(true),
+                new UploadFieldDefinition().name("when").type(UploadFieldType.TIMESTAMP),
+                new UploadFieldDefinition().name("foo").type(UploadFieldType.INT),
+                new UploadFieldDefinition().name("bar").type(UploadFieldType.INT));
+        Study study = new Study().identifier(BridgeHelperTest.TEST_STUDY_ID).uploadMetadataFieldDefinitions(
+                metadataFieldDefList);
+
+        List<UploadFieldDefinition> schemaFieldDefList = ImmutableList.of(
+                new UploadFieldDefinition().name("metadata.bar").type(UploadFieldType.STRING).maxLength(12),
+                new UploadFieldDefinition().name("record.foo").type(UploadFieldType.STRING).maxLength(12),
+                new UploadFieldDefinition().name("record.baz").type(UploadFieldType.STRING).maxLength(12));
+        UploadSchema schema = BridgeHelperTest.simpleSchemaBuilder().fieldDefinitions(schemaFieldDefList);
+
+        // Make expected column list.
+        List<ColumnModel> expectedColumnList = new ArrayList<>();
+        {
+            ColumnModel col = new ColumnModel();
+            col.setName("metadata.choose-one.A");
+            col.setColumnType(ColumnType.BOOLEAN);
+            expectedColumnList.add(col);
+        }
+        {
+            ColumnModel col = new ColumnModel();
+            col.setName("metadata.choose-one.B");
+            col.setColumnType(ColumnType.BOOLEAN);
+            expectedColumnList.add(col);
+        }
+        {
+            ColumnModel col = new ColumnModel();
+            col.setName("metadata.choose-one.C");
+            col.setColumnType(ColumnType.BOOLEAN);
+            expectedColumnList.add(col);
+        }
+        {
+            ColumnModel col = new ColumnModel();
+            col.setName("metadata.choose-one.other");
+            col.setColumnType(ColumnType.LARGETEXT);
+            expectedColumnList.add(col);
+        }
+        {
+            ColumnModel col = new ColumnModel();
+            col.setName("metadata.when");
+            col.setColumnType(ColumnType.DATE);
+            expectedColumnList.add(col);
+        }
+        {
+            ColumnModel col = new ColumnModel();
+            col.setName("metadata.when.timezone");
+            col.setColumnType(ColumnType.STRING);
+            col.setMaximumSize(5L);
+            expectedColumnList.add(col);
+        }
+        {
+            ColumnModel col = new ColumnModel();
+            col.setName("metadata.foo");
+            col.setColumnType(ColumnType.INTEGER);
+            expectedColumnList.add(col);
+        }
+        {
+            ColumnModel col = new ColumnModel();
+            col.setName("metadata.bar");
+            col.setColumnType(ColumnType.STRING);
+            col.setMaximumSize(12L);
+            expectedColumnList.add(col);
+        }
+        {
+            ColumnModel col = new ColumnModel();
+            col.setName("record.foo");
+            col.setColumnType(ColumnType.STRING);
+            col.setMaximumSize(12L);
+            expectedColumnList.add(col);
+        }
+        {
+            ColumnModel col = new ColumnModel();
+            col.setName("record.baz");
+            col.setColumnType(ColumnType.STRING);
+            col.setMaximumSize(12L);
+            expectedColumnList.add(col);
+        }
+
+        // setup test
+        setupTest(1, schema, study, expectedColumnList);
+
+        // make task
+        File tmpDir = mockFileHelper.createTempDir();
+        ExportTask task = new ExportTask.Builder().withExporterDate(SynapseExportHandlerTest.DUMMY_REQUEST_DATE)
+                .withMetrics(new Metrics()).withRequest(SynapseExportHandlerTest.DUMMY_REQUEST).withTmpDir(tmpDir)
+                .build();
+
+        // make record
+        ObjectNode recordNode = DefaultObjectMapper.INSTANCE.createObjectNode();
+        recordNode.put("metadata.bar", "metadata-bar");
+        recordNode.put("record.foo", "foo-value");
+        recordNode.put("record.baz", "baz-value");
+
+        // make DDB item with metadata
+        String whenStr = "2017-09-20T16:57:24.130+0900";
+        long whenMillis = DateTime.parse(whenStr).getMillis();
+        String metadataJsonText = "{\n" +
+                "   \"choose-one\":[\"C\", \"None of the above\"],\n" +
+                "   \"when\":\"" + whenStr + "\",\n" +
+                "   \"foo\":37,\n" +
+                "   \"bar\":42\n" +
+                "}";
+        Item ddbRecord = SynapseExportHandlerTest.makeDdbRecord().withString("userMetadata", metadataJsonText);
+
+        // make subtask
+        ExportSubtask subtask = new ExportSubtask.Builder().withOriginalRecord(ddbRecord).withParentTask(task)
+                .withRecordData(recordNode).withSchemaKey(BridgeHelperTest.TEST_SCHEMA_KEY).build();
+
+        // execute and validate
+        handler.handle(subtask);
+        handler.uploadToSynapseForTask(task);
+
+        List<String> tsvLineList = TestUtil.bytesToLines(tsvBytes);
+        assertEquals(tsvLineList.size(), 2);
+        SynapseExportHandlerTest.validateTsvHeaders(tsvLineList.get(0), "metadata.choose-one.A",
+                "metadata.choose-one.B", "metadata.choose-one.C", "metadata.choose-one.other", "metadata.when",
+                "metadata.when.timezone", "metadata.foo", "metadata.bar", "record.foo", "record.baz");
+        SynapseExportHandlerTest.validateTsvRow(tsvLineList.get(1), "false", "false", "true", "None of the above",
+                String.valueOf(whenMillis), "+0900", "37", "metadata-bar", "foo-value", "baz-value");
     }
 }
