@@ -79,14 +79,16 @@ public class SynapseHelper {
     // numeric types, but new values are likely to be "true"/"false" or ISO8601 timestamps. This leads to more
     // confusion overall, so we've decided to block it.
     //
+    // Similarly, if you convert a bool to a numeric type (int, float), Synapse will convert the bools to 0s and 1s.
+    // However, old bools in DynamoDB are still using "true"/"false", which will no longer serialize to Synapse. To
+    // prevent this data loss, we're also not allowing bools to convert to numeric types.
+    //
     // Also note that due to a bug, we cannot currently convert anything to a LargeText.
     // See https://sagebionetworks.jira.com/browse/PLFM-4028
     private static final SetMultimap<ColumnType, ColumnType> ALLOWED_OLD_TYPE_TO_NEW_TYPE =
             ImmutableSetMultimap.<ColumnType, ColumnType>builder()
-                    // Numeric types can changed to types with more precision (bool to int to float), but not less
-                    // precision (float to int to bool).
-                    .put(ColumnType.BOOLEAN, ColumnType.INTEGER)
-                    .put(ColumnType.BOOLEAN, ColumnType.DOUBLE)
+                    // Numeric types can changed to types with more precision (int to float), but not less
+                    // precision (float to int).
                     .put(ColumnType.INTEGER, ColumnType.DOUBLE)
                     // Date can be converted to int and float (epoch milliseconds), and can be converted back from an
                     // int. However, we block converting from float, since that causes data loss.
