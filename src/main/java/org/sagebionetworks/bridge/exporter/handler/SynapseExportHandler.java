@@ -6,21 +6,22 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.TreeMap;
-import java.util.TreeSet;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import org.sagebionetworks.client.exceptions.SynapseException;
 import org.sagebionetworks.client.exceptions.SynapseNotFoundException;
+import org.sagebionetworks.repo.model.table.ColumnChange;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
-import org.sagebionetworks.repo.model.table.TableEntity;
+import org.sagebionetworks.repo.model.table.TableSchemaChangeRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -222,16 +223,9 @@ public abstract class SynapseExportHandler extends ExportHandler {
         // Get existing columns from table.
         List<ColumnModel> existingColumnList = synapseHelper.getColumnModelsForTableWithRetry(synapseTableId);
 
-        // Compute the columns that were added, deleted, and kept. Use tree maps so logging will show a stable message.
-        Map<String, ColumnModel> existingColumnsByName = new TreeMap<>();
-        for (ColumnModel oneExistingColumn : existingColumnList) {
-            existingColumnsByName.put(oneExistingColumn.getName(), oneExistingColumn);
-        }
-
-        Map<String, ColumnModel> columnDefsByName = new TreeMap<>();
-        for (ColumnModel oneColumnDef : columnDefList) {
-            columnDefsByName.put(oneColumnDef.getName(), oneColumnDef);
-        }
+        // Compute the columns that were added, deleted, and kept.
+        Map<String, ColumnModel> existingColumnsByName = Maps.uniqueIndex(existingColumnList, ColumnModel::getName);
+        Map<String, ColumnModel> columnDefsByName = Maps.uniqueIndex(columnDefList, ColumnModel::getName);
 
         Set<String> addedColumnNameSet = Sets.difference(columnDefsByName.keySet(), existingColumnsByName.keySet());
         Set<String> deletedColumnNameSet = Sets.difference(existingColumnsByName.keySet(), columnDefsByName.keySet());
@@ -246,27 +240,28 @@ public abstract class SynapseExportHandler extends ExportHandler {
         }
 
         // Similarly, were any columns changed?
-        Set<String> modifiedColumnNameSet = new TreeSet<>();
+        Set<String> modifiedColumnNameSet = new HashSet<>();
+        Set<String> incompatibleColumnNameSet = new HashSet<>();
         for (String oneKeptColumnName : keptColumnNameSet) {
-            // Validate that column types are the same. We can't use .equals() because ID is definitely
-            // different.
+            // Was this column modified? Check type and max length, since those are the only fields we care about. We
+            // can't use .equals(), because newly generated columns don't have IDs.
             ColumnModel existingColumn = existingColumnsByName.get(oneKeptColumnName);
             ColumnModel columnDef = columnDefsByName.get(oneKeptColumnName);
-            if (existingColumn.getColumnType() != columnDef.getColumnType()) {
+            if (existingColumn.getColumnType() != columnDef.getColumnType() ||
+                    !Objects.equals(existingColumn.getMaximumSize(), columnDef.getMaximumSize())) {
                 modifiedColumnNameSet.add(oneKeptColumnName);
+            } else {
+                continue;
             }
 
-            // In very old tables created by a very old version of BridgeEX, some String columns were created with size
-            // 1000 instead of 100. In order tables, they were manually resized to much smaller than 100. In either
-            // case, if the column size is different, we need to set the column def's size to match the existing
-            // column's size so we don't accidentally delete the column.
-            if (!Objects.equals(existingColumn.getMaximumSize(), columnDef.getMaximumSize())) {
-                columnDef.setMaximumSize(existingColumn.getMaximumSize());
+            // This column was modified. Was the modification compatible?
+            if (!SynapseHelper.isCompatibleColumn(existingColumn, columnDef)) {
+                incompatibleColumnNameSet.add(oneKeptColumnName);
             }
         }
-        if (!modifiedColumnNameSet.isEmpty()) {
-            LOG.error("Table " + getDdbTableKeyValue() + " has modified columns: " +
-                    BridgeExporterUtil.COMMA_SPACE_JOINER.join(modifiedColumnNameSet));
+        if (!incompatibleColumnNameSet.isEmpty()) {
+            LOG.error("Table " + getDdbTableKeyValue() + " has incompatible modified columns: " +
+                    BridgeExporterUtil.COMMA_SPACE_JOINER.join(incompatibleColumnNameSet));
             shouldThrow = true;
         }
 
@@ -274,24 +269,42 @@ public abstract class SynapseExportHandler extends ExportHandler {
             throw new BridgeExporterNonRetryableException("Table has deleted and/or modified columns");
         }
 
-        // Optimization: Were any columns added?
-        if (addedColumnNameSet.isEmpty()) {
+        // Optimization: Were any columns added or modified?
+        if (addedColumnNameSet.isEmpty() && modifiedColumnNameSet.isEmpty()) {
             return;
         }
 
         // Make sure the columns have been created / get column IDs.
         List<ColumnModel> createdColumnList = synapseHelper.createColumnModelsWithRetry(columnDefList);
 
-        // Update table.
+        // Create list of column changes.
+        List<ColumnChange> columnChangeList = new ArrayList<>();
         List<String> colIdList = new ArrayList<>();
-        //noinspection Convert2streamapi
         for (ColumnModel oneCreatedColumn : createdColumnList) {
-            colIdList.add(oneCreatedColumn.getId());
+            ColumnModel existingColumn = existingColumnsByName.get(oneCreatedColumn.getName());
+            String createdColumnId = oneCreatedColumn.getId();
+            String existingColumnId = existingColumn != null ? existingColumn.getId() : null;
+
+            // Only add column change if the column is different.
+            if (!Objects.equals(createdColumnId, existingColumnId)) {
+                ColumnChange columnChange = new ColumnChange();
+                columnChange.setOldColumnId(existingColumnId);
+                columnChange.setNewColumnId(createdColumnId);
+                columnChangeList.add(columnChange);
+            }
+
+            // Want to specify order of columns.
+            colIdList.add(createdColumnId);
         }
 
-        TableEntity table = synapseHelper.getTableWithRetry(synapseTableId);
-        table.setColumnIds(colIdList);
-        synapseHelper.updateTableWithRetry(table);
+        // Create schema change request.
+        TableSchemaChangeRequest schemaChangeRequest = new TableSchemaChangeRequest();
+        schemaChangeRequest.setEntityId(synapseTableId);
+        schemaChangeRequest.setChanges(columnChangeList);
+        schemaChangeRequest.setOrderedColumnIds(colIdList);
+
+        // Update table.
+        synapseHelper.updateTableColumns(schemaChangeRequest, synapseTableId);
     }
 
     // Helper method to get row values that are common across all Synapse tables and handlers.

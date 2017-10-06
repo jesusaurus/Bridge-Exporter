@@ -12,6 +12,7 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
@@ -26,9 +27,11 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Multiset;
 import org.mockito.ArgumentCaptor;
 import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
+
+import org.sagebionetworks.repo.model.table.ColumnChange;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
-import org.sagebionetworks.repo.model.table.TableEntity;
+import org.sagebionetworks.repo.model.table.TableSchemaChangeRequest;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -47,13 +50,29 @@ import org.sagebionetworks.bridge.file.InMemoryFileHelper;
 
 @SuppressWarnings({ "rawtypes", "unchecked" })
 public class SynapseExportHandlerUpdateTableTest {
-    private static final List<ColumnModel> MOCK_COLUMN_LIST;
-
     private static final List<ColumnDefinition> MOCK_COLUMN_DEFINITION;
-
+    private static final List<ColumnModel> MOCK_COLUMN_LIST;
+    private static final List<ColumnModel> MOCK_EXISTING_COLUMN_LIST;
     static {
         MOCK_COLUMN_DEFINITION = SynapseExportHandlerTest.createTestSynapseColumnDefinitions();
         MOCK_COLUMN_LIST = SynapseExportHandlerTest.createTestSynapseColumnList(MOCK_COLUMN_DEFINITION);
+
+        // Existing columns are the same, except they also have column IDs.
+        MOCK_EXISTING_COLUMN_LIST = new ArrayList<>();
+        for (ColumnModel oneColumn : MOCK_COLUMN_LIST) {
+            // Copy the columns, so we don't change the columns in MOCK_COLUMN_LIST. The only attributes
+            // MOCK_COLUMN_LIST uses are name, type, and max size.
+            ColumnModel copy = new ColumnModel();
+            copy.setName(oneColumn.getName());
+            copy.setColumnType(oneColumn.getColumnType());
+            copy.setMaximumSize(oneColumn.getMaximumSize());
+
+            // ID is [name]-id.
+            copy.setId(oneColumn.getName() + "-id");
+
+            // Add to list.
+            MOCK_EXISTING_COLUMN_LIST.add(copy);
+        }
     }
 
     private List<ColumnModel> expectedColDefList;
@@ -119,10 +138,6 @@ public class SynapseExportHandlerUpdateTableTest {
         when(mockSynapseHelper.createColumnModelsWithRetry(anyListOf(ColumnModel.class))).thenReturn(
                 createdColumnList);
 
-        // mock get table - just a dummy table that we can fill in
-        when(mockSynapseHelper.getTableWithRetry(SynapseExportHandlerTest.TEST_SYNAPSE_TABLE_ID)).thenReturn(
-                new TableEntity());
-
         // mock upload the TSV and capture the upload
         when(mockSynapseHelper.uploadTsvFileToTable(eq(SynapseExportHandlerTest.TEST_SYNAPSE_PROJECT_ID),
                 eq(SynapseExportHandlerTest.TEST_SYNAPSE_TABLE_ID), notNull(File.class))).thenAnswer(invocation -> {
@@ -161,8 +176,9 @@ public class SynapseExportHandlerUpdateTableTest {
     private static class UpdateTestSynapseHandler extends TestSynapseHandler {
         @Override
         protected List<ColumnModel> getSynapseTableColumnList(ExportTask task) {
-            return ImmutableList.of(makeColumn("modify-this"), makeColumn("add-this"), makeColumn("swap-this-A"),
-                    makeColumn("swap-this-B"));
+            // Columns generated on the fly don't have column IDs yet, because they haven't been created yet.
+            return ImmutableList.of(makeColumn("modify-this", null), makeColumn("add-this", null),
+                    makeColumn("swap-this-A", null), makeColumn("swap-this-B", null));
         }
 
         // For test purposes, this will always match the schema returned by getSynapseTableColumnList. The tests will
@@ -179,30 +195,47 @@ public class SynapseExportHandlerUpdateTableTest {
     public void rejectDelete() throws Exception {
         // Existing columns has "delete-this" (rejected).
         List<ColumnModel> existingColumnList = new ArrayList<>();
-        existingColumnList.addAll(MOCK_COLUMN_LIST);
-        existingColumnList.add(makeColumn("delete-this"));
-        existingColumnList.add(makeColumn("modify-this"));
+        existingColumnList.addAll(MOCK_EXISTING_COLUMN_LIST);
+        existingColumnList.add(makeColumn("delete-this", "delete-this-id"));
+        existingColumnList.add(makeColumn("modify-this", "modify-this-id"));
         testInitError(existingColumnList);
     }
 
     @Test
-    public void rejectModifyType() throws Exception {
+    public void incompatibleTypeChange() throws Exception {
         // Modify column type.
         List<ColumnModel> existingColumnList = new ArrayList<>();
-        existingColumnList.addAll(MOCK_COLUMN_LIST);
+        existingColumnList.addAll(MOCK_EXISTING_COLUMN_LIST);
 
-        ColumnModel modifiedTypeColumn = new ColumnModel();
-        modifiedTypeColumn.setName("modify-this");
-        modifiedTypeColumn.setColumnType(ColumnType.INTEGER);
-        existingColumnList.add(modifiedTypeColumn);
+        ColumnModel oldModifiedColumn = new ColumnModel();
+        oldModifiedColumn.setName("modify-this");
+        oldModifiedColumn.setId("modify-this-old");
+        oldModifiedColumn.setColumnType(ColumnType.FILEHANDLEID);
+        existingColumnList.add(oldModifiedColumn);
+
+        testInitError(existingColumnList);
+    }
+
+    @Test
+    public void incompatibleLengthChange() throws Exception {
+        // Modify column type.
+        List<ColumnModel> existingColumnList = new ArrayList<>();
+        existingColumnList.addAll(MOCK_EXISTING_COLUMN_LIST);
+
+        ColumnModel oldModifiedColumn = new ColumnModel();
+        oldModifiedColumn.setName("modify-this");
+        oldModifiedColumn.setId("modify-this-old");
+        oldModifiedColumn.setColumnType(ColumnType.STRING);
+        oldModifiedColumn.setMaximumSize(1000L);
+        existingColumnList.add(oldModifiedColumn);
 
         testInitError(existingColumnList);
     }
 
     private void testInitError(List<ColumnModel> existingColumnList) throws Exception {
-        existingColumnList.add(makeColumn("add-this"));
-        existingColumnList.add(makeColumn("swap-this-A"));
-        existingColumnList.add(makeColumn("swap-this-B"));
+        existingColumnList.add(makeColumn("add-this", "add-this-id"));
+        existingColumnList.add(makeColumn("swap-this-A", "swap-this-A-id"));
+        existingColumnList.add(makeColumn("swap-this-B", "swap-this-B-id"));
 
         // setup
         SynapseExportHandler handler = setup(existingColumnList);
@@ -224,7 +257,7 @@ public class SynapseExportHandlerUpdateTableTest {
         }
 
         // verify we did not update the table
-        verify(mockSynapseHelper, never()).updateTableWithRetry(any());
+        verify(mockSynapseHelper, never()).updateTableColumns(any(), any());
 
         // verify we don't upload the TSV to Synapse
         verify(mockSynapseHelper, never()).uploadTsvFileToTable(any(), any(), any());
@@ -256,28 +289,28 @@ public class SynapseExportHandlerUpdateTableTest {
     public void dontUpdateIfNoAddedColumns() throws Exception {
         // Swap the columns. "Add this" has already been added.
         List<ColumnModel> existingColumnList = new ArrayList<>();
-        existingColumnList.addAll(MOCK_COLUMN_LIST);
-        existingColumnList.add(makeColumn("modify-this"));
-        existingColumnList.add(makeColumn("add-this"));
-        existingColumnList.add(makeColumn("swap-this-B"));
-        existingColumnList.add(makeColumn("swap-this-A"));
+        existingColumnList.addAll(MOCK_EXISTING_COLUMN_LIST);
+        existingColumnList.add(makeColumn("modify-this", "modify-this-id"));
+        existingColumnList.add(makeColumn("add-this", "add-this-id"));
+        existingColumnList.add(makeColumn("swap-this-B", "swap-this-B-id"));
+        existingColumnList.add(makeColumn("swap-this-A", "swap-this-A-id"));
 
         // setup and execute - The columns will be in the order specified by the column defs, not in the order
         // specified in Synapse. This is fine. As long as the headers are properly labeled, Synapse can handle this.
         setupAndExecuteSuccessCase(existingColumnList);
 
         // verify we did not update the table
-        verify(mockSynapseHelper, never()).updateTableWithRetry(any());
+        verify(mockSynapseHelper, never()).updateTableColumns(any(), any());
     }
 
     @Test
     public void addAndSwapColumns() throws Exception {
         // Existing columns does not have "add-this" and has swapped columns.
         List<ColumnModel> existingColumnList = new ArrayList<>();
-        existingColumnList.addAll(MOCK_COLUMN_LIST);
-        existingColumnList.add(makeColumn("modify-this"));
-        existingColumnList.add(makeColumn("swap-this-B"));
-        existingColumnList.add(makeColumn("swap-this-A"));
+        existingColumnList.addAll(MOCK_EXISTING_COLUMN_LIST);
+        existingColumnList.add(makeColumn("modify-this", "modify-this-id"));
+        existingColumnList.add(makeColumn("swap-this-B", "swap-this-B-id"));
+        existingColumnList.add(makeColumn("swap-this-A", "swap-this-A-id"));
 
         // setup and execute
         setupAndExecuteSuccessCase(existingColumnList);
@@ -286,11 +319,19 @@ public class SynapseExportHandlerUpdateTableTest {
         verify(mockSynapseHelper).createColumnModelsWithRetry(expectedColDefList);
 
         // verify table update
-        ArgumentCaptor<TableEntity> tableCaptor = ArgumentCaptor.forClass(TableEntity.class);
-        verify(mockSynapseHelper).updateTableWithRetry(tableCaptor.capture());
+        ArgumentCaptor<TableSchemaChangeRequest> requestCaptor = ArgumentCaptor.forClass(
+                TableSchemaChangeRequest.class);
+        verify(mockSynapseHelper).updateTableColumns(requestCaptor.capture(),
+                eq(SynapseExportHandlerTest.TEST_SYNAPSE_TABLE_ID));
 
-        TableEntity table = tableCaptor.getValue();
-        assertEquals(table.getColumnIds(), expectedColIdList);
+        TableSchemaChangeRequest request = requestCaptor.getValue();
+        assertEquals(request.getEntityId(), SynapseExportHandlerTest.TEST_SYNAPSE_TABLE_ID);
+        assertEquals(request.getOrderedColumnIds(), expectedColIdList);
+
+        List<ColumnChange> changeList = request.getChanges();
+        assertEquals(changeList.size(), 1);
+        assertNull(changeList.get(0).getOldColumnId());
+        assertEquals(changeList.get(0).getNewColumnId(), "add-this-id");
     }
 
     @Test
@@ -304,62 +345,95 @@ public class SynapseExportHandlerUpdateTableTest {
         verify(mockSynapseHelper).createColumnModelsWithRetry(expectedColDefList);
 
         // verify table update
-        ArgumentCaptor<TableEntity> tableCaptor = ArgumentCaptor.forClass(TableEntity.class);
-        verify(mockSynapseHelper).updateTableWithRetry(tableCaptor.capture());
+        ArgumentCaptor<TableSchemaChangeRequest> requestCaptor = ArgumentCaptor.forClass(
+                TableSchemaChangeRequest.class);
+        verify(mockSynapseHelper).updateTableColumns(requestCaptor.capture(),
+                eq(SynapseExportHandlerTest.TEST_SYNAPSE_TABLE_ID));
 
-        TableEntity table = tableCaptor.getValue();
-        assertEquals(table.getColumnIds(), expectedColIdList);
+        TableSchemaChangeRequest request = requestCaptor.getValue();
+        assertEquals(request.getEntityId(), SynapseExportHandlerTest.TEST_SYNAPSE_TABLE_ID);
+        assertEquals(request.getOrderedColumnIds(), expectedColIdList);
 
+        int numExpectedColumns = expectedColIdList.size();
+        List<ColumnChange> changeList = request.getChanges();
+        assertEquals(changeList.size(), numExpectedColumns);
+        for (int i = 0; i < numExpectedColumns; i++) {
+            assertNull(changeList.get(i).getOldColumnId());
+            assertEquals(changeList.get(i).getNewColumnId(), expectedColIdList.get(i));
+        }
     }
 
     @Test
-    public void ignoreShrinkingColumn() throws Exception {
-        // Existing column is larger. Handler will have a column def with a smaller column.
-        testIgnoreResizedColumn(1000);
-    }
-
-    @Test
-    public void ignoreGrowingColumn() throws Exception {
-        testIgnoreResizedColumn(24);
-    }
-
-    private void testIgnoreResizedColumn(long oldColumnSize) throws Exception {
-        // We need to add a column to trigger the update.
+    public void compatibleTypeChange() throws Exception {
+        // Swap the columns. "Add this" has already been added.
         List<ColumnModel> existingColumnList = new ArrayList<>();
-        existingColumnList.addAll(MOCK_COLUMN_LIST);
+        existingColumnList.addAll(MOCK_EXISTING_COLUMN_LIST);
+        existingColumnList.add(makeColumn("add-this", "add-this-id"));
+        existingColumnList.add(makeColumn("swap-this-B", "swap-this-B-id"));
+        existingColumnList.add(makeColumn("swap-this-A", "swap-this-A-id"));
 
-        ColumnModel modifyThisColumn = new ColumnModel();
-        modifyThisColumn.setName("modify-this");
-        modifyThisColumn.setColumnType(ColumnType.STRING);
-        modifyThisColumn.setMaximumSize(oldColumnSize);
-        existingColumnList.add(modifyThisColumn);
+        // Old modified is an Int, which can be converted to String just fine.
+        ColumnModel oldModifiedColumn = new ColumnModel();
+        oldModifiedColumn.setName("modify-this");
+        oldModifiedColumn.setId("modify-this-old");
+        oldModifiedColumn.setColumnType(ColumnType.INTEGER);
+        existingColumnList.add(oldModifiedColumn);
 
-        existingColumnList.add(makeColumn("swap-this-A"));
-        existingColumnList.add(makeColumn("swap-this-B"));
-
-        // setup and execute
+        // setup and execute - The columns will be in the order specified by the column defs, not in the order
+        // specified in Synapse. This is fine. As long as the headers are properly labeled, Synapse can handle this.
         setupAndExecuteSuccessCase(existingColumnList);
 
-        // verify creating the column has the old column size - We only care about the first one "modify-this".
-        // "modify-this" is the zeroth column after the commonColumnList, so do some math to get the sizes and
-        // indices right.
-        ArgumentCaptor<List> submittedColumnListCaptor = ArgumentCaptor.forClass(List.class);
-        verify(mockSynapseHelper).createColumnModelsWithRetry(submittedColumnListCaptor.capture());
+        // verify table update
+        ArgumentCaptor<TableSchemaChangeRequest> requestCaptor = ArgumentCaptor.forClass(
+                TableSchemaChangeRequest.class);
+        verify(mockSynapseHelper).updateTableColumns(requestCaptor.capture(),
+                eq(SynapseExportHandlerTest.TEST_SYNAPSE_TABLE_ID));
 
-        List<ColumnModel> submittedColumnList = submittedColumnListCaptor.getValue();
-        assertEquals(submittedColumnList.size(), MOCK_COLUMN_LIST.size() + 4);
+        TableSchemaChangeRequest request = requestCaptor.getValue();
+        assertEquals(request.getEntityId(), SynapseExportHandlerTest.TEST_SYNAPSE_TABLE_ID);
+        assertEquals(request.getOrderedColumnIds(), expectedColIdList);
 
-        ColumnModel submittedModifyThisColumn = submittedColumnList.get(
-                MOCK_COLUMN_LIST.size());
-        assertEquals(submittedModifyThisColumn.getName(), "modify-this");
-        assertEquals(submittedModifyThisColumn.getMaximumSize().longValue(), oldColumnSize);
+        List<ColumnChange> changeList = request.getChanges();
+        assertEquals(changeList.size(), 1);
+        assertEquals(changeList.get(0).getOldColumnId(), "modify-this-old");
+        assertEquals(changeList.get(0).getNewColumnId(), "modify-this-id");
+    }
+
+    @Test
+    public void compatibleLengthChange() throws Exception {
+        // Swap the columns. "Add this" has already been added.
+        List<ColumnModel> existingColumnList = new ArrayList<>();
+        existingColumnList.addAll(MOCK_EXISTING_COLUMN_LIST);
+        existingColumnList.add(makeColumn("add-this", "add-this-id"));
+        existingColumnList.add(makeColumn("swap-this-B", "swap-this-B-id"));
+        existingColumnList.add(makeColumn("swap-this-A", "swap-this-A-id"));
+
+        // Old modified is a smaller string (24 chars), which can be converted to a larger string just fine.
+        ColumnModel oldModifiedColumn = new ColumnModel();
+        oldModifiedColumn.setName("modify-this");
+        oldModifiedColumn.setId("modify-this-old");
+        oldModifiedColumn.setColumnType(ColumnType.STRING);
+        oldModifiedColumn.setMaximumSize(24L);
+        existingColumnList.add(oldModifiedColumn);
+
+        // setup and execute - The columns will be in the order specified by the column defs, not in the order
+        // specified in Synapse. This is fine. As long as the headers are properly labeled, Synapse can handle this.
+        setupAndExecuteSuccessCase(existingColumnList);
 
         // verify table update
-        ArgumentCaptor<TableEntity> tableCaptor = ArgumentCaptor.forClass(TableEntity.class);
-        verify(mockSynapseHelper).updateTableWithRetry(tableCaptor.capture());
+        ArgumentCaptor<TableSchemaChangeRequest> requestCaptor = ArgumentCaptor.forClass(
+                TableSchemaChangeRequest.class);
+        verify(mockSynapseHelper).updateTableColumns(requestCaptor.capture(),
+                eq(SynapseExportHandlerTest.TEST_SYNAPSE_TABLE_ID));
 
-        TableEntity table = tableCaptor.getValue();
-        assertEquals(table.getColumnIds(), expectedColIdList);
+        TableSchemaChangeRequest request = requestCaptor.getValue();
+        assertEquals(request.getEntityId(), SynapseExportHandlerTest.TEST_SYNAPSE_TABLE_ID);
+        assertEquals(request.getOrderedColumnIds(), expectedColIdList);
+
+        List<ColumnChange> changeList = request.getChanges();
+        assertEquals(changeList.size(), 1);
+        assertEquals(changeList.get(0).getOldColumnId(), "modify-this-old");
+        assertEquals(changeList.get(0).getNewColumnId(), "modify-this-id");
     }
 
     private void setupAndExecuteSuccessCase(List<ColumnModel> existingColumnList) throws Exception {
@@ -377,9 +451,10 @@ public class SynapseExportHandlerUpdateTableTest {
                 "swap-this-A value", "swap-this-B value");
     }
 
-    private static ColumnModel makeColumn(String name) {
+    private static ColumnModel makeColumn(String name, String id) {
         ColumnModel col = new ColumnModel();
         col.setName(name);
+        col.setId(id);
         col.setColumnType(ColumnType.STRING);
         col.setMaximumSize(100L);
         return col;

@@ -10,6 +10,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
 import java.io.File;
+import java.util.List;
 
 import org.mockito.ArgumentCaptor;
 import org.sagebionetworks.client.SynapseClient;
@@ -53,7 +54,8 @@ public class SynapseHelperUploadTsvToTableTest {
 
         tableDescCaptor = ArgumentCaptor.forClass(CsvTableDescriptor.class);
         when(mockSynapseClient.uploadCsvToTableAsyncStart(eq(TEST_TABLE_ID), eq(TEST_FILE_HANDLE_ID),
-                isNull(String.class), isNull(Long.class), tableDescCaptor.capture())).thenReturn(TEST_JOB_TOKEN);
+                isNull(String.class), isNull(Long.class), tableDescCaptor.capture(), isNull(List.class))).thenReturn(
+                TEST_JOB_TOKEN);
 
         synapseHelper = spy(new SynapseHelper());
         synapseHelper.setConfig(config);

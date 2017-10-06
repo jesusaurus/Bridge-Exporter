@@ -6,13 +6,17 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import com.amazonaws.AmazonClientException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.ImmutableSetMultimap;
+import com.google.common.collect.SetMultimap;
 import com.google.common.util.concurrent.RateLimiter;
 import com.jcabi.aspects.RetryOnFailure;
 import org.sagebionetworks.client.SynapseClient;
@@ -29,6 +33,10 @@ import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 import org.sagebionetworks.repo.model.table.CsvTableDescriptor;
 import org.sagebionetworks.repo.model.table.TableEntity;
+import org.sagebionetworks.repo.model.table.TableSchemaChangeRequest;
+import org.sagebionetworks.repo.model.table.TableSchemaChangeResponse;
+import org.sagebionetworks.repo.model.table.TableUpdateRequest;
+import org.sagebionetworks.repo.model.table.TableUpdateResponse;
 import org.sagebionetworks.repo.model.table.UploadToTableResult;
 import org.sagebionetworks.schema.adapter.JSONObjectAdapterException;
 import org.slf4j.Logger;
@@ -38,6 +46,7 @@ import org.springframework.stereotype.Component;
 
 import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
+import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterNonRetryableException;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.file.FileHelper;
 import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
@@ -63,7 +72,36 @@ public class SynapseHelper {
     public static final String DDB_TABLE_SYNAPSE_META_TABLES = "SynapseMetaTables";
     public static final String DDB_KEY_TABLE_NAME = "tableName";
 
-    /** Mapping from Bridge types to their respective max lengths. Only covers things that are strings in Synapse. */
+    // Map of allowed column type changes. Key is the old type. Value is the new type.
+    //
+    // A few notes: This is largely based on whether the data can be converted in Synapse tables. Since booleans are
+    // stored as 0/1 and dates are stored as epoch milliseconds, converting these to strings means old values will be
+    // numeric types, but new values are likely to be "true"/"false" or ISO8601 timestamps. This leads to more
+    // confusion overall, so we've decided to block it.
+    //
+    // Also note that due to a bug, we cannot currently convert anything to a LargeText.
+    // See https://sagebionetworks.jira.com/browse/PLFM-4028
+    private static final SetMultimap<ColumnType, ColumnType> ALLOWED_OLD_TYPE_TO_NEW_TYPE =
+            ImmutableSetMultimap.<ColumnType, ColumnType>builder()
+                    // Numeric types can changed to types with more precision (bool to int to float), but not less
+                    // precision (float to int to bool).
+                    .put(ColumnType.BOOLEAN, ColumnType.INTEGER)
+                    .put(ColumnType.BOOLEAN, ColumnType.DOUBLE)
+                    .put(ColumnType.INTEGER, ColumnType.DOUBLE)
+                    // Date can be converted to int and float (epoch milliseconds), and can be converted back from an
+                    // int. However, we block converting from float, since that causes data loss.
+                    .put(ColumnType.DATE, ColumnType.INTEGER)
+                    .put(ColumnType.DATE, ColumnType.DOUBLE)
+                    .put(ColumnType.INTEGER, ColumnType.DATE)
+                    // Numeric types are trivially converted to strings.
+                    .put(ColumnType.DOUBLE, ColumnType.STRING)
+                    .put(ColumnType.INTEGER, ColumnType.STRING)
+                    .build();
+
+    /**
+     * Mapping from Bridge types to their respective max lengths. This is used when we have a Bridge type that
+     * serializes as a String in Synapse, and we want to determine a max length for the String column.
+     */
     private static final Map<UploadFieldType, Integer> BRIDGE_TYPE_TO_MAX_LENGTH =
             ImmutableMap.<UploadFieldType, Integer>builder()
                     .put(UploadFieldType.CALENDAR_DATE, 10)
@@ -71,7 +109,7 @@ public class SynapseHelper {
                     .put(UploadFieldType.TIME_V2, 12)
                     .build();
 
-    /** Default max length for string columns in Synapse, if the mapping is absent from BRIDGE_TYPE_TO_MAX_LENGTH. */
+    /** Default max length for Bridge columns in Synapse. */
     private static final int DEFAULT_MAX_LENGTH = 100;
 
     /**
@@ -117,6 +155,20 @@ public class SynapseHelper {
                     .put(UploadFieldType.TIME_V2, ColumnType.STRING)
                     .build();
 
+    /**
+     * The max lengths of various Synapse column types. This is used to determine how long a Synapse column can be
+     * when we convert the column to a String. This only contains column types that can be converted to Strings. Note
+     * that it excludes dates and bools, as Synapse considers these numeric types, but Bridge uses ISO8601 and
+     * "true"/"false".
+     */
+    private static final Map<ColumnType, Integer> SYNAPSE_TYPE_TO_MAX_LENGTH =
+            ImmutableMap.<ColumnType, Integer>builder()
+                    // Empirically, the longest float in Synapse is 22 chars long
+                    .put(ColumnType.DOUBLE, 22)
+                    // Synapse uses a bigint (signed long), which can be 20 chars long
+                    .put(ColumnType.INTEGER, 20)
+                    .build();
+
     // config
     private int asyncIntervalMillis;
     private int asyncTimeoutLoops;
@@ -157,6 +209,72 @@ public class SynapseHelper {
     @Autowired
     public final void setSynapseClient(SynapseClient synapseClient) {
         this.synapseClient = synapseClient;
+    }
+
+    /**
+     * Returns true if the old column can be converted to the new column in a meaningful way without data loss. Used to
+     * determine if the schema changes, whether BridgeEX should try to modify the table.
+     *
+     * @param oldColumn
+     *         column model currently in Synapse
+     * @param newColumn
+     *         column model we want to replace it with
+     * @return true if they're compatible, false otherwise
+     * @throws BridgeExporterException
+     *         if there's an unexpected error comparing the columns
+     */
+    public static boolean isCompatibleColumn(ColumnModel oldColumn, ColumnModel newColumn)
+            throws BridgeExporterException {
+        // Ignore the following attributes:
+        // ID - The ones from Synapse will have IDs, but the ones we generate from the schema won't. This is normal.
+        // defaultValues, enumValues - We don't use these, and changing these won't affect data integrity.
+
+        // If types are different, check the table.
+        if (oldColumn.getColumnType() != newColumn.getColumnType()) {
+            Set<ColumnType> allowedNewTypes = ALLOWED_OLD_TYPE_TO_NEW_TYPE.get(oldColumn.getColumnType());
+            if (!allowedNewTypes.contains(newColumn.getColumnType())) {
+                return false;
+            }
+        }
+
+        // For string types, check max length. You can increase the max length, but you can't decrease it.
+        if (newColumn.getColumnType() == ColumnType.STRING &&
+                !Objects.equals(oldColumn.getMaximumSize(), newColumn.getMaximumSize())) {
+            long oldMaxLength;
+            if (oldColumn.getMaximumSize() != null) {
+                // If the old field def specified a max length, just use it.
+                oldMaxLength = oldColumn.getMaximumSize();
+            } else if (SYNAPSE_TYPE_TO_MAX_LENGTH.containsKey(oldColumn.getColumnType())) {
+                // The max length of the old field type is specified by its type.
+                oldMaxLength = SYNAPSE_TYPE_TO_MAX_LENGTH.get(oldColumn.getColumnType());
+            } else {
+                // This should never happen. If we get here, that means we somehow have a String column in Synapse
+                // without a Max Length parameter. Abort and throw.
+                throw new BridgeExporterNonRetryableException("old column " + oldColumn.getName() + " has type " +
+                        oldColumn.getColumnType() + " and no max length");
+            }
+
+            if (newColumn.getMaximumSize() == null) {
+                // This should also never happen. This means that we generated a String column without a Max Length,
+                // which is bad.
+                throw new BridgeExporterNonRetryableException("new column " + newColumn.getName() + " has type " +
+                        "STRING and no max length");
+            }
+            long newMaxLength = newColumn.getMaximumSize();
+
+            // You can't decrease max length.
+            if (newMaxLength < oldMaxLength) {
+                return false;
+            }
+        }
+
+        // This should never happen, but if the names are somehow different, they aren't compatible.
+        if (!Objects.equals(oldColumn.getName(), newColumn.getName())) {
+            return false;
+        }
+
+        // If we passed all incompatibility checks, then we're compatible.
+        return true;
     }
 
     /**
@@ -397,6 +515,68 @@ public class SynapseHelper {
 
         // Fall back to global default.
         return DEFAULT_MAX_LENGTH;
+    }
+
+    /**
+     * Updates table columns.
+     *
+     * @param schemaChangeRequest
+     *         requested change
+     * @param tableId
+     *         table to update
+     * @return table change response
+     * @throws BridgeExporterException
+     *         if there's a general error with Bridge EX
+     * @throws SynapseException
+     *         if there's an error calling Synapse
+     */
+    public TableSchemaChangeResponse updateTableColumns(TableSchemaChangeRequest schemaChangeRequest, String tableId)
+            throws BridgeExporterException, SynapseException {
+        // For convenience, this API only contains a single TableSchemaChangeRequest, but the Synapse API takes a whole
+        // list. Wrap it in a list.
+        List<TableUpdateRequest> changeList = ImmutableList.of(schemaChangeRequest);
+
+        // Start the table update job.
+        String jobToken = startTableTransactionWithRetry(changeList, tableId);
+
+        // Poll async get until success or timeout.
+        boolean success = false;
+        List<TableUpdateResponse> responseList = null;
+        for (int loops = 0; loops < asyncTimeoutLoops; loops++) {
+            if (asyncIntervalMillis > 0) {
+                try {
+                    Thread.sleep(asyncIntervalMillis);
+                } catch (InterruptedException ex) {
+                    // noop
+                }
+            }
+
+            // poll
+            responseList = getTableTransactionResultWithRetry(jobToken, tableId);
+            if (responseList != null) {
+                success = true;
+                break;
+            }
+
+            // Result not ready. Loop around again.
+        }
+
+        if (!success) {
+            throw new BridgeExporterException("Timed out updating table columns for table " + tableId);
+        }
+
+        // The list should have a single response, and it should be a TableSchemaChangeResponse.
+        if (responseList.size() != 1) {
+            throw new BridgeExporterException("Expected one table update response for table " + tableId +
+                    ", but got " + responseList.size());
+        }
+        TableUpdateResponse singleResponse = responseList.get(0);
+        if (!(singleResponse instanceof TableSchemaChangeResponse)) {
+            throw new BridgeExporterException("Expected a TableSchemaChangeResponse for table " + tableId +
+                    ", but got " + singleResponse.getClass().getName());
+        }
+
+        return (TableSchemaChangeResponse) singleResponse;
     }
 
     /**
@@ -687,6 +867,51 @@ public class SynapseHelper {
     }
 
     /**
+     * Starts a Synapse table transaction (for example, a schema update request). This is a retry wrapper.
+     *
+     * @param changeList
+     *         changes to apply to table
+     * @param tableId
+     *         table to be changed
+     * @return async job token
+     * @throws SynapseException
+     *         if the Synapse call fails
+     */
+    @RetryOnFailure(attempts = 2, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
+            randomize = false)
+    public String startTableTransactionWithRetry(List<TableUpdateRequest> changeList, String tableId)
+            throws SynapseException {
+        rateLimiter.acquire();
+        return synapseClient.startTableTransactionJob(changeList, tableId);
+    }
+
+    /**
+     * Polls Synapse to get the job status for a table transaction (such as a schema update request). If the job is not
+     * ready, this will return null instead of throwing a SynapseResultNotReadyException. This is to prevent spurious
+     * retries when a SynapseResultNotReadyException is thrown. This is a retry wrapper.
+     *
+     * @param jobToken
+     *         job token from startTableTransactionWithRetry()
+     * @param tableId
+     *         table the job was working on
+     * @return response from the table update
+     * @throws SynapseException
+     *         if the job fails
+     */
+    @RetryOnFailure(attempts = 2, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
+            randomize = false)
+    public List<TableUpdateResponse> getTableTransactionResultWithRetry(String jobToken, String tableId)
+            throws SynapseException {
+        try {
+            rateLimiter.acquire();
+            return synapseClient.getTableTransactionJobResults(jobToken, tableId);
+        } catch (SynapseResultNotReadyException ex) {
+            // catch this and return null so we don't retry on "not ready"
+            return null;
+        }
+    }
+
+    /**
      * Updates a Synapse table and returns the updated table. This is a retry wrapper.
      *
      * @param table
@@ -720,7 +945,7 @@ public class SynapseHelper {
     public String uploadTsvStartWithRetry(String tableId, String fileHandleId, CsvTableDescriptor tableDescriptor)
             throws SynapseException {
         rateLimiter.acquire();
-        return synapseClient.uploadCsvToTableAsyncStart(tableId, fileHandleId, null, null, tableDescriptor);
+        return synapseClient.uploadCsvToTableAsyncStart(tableId, fileHandleId, null, null, tableDescriptor, null);
     }
 
     /**
