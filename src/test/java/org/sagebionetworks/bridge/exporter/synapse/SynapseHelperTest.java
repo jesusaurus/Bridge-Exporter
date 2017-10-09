@@ -9,6 +9,7 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
@@ -28,13 +29,17 @@ import org.sagebionetworks.repo.model.file.S3FileHandle;
 import org.sagebionetworks.repo.model.status.StackStatus;
 import org.sagebionetworks.repo.model.status.StatusEnum;
 import org.sagebionetworks.repo.model.table.ColumnModel;
+import org.sagebionetworks.repo.model.table.ColumnType;
 import org.sagebionetworks.repo.model.table.CsvTableDescriptor;
 import org.sagebionetworks.repo.model.table.RowSet;
 import org.sagebionetworks.repo.model.table.TableEntity;
+import org.sagebionetworks.repo.model.table.TableUpdateRequest;
+import org.sagebionetworks.repo.model.table.TableUpdateResponse;
 import org.sagebionetworks.repo.model.table.UploadToTableResult;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
+import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterNonRetryableException;
 import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
 import org.sagebionetworks.bridge.rest.model.UploadFieldType;
 
@@ -58,6 +63,121 @@ public class SynapseHelperTest {
     public void getMaxLengthForFieldDef(UploadFieldDefinition fieldDef, int expectedMaxLength) {
         int retVal = SynapseHelper.getMaxLengthForFieldDef(fieldDef);
         assertEquals(retVal, expectedMaxLength);
+    }
+
+    @Test
+    public void isCompatibleColumnTypeChanges() throws Exception {
+        ColumnModel intColumn = new ColumnModel();
+        intColumn.setName("my-column");
+        intColumn.setColumnType(ColumnType.INTEGER);
+
+        ColumnModel floatColumn = new ColumnModel();
+        floatColumn.setName("my-column");
+        floatColumn.setColumnType(ColumnType.DOUBLE);
+
+        assertTrue(SynapseHelper.isCompatibleColumn(intColumn, floatColumn));
+        assertFalse(SynapseHelper.isCompatibleColumn(floatColumn, intColumn));
+    }
+
+    @DataProvider
+    public Object[][] isCompatibleMaxLengthStringToStringDataProvider() {
+        // { oldMaxLength, newMaxLength, expected }
+        return new Object[][] {
+                { 10, 20, true },
+                { 20, 10, false },
+                { 15, 15, true },
+        };
+    }
+
+    @Test(dataProvider = "isCompatibleMaxLengthStringToStringDataProvider")
+    public void isCompatibleMaxLengthStringToString(long oldMaxLength, long newMaxLength, boolean expected)
+            throws Exception {
+        ColumnModel oldColumn = new ColumnModel();
+        oldColumn.setName("my-string");
+        oldColumn.setColumnType(ColumnType.STRING);
+        oldColumn.setMaximumSize(oldMaxLength);
+
+        ColumnModel newColumn = new ColumnModel();
+        newColumn.setName("my-string");
+        newColumn.setColumnType(ColumnType.STRING);
+        newColumn.setMaximumSize(newMaxLength);
+
+        assertEquals(SynapseHelper.isCompatibleColumn(oldColumn, newColumn), expected);
+    }
+
+    @DataProvider
+    public Object[][] isCompatibleMaxLengthWithNonStringsDataProvider() {
+        // { oldType, newType, newMaxLength, expected }
+        return new Object[][] {
+                { ColumnType.INTEGER, ColumnType.INTEGER, null, true },
+                { ColumnType.DOUBLE, ColumnType.STRING, 21L, false },
+                { ColumnType.DOUBLE, ColumnType.STRING, 23L, true },
+                { ColumnType.INTEGER, ColumnType.STRING, 19L, false },
+                { ColumnType.INTEGER, ColumnType.STRING, 21L, true },
+        };
+    }
+
+    @Test(dataProvider = "isCompatibleMaxLengthWithNonStringsDataProvider")
+    public void isCompatibleMaxLengthWithNonStrings(ColumnType oldType, ColumnType newType, Long newMaxLength,
+            boolean expected) throws Exception {
+        ColumnModel oldColumn = new ColumnModel();
+        oldColumn.setName("my-column");
+        oldColumn.setColumnType(oldType);
+        oldColumn.setMaximumSize(null);
+
+        ColumnModel newColumn = new ColumnModel();
+        newColumn.setName("my-column");
+        newColumn.setColumnType(newType);
+        newColumn.setMaximumSize(newMaxLength);
+
+        assertEquals(SynapseHelper.isCompatibleColumn(oldColumn, newColumn), expected);
+    }
+
+    // branch coverage
+    @Test(expectedExceptions = BridgeExporterNonRetryableException.class, expectedExceptionsMessageRegExp =
+            "old column my-string has type STRING and no max length")
+    public void isCompatibleOldStringWithNoMaxLength() throws Exception {
+        ColumnModel oldColumn = new ColumnModel();
+        oldColumn.setName("my-string");
+        oldColumn.setColumnType(ColumnType.STRING);
+        oldColumn.setMaximumSize(null);
+
+        ColumnModel newColumn = new ColumnModel();
+        newColumn.setName("my-string");
+        newColumn.setColumnType(ColumnType.STRING);
+        newColumn.setMaximumSize(42L);
+
+        SynapseHelper.isCompatibleColumn(oldColumn, newColumn);
+    }
+
+    // branch coverage
+    @Test(expectedExceptions = BridgeExporterNonRetryableException.class, expectedExceptionsMessageRegExp =
+            "new column my-string has type STRING and no max length")
+    public void isCompatibleNewStringWithNoMaxLength() throws Exception {
+        ColumnModel oldColumn = new ColumnModel();
+        oldColumn.setName("my-string");
+        oldColumn.setColumnType(ColumnType.STRING);
+        oldColumn.setMaximumSize(42L);
+
+        ColumnModel newColumn = new ColumnModel();
+        newColumn.setName("my-string");
+        newColumn.setColumnType(ColumnType.STRING);
+        newColumn.setMaximumSize(null);
+
+        SynapseHelper.isCompatibleColumn(oldColumn, newColumn);
+    }
+
+    @Test
+    public void isCompatibleColumnNameChange() throws Exception {
+        ColumnModel fooColumn = new ColumnModel();
+        fooColumn.setName("foo");
+        fooColumn.setColumnType(ColumnType.INTEGER);
+
+        ColumnModel barColumn = new ColumnModel();
+        barColumn.setName("bar");
+        barColumn.setColumnType(ColumnType.INTEGER);
+
+        assertFalse(SynapseHelper.isCompatibleColumn(fooColumn, barColumn));
     }
 
     // Most of these are retry wrappers, but we should test them anyway for branch coverage.
@@ -281,6 +401,52 @@ public class SynapseHelperTest {
     }
 
     @Test
+    public void startTableTransaction() throws Exception {
+        // mock Synapse Client
+        List<TableUpdateRequest> dummyChangeList = ImmutableList.of();
+        SynapseClient mockSynapseClient = mock(SynapseClient.class);
+        when(mockSynapseClient.startTableTransactionJob(same(dummyChangeList), eq("table-id"))).thenReturn(
+                "job-token");
+
+        SynapseHelper synapseHelper = new SynapseHelper();
+        synapseHelper.setSynapseClient(mockSynapseClient);
+
+        // execute and validate
+        String retVal = synapseHelper.startTableTransactionWithRetry(dummyChangeList, "table-id");
+        assertEquals(retVal, "job-token");
+    }
+
+    @Test
+    public void getTableTransactionResult() throws Exception {
+        // mock Synapse Client
+        List<TableUpdateResponse> dummyResponseList = ImmutableList.of();
+        SynapseClient mockSynapseClient = mock(SynapseClient.class);
+        when(mockSynapseClient.getTableTransactionJobResults("job-token", "table-id")).thenReturn(dummyResponseList);
+
+        SynapseHelper synapseHelper = new SynapseHelper();
+        synapseHelper.setSynapseClient(mockSynapseClient);
+
+        // execute and validate
+        List<TableUpdateResponse> retVal = synapseHelper.getTableTransactionResultWithRetry("job-token", "table-id");
+        assertSame(retVal, dummyResponseList);
+    }
+
+    @Test
+    public void getTableTransactionResultNotReady() throws Exception {
+        // mock Synapse Client
+        SynapseClient mockSynapseClient = mock(SynapseClient.class);
+        when(mockSynapseClient.getTableTransactionJobResults("job-token", "table-id")).thenThrow(
+                SynapseResultNotReadyException.class);
+
+        SynapseHelper synapseHelper = new SynapseHelper();
+        synapseHelper.setSynapseClient(mockSynapseClient);
+
+        // execute and validate
+        List<TableUpdateResponse> retVal = synapseHelper.getTableTransactionResultWithRetry("job-token", "table-id");
+        assertNull(retVal);
+    }
+
+    @Test
     public void updateTable() throws Exception {
         // mock Synapse Client - Assume put entity returns a separate output table.
         SynapseClient mockSynapseClient = mock(SynapseClient.class);
@@ -301,8 +467,8 @@ public class SynapseHelperTest {
         // mock Synapse Client
         SynapseClient mockSynapseClient = mock(SynapseClient.class);
         CsvTableDescriptor inputTableDesc = new CsvTableDescriptor();
-        when(mockSynapseClient.uploadCsvToTableAsyncStart("table-id", "file-handle-id", null, null, inputTableDesc))
-                .thenReturn("job-token");
+        when(mockSynapseClient.uploadCsvToTableAsyncStart("table-id", "file-handle-id", null, null, inputTableDesc,
+                null)).thenReturn("job-token");
 
         SynapseHelper synapseHelper = new SynapseHelper();
         synapseHelper.setSynapseClient(mockSynapseClient);

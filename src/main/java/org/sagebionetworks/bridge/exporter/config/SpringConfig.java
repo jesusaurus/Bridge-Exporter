@@ -56,6 +56,7 @@ public class SpringConfig {
 
     @Bean
     public Config bridgeConfig() {
+        //noinspection ConstantConditions
         String defaultConfig = getClass().getClassLoader().getResource(DEFAULT_CONFIG_FILE).getPath();
         Path defaultConfigPath = Paths.get(defaultConfig);
         Path localConfigPath = Paths.get(USER_CONFIG_FILE);
@@ -197,7 +198,7 @@ public class SpringConfig {
         Config config = bridgeConfig();
 
         SynapseClient synapseClient = new SynapseAdminClientImpl();
-        synapseClient.setUserName(config.get("synapse.user"));
+        synapseClient.setUsername(config.get("synapse.user"));
         synapseClient.setApiKey(config.get("synapse.api.key"));
         return synapseClient;
     }
@@ -210,6 +211,7 @@ public class SpringConfig {
     @Bean(name = "synapseColumnDefinitions")
     public List<ColumnDefinition> synapseColumnDefinitions() throws IOException {
         final ClassLoader classLoader = getClass().getClassLoader();
+        //noinspection ConstantConditions
         final File file = new File(classLoader.getResource("ColumnDefinition.json").getFile());
         final ObjectMapper mapper = DefaultObjectMapper.INSTANCE;
 
