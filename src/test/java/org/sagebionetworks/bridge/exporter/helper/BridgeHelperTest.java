@@ -38,6 +38,7 @@ import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
 import org.sagebionetworks.bridge.rest.model.UploadFieldType;
 import org.sagebionetworks.bridge.rest.model.UploadSchema;
 import org.sagebionetworks.bridge.rest.model.UploadSchemaType;
+import org.sagebionetworks.bridge.rest.model.UploadValidationStatus;
 import org.sagebionetworks.bridge.rest.model.UserSessionInfo;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
@@ -92,8 +93,8 @@ public class BridgeHelperTest {
     @Test
     public void completeUpload() throws Exception {
         // mock call
-        Call<Message> mockCall = mock(Call.class);
-        when(mockWorkersApi.completeUploadSession("test-upload")).thenReturn(mockCall);
+        Call<UploadValidationStatus> mockCall = mock(Call.class);
+        when(mockWorkersApi.completeUploadSession("test-upload", null)).thenReturn(mockCall);
 
         // execute and verify
         bridgeHelper.completeUpload("test-upload");
@@ -188,15 +189,15 @@ public class BridgeHelperTest {
         // 4. Fourth call succeeds, to complete our call pattern.
 
         // Mock ForWorkersApi - third call throws
-        Call<Message> mockUploadCall1 = mock(Call.class);
-        Call<Message> mockUploadCall2 = mock(Call.class);
-        Call<Message> mockUploadCall3a = mock(Call.class);
-        Call<Message> mockUploadCall3b = mock(Call.class);
+        Call<UploadValidationStatus> mockUploadCall1 = mock(Call.class);
+        Call<UploadValidationStatus> mockUploadCall2 = mock(Call.class);
+        Call<UploadValidationStatus> mockUploadCall3a = mock(Call.class);
+        Call<UploadValidationStatus> mockUploadCall3b = mock(Call.class);
         when(mockUploadCall3a.execute()).thenThrow(NotAuthenticatedException.class);
 
-        when(mockWorkersApi.completeUploadSession("upload1")).thenReturn(mockUploadCall1);
-        when(mockWorkersApi.completeUploadSession("upload2")).thenReturn(mockUploadCall2);
-        when(mockWorkersApi.completeUploadSession("upload3")).thenReturn(mockUploadCall3a, mockUploadCall3b);
+        when(mockWorkersApi.completeUploadSession("upload1", null)).thenReturn(mockUploadCall1);
+        when(mockWorkersApi.completeUploadSession("upload2", null)).thenReturn(mockUploadCall2);
+        when(mockWorkersApi.completeUploadSession("upload3", null)).thenReturn(mockUploadCall3a, mockUploadCall3b);
 
         // Mock AuthenticationApi
         Call<UserSessionInfo> mockSignInCall = mock(Call.class);

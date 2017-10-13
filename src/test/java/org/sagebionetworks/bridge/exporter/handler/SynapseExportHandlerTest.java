@@ -362,7 +362,8 @@ public class SynapseExportHandlerTest {
     public void healthDataExportHandlerTest() throws Exception {
         // We don't need to exhaustively test all column types, as a lot of it is baked into
         // SynapseHelper.BRIDGE_TYPE_TO_SYNAPSE_TYPE. We just need to test multi_choice, timestamp,
-        // int (non-string), short string, long string (large text aka blob), and freeform text -> attachment
+        // int (non-string), short string, long string (large text aka blob), freeform text -> attachment,
+        // large text attachments
         // Since we want to test that our hack works, we'll need to use the breastcancer-BreastCancer-DailyJournal-v1
         // schema, field DailyJournalStep103_data.content
         UploadSchema testSchema = BridgeHelperTest.simpleSchemaBuilder().studyId(TEST_STUDY_ID)
@@ -377,6 +378,8 @@ public class SynapseExportHandlerTest {
                                 .multiChoiceAnswerList(ImmutableList.of("fencing", "football", "running", "swimming")),
                         new UploadFieldDefinition().name("delicious").type(UploadFieldType.MULTI_CHOICE)
                                 .multiChoiceAnswerList(ImmutableList.of("Yes", "No")).allowOtherChoices(true),
+                        new UploadFieldDefinition().name("my-large-text-attachment")
+                                .type(UploadFieldType.LARGE_TEXT_ATTACHMENT),
                         new UploadFieldDefinition().name(FREEFORM_FIELD_NAME).type(UploadFieldType.STRING)));
         UploadSchemaKey testSchemaKey = BridgeExporterUtil.getSchemaKeyFromSchema(testSchema);
 
@@ -403,6 +406,10 @@ public class SynapseExportHandlerTest {
                 freeformAttachmentFieldDef, DUMMY_ATTACHMENT_ID)).thenReturn(
                 DUMMY_FILEHANDLE_ID);
 
+        // Similarly for downloadLargeTextAttachment()
+        when(mockSynapseHelper.downloadLargeTextAttachment("my-large-text-attachment-id")).thenReturn(
+                "This is my large text attachment");
+
         // make subtasks
         String submitTimeStr = "2016-06-09T15:54+0900";
         long submitTimeMillis = DateTime.parse(submitTimeStr).getMillis();
@@ -414,6 +421,7 @@ public class SynapseExportHandlerTest {
                 "   \"submitTime\":\"" + submitTimeStr + "\",\n" +
                 "   \"sports\":[\"fencing\", \"running\"],\n" +
                 "   \"delicious\":[\"Yes\", \"No\", \"Maybe\"],\n" +
+                "   \"my-large-text-attachment\":\"my-large-text-attachment-id\",\n" +
                 "   \"" + FREEFORM_FIELD_NAME + "\":\"" + DUMMY_FREEFORM_TEXT_CONTENT + "\"\n" +
                 "}";
         ExportSubtask subtask = makeSubtask(task, recordJsonText);
@@ -427,10 +435,10 @@ public class SynapseExportHandlerTest {
         assertEquals(tsvLineList.size(), 2);
         validateTsvHeaders(tsvLineList.get(0), "foo", "foooo", "unbounded-foo", "bar", "submitTime",
                 "submitTime.timezone", "sports.fencing", "sports.football", "sports.running", "sports.swimming",
-                "delicious.Yes", "delicious.No", "delicious.other", FREEFORM_FIELD_NAME);
+                "delicious.Yes", "delicious.No", "delicious.other", "my-large-text-attachment", FREEFORM_FIELD_NAME);
         validateTsvRow(tsvLineList.get(1), "This is a string.", "Example (not) long string",
                 "Potentially unbounded string", "42", String.valueOf(submitTimeMillis), "+0900", "true", "false",
-                "true", "false", "true", "true", "Maybe", DUMMY_FILEHANDLE_ID);
+                "true", "false", "true", "true", "Maybe", "This is my large text attachment", DUMMY_FILEHANDLE_ID);
 
         // validate metrics
         Multiset<String> counterMap = task.getMetrics().getCounterMap();

@@ -152,6 +152,7 @@ public class SynapseHelper {
                     .put(UploadFieldType.FLOAT, ColumnType.DOUBLE)
                     .put(UploadFieldType.INLINE_JSON_BLOB, ColumnType.STRING)
                     .put(UploadFieldType.INT, ColumnType.INTEGER)
+                    .put(UploadFieldType.LARGE_TEXT_ATTACHMENT, ColumnType.LARGETEXT)
                     .put(UploadFieldType.SINGLE_CHOICE, ColumnType.STRING)
                     .put(UploadFieldType.STRING, ColumnType.STRING)
                     .put(UploadFieldType.TIME_V2, ColumnType.STRING)
@@ -373,10 +374,33 @@ public class SynapseHelper {
                 }
                 return null;
             }
+            case LARGE_TEXT_ATTACHMENT: {
+                // This is stored in Bridge as an attachment. The JSON node is text, which is the attachment ID (which
+                // is also the S3 key).
+                if (node.isTextual()) {
+                    // We need to upload this to Synapse as a LargeText inlined in the table. Download the file content
+                    // as a string.
+                    String value = downloadLargeTextAttachment(node.textValue());
+
+                    // We also need to sanitize the content (remove HTML, newlines, tabs, quote strings, etc).
+                    String sanitizedValue = BridgeExporterUtil.sanitizeString(value, fieldDef.getName(), null,
+                            recordId);
+                    return sanitizedValue;
+                }
+                return null;
+            }
             default:
                 LOG.error("Unexpected type " + fieldType.name() + " for record ID " + recordId);
                 return null;
         }
+    }
+
+    /**
+     * Helper method to download a large text attachment from S3. This is a separate public helper method to facilitate
+     * mocking and spying in unit tests, and should never be called directly.
+     */
+    public String downloadLargeTextAttachment(String attachmentId) throws IOException {
+        return s3Helper.readS3FileAsString(attachmentBucket, attachmentId);
     }
 
     /**
