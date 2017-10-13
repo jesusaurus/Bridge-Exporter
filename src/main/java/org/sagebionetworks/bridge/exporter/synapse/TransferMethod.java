@@ -54,6 +54,17 @@ public enum TransferMethod {
         public ColumnType getColumnType() {
             return ColumnType.DATE;
         }
+    },
+    LARGETEXT {
+        @Override
+        public String transfer(String ddbName, Item record) {
+            return record.getString(ddbName);
+        }
+
+        @Override
+        public ColumnType getColumnType() {
+            return ColumnType.LARGETEXT;
+        }
     };
 
     public abstract String transfer(final String ddbName, final Item record);

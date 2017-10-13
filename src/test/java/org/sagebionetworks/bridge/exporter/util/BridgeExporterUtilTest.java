@@ -184,111 +184,110 @@ public class BridgeExporterUtilTest {
 
     @Test
     public void canConvertToColumnList() {
-        final String testColumnModelName1 = "test_column_model_1";
-        final String testColumnModelName2 = "test_column_model_2";
+        // Make column definitions, one for each type.
+        ColumnDefinition stringDef = new ColumnDefinition();
+        stringDef.setName("my-string");
+        stringDef.setTransferMethod(TransferMethod.STRING);
+        stringDef.setMaximumSize(42L);
 
-        List<ColumnModel> testColumnList;
+        ColumnDefinition stringSetDef = new ColumnDefinition();
+        stringSetDef.setName("my-string-set");
+        stringSetDef.setTransferMethod(TransferMethod.STRINGSET);
+        stringSetDef.setMaximumSize(128L);
 
-        ImmutableList.Builder<ColumnModel> columnListBuilder = ImmutableList.builder();
+        ColumnDefinition dateDef = new ColumnDefinition();
+        dateDef.setName("my-date");
+        dateDef.setTransferMethod(TransferMethod.DATE);
 
-        ColumnModel testModel1 = new ColumnModel();
-        testModel1.setName(testColumnModelName1);
-        testModel1.setColumnType(ColumnType.STRING);
-        testModel1.setMaximumSize(36L);
-        columnListBuilder.add(testModel1);
+        ColumnDefinition largeTextDef = new ColumnDefinition();
+        largeTextDef.setName("my-large-text");
+        largeTextDef.setTransferMethod(TransferMethod.LARGETEXT);
 
-        ColumnModel testModel2 = new ColumnModel();
-        testModel2.setName(testColumnModelName2);
-        testModel2.setColumnType(ColumnType.STRING);
-        testModel2.setMaximumSize(48L);
-        columnListBuilder.add(testModel2);
+        List<ColumnDefinition> columnDefinitionList = ImmutableList.of(stringDef, stringSetDef, dateDef, largeTextDef);
 
-        testColumnList = columnListBuilder.build();
+        // execute and validate
+        List<ColumnModel> columnModelList = BridgeExporterUtil.convertToColumnList(columnDefinitionList);
+        assertEquals(columnModelList.size(), 4);
 
-        List<ColumnDefinition> testColumnDefinitions;
+        assertEquals(columnModelList.get(0).getName(), "my-string");
+        assertEquals(columnModelList.get(0).getColumnType(), ColumnType.STRING);
+        assertEquals(columnModelList.get(0).getMaximumSize().longValue(), 42);
 
-        ImmutableList.Builder<ColumnDefinition> columnDefinitionBuilder = ImmutableList.builder();
+        assertEquals(columnModelList.get(1).getName(), "my-string-set");
+        assertEquals(columnModelList.get(1).getColumnType(), ColumnType.STRING);
+        assertEquals(columnModelList.get(1).getMaximumSize().longValue(), 128);
 
-        ColumnDefinition testDefinition1 = new ColumnDefinition();
-        testDefinition1.setName(testColumnModelName1);
-        testDefinition1.setTransferMethod(TransferMethod.STRING);
-        testDefinition1.setMaximumSize(36L);
-        columnDefinitionBuilder.add(testDefinition1);
+        assertEquals(columnModelList.get(2).getName(), "my-date");
+        assertEquals(columnModelList.get(2).getColumnType(), ColumnType.DATE);
 
-        ColumnDefinition testDefinition2 = new ColumnDefinition();
-        testDefinition2.setName(testColumnModelName2);
-        testDefinition2.setTransferMethod(TransferMethod.STRING);
-        testDefinition2.setMaximumSize(48L);
-        columnDefinitionBuilder.add(testDefinition2);
-
-        testColumnDefinitions = columnDefinitionBuilder.build();
-
-        assertEquals(BridgeExporterUtil.convertToColumnList(testColumnDefinitions), testColumnList);
+        assertEquals(columnModelList.get(3).getName(), "my-large-text");
+        assertEquals(columnModelList.get(3).getColumnType(), ColumnType.LARGETEXT);
     }
 
     @Test
     public void canGetRowValuesFromRecordBasedOnColumnDefinition() {
-        final String testStringName = "test_string";
-        final String testStringSetName = "test_string_set";
-        final String testDateName = "test_date";
-        final String testSanitize = "test_sanitize";
+        // Make column definitions for test.
+        ColumnDefinition stringDef = new ColumnDefinition();
+        stringDef.setName("my-string");
+        stringDef.setTransferMethod(TransferMethod.STRING);
+        stringDef.setMaximumSize(42L);
 
-        // create mock record
-        Item testRecord = new Item();
-        testRecord.withString(testStringName, "test_string_value");
-        testRecord.withStringSet(testStringSetName, "test_string_set_value_1", "test_string_set_value_2");
-        testRecord.withLong(testDateName, 1484181511);
-        testRecord.with(testSanitize, "imbalanced</i> <p>tags");
+        ColumnDefinition stringSetDef = new ColumnDefinition();
+        stringSetDef.setName("my-string-set");
+        stringSetDef.setTransferMethod(TransferMethod.STRINGSET);
+        stringSetDef.setMaximumSize(128L);
 
-        // create expected map
-        Map<String, String> expectedMap = new HashMap<>();
-        expectedMap.put(testStringName, "test_string_value");
-        expectedMap.put(testStringSetName, "test_string_set_value_1,test_string_set_value_2");
-        expectedMap.put(testDateName, "1484181511");
-        expectedMap.put(testSanitize, "imbalanced tags");
+        ColumnDefinition dateDef = new ColumnDefinition();
+        dateDef.setName("my-date");
+        dateDef.setTransferMethod(TransferMethod.DATE);
 
-        // create mock column definitions
-        List<ColumnDefinition> testColumnDefinitions;
+        ColumnDefinition largeTextDef = new ColumnDefinition();
+        largeTextDef.setName("my-large-text");
+        largeTextDef.setTransferMethod(TransferMethod.LARGETEXT);
 
-        ImmutableList.Builder<ColumnDefinition> columnDefinitionBuilder = ImmutableList.builder();
+        ColumnDefinition renamedColumnDef = new ColumnDefinition();
+        renamedColumnDef.setName("renamed-column");
+        renamedColumnDef.setDdbName("ddb-column");
+        renamedColumnDef.setTransferMethod(TransferMethod.STRING);
+        renamedColumnDef.setMaximumSize(24L);
 
-        ColumnDefinition testDefinition1 = new ColumnDefinition();
-        testDefinition1.setName(testStringName);
-        testDefinition1.setMaximumSize(36L);
-        testDefinition1.setTransferMethod(TransferMethod.STRING);
-        testDefinition1.setDdbName(testStringName);
-        columnDefinitionBuilder.add(testDefinition1);
+        ColumnDefinition sanitizeMeDef = new ColumnDefinition();
+        sanitizeMeDef.setName("sanitize-me");
+        sanitizeMeDef.setTransferMethod(TransferMethod.STRING);
+        sanitizeMeDef.setMaximumSize(24L);
+        sanitizeMeDef.setSanitize(true);
 
-        ColumnDefinition testDefinition2 = new ColumnDefinition();
-        testDefinition2.setName(testStringSetName);
-        testDefinition2.setTransferMethod(TransferMethod.STRINGSET);
-        testDefinition2.setDdbName(testStringSetName);
-        testDefinition2.setMaximumSize(100L);
-        columnDefinitionBuilder.add(testDefinition2);
+        ColumnDefinition truncateMeDef = new ColumnDefinition();
+        truncateMeDef.setName("truncate-me");
+        truncateMeDef.setTransferMethod(TransferMethod.STRING);
+        truncateMeDef.setMaximumSize(3L);
+        truncateMeDef.setSanitize(true);
 
-        ColumnDefinition testDefinition4 = new ColumnDefinition();
-        testDefinition4.setName(testDateName);
-        testDefinition4.setTransferMethod(TransferMethod.DATE);
-        testDefinition4.setDdbName(testDateName);
-        testDefinition4.setMaximumSize(36L);
-        columnDefinitionBuilder.add(testDefinition4);
+        List<ColumnDefinition> columnDefinitionList = ImmutableList.of(stringDef, stringSetDef, dateDef, largeTextDef,
+                renamedColumnDef, sanitizeMeDef, truncateMeDef);
 
-        ColumnDefinition testDefinition5 = new ColumnDefinition();
-        testDefinition5.setName(testSanitize);
-        testDefinition5.setMaximumSize(36L);
-        testDefinition5.setTransferMethod(TransferMethod.STRING);
-        testDefinition5.setDdbName(testSanitize);
-        testDefinition5.setSanitize(true);
-        columnDefinitionBuilder.add(testDefinition5);
+        // Set up DDB record for test.
+        Item ddbRecord = new Item()
+                .withString("my-string", "my-string-value")
+                .withStringSet("my-string-set", "val1", "val2")
+                .withLong("my-date", 1234567890)
+                .withString("my-large-text", "my-large-text-value")
+                .withString("ddb-column", "ddb-column-value")
+                .withString("sanitize-me", "<b><i><u>Sanitize me!</b></i></u>")
+                .withString("truncate-me", "truncate-me-value");
 
-        testColumnDefinitions = columnDefinitionBuilder.build();
-
-        // process
-        Map<String, String> retMap = new HashMap<>();
-        BridgeExporterUtil.getRowValuesFromRecordBasedOnColumnDefinition(retMap, testRecord, testColumnDefinitions, "recordId");
-
-        // verify
-        assertEquals(retMap, expectedMap);
+        // execute and validate
+        Map<String, String> rowMap = new HashMap<>();
+        BridgeExporterUtil.getRowValuesFromRecordBasedOnColumnDefinition(rowMap, ddbRecord, columnDefinitionList,
+                "record-id");
+        assertEquals(rowMap.size(), 7);
+        assertEquals("my-string-value", rowMap.get("my-string"));
+        assertEquals("val1,val2", rowMap.get("my-string-set"));
+        assertEquals("1234567890", rowMap.get("my-date"));
+        assertEquals("my-large-text-value", rowMap.get("my-large-text"));
+        assertEquals("ddb-column-value", rowMap.get("renamed-column"));
+        assertEquals("Sanitize me!", rowMap.get("sanitize-me"));
+        assertEquals("tru", rowMap.get("truncate-me"));
     }
 
     @Test
