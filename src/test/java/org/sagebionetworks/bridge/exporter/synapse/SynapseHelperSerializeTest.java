@@ -3,7 +3,9 @@ package org.sagebionetworks.bridge.exporter.synapse;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import java.io.File;
@@ -20,14 +22,18 @@ import com.google.common.collect.Multiset;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
+import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
+import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.json.DefaultObjectMapper;
 import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
 import org.sagebionetworks.bridge.rest.model.UploadFieldType;
+import org.sagebionetworks.bridge.s3.S3Helper;
 
 // Tests for SynapseHelper.serializeToSynapseType()
 public class SynapseHelperSerializeTest {
     private static final File MOCK_TEMP_DIR = mock(File.class);
+    private static final String TEST_ATTACHMENTS_BUCKET = "attachments-bucket";
     private static final String TEST_PROJECT_ID = "test-project-id";
     private static final String TEST_RECORD_ID = "test-record-id";
     private static final String TEST_FIELD_NAME = "test-field-name";
@@ -174,6 +180,41 @@ public class SynapseHelperSerializeTest {
         // Validate metrics
         Multiset<String> counterMap = metrics.getCounterMap();
         assertEquals(counterMap.count("numAttachments"), 1);
+    }
+
+    @Test
+    public void largeTextAttachment() throws Exception {
+        // mock config
+        Config mockConfig = mock(Config.class);
+        when(mockConfig.get(BridgeExporterUtil.CONFIG_KEY_ATTACHMENT_S3_BUCKET)).thenReturn(TEST_ATTACHMENTS_BUCKET);
+        when(mockConfig.getInt(SynapseHelper.CONFIG_KEY_SYNAPSE_ASYNC_INTERVAL_MILLIS)).thenReturn(0);
+        when(mockConfig.getInt(SynapseHelper.CONFIG_KEY_SYNAPSE_ASYNC_TIMEOUT_LOOPS)).thenReturn(2);
+        // Set a very high number for rate limiting, since we don't want the rate limiter to interfere with our tests.
+        when(mockConfig.getInt(SynapseHelper.CONFIG_KEY_SYNAPSE_RATE_LIMIT_PER_SECOND)).thenReturn(1000);
+
+        // Mock S3Helper.
+        S3Helper mockS3Helper = mock(S3Helper.class);
+        when(mockS3Helper.readS3FileAsString(TEST_ATTACHMENTS_BUCKET, "my-large-text-attachment-id")).thenReturn(
+                "This is my <b>large text</b> attachment");
+
+        // Create SynapseHelper.
+        SynapseHelper synapseHelper = new SynapseHelper();
+        synapseHelper.setConfig(mockConfig);
+        synapseHelper.setS3Helper(mockS3Helper);
+
+        // Create inputs.
+        UploadFieldDefinition fieldDef = fieldDefForType(UploadFieldType.LARGE_TEXT_ATTACHMENT);
+        Metrics metrics = new Metrics();
+
+        // Test case 1: attachment with sanitization
+        String retVal1 = synapseHelper.serializeToSynapseType(metrics, MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
+                fieldDef, new TextNode("my-large-text-attachment-id"));
+        assertEquals(retVal1, "This is my large text attachment");
+
+        // Test case 2: wrong type
+        String retVal2 = synapseHelper.serializeToSynapseType(metrics, MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
+                fieldDef, new LongNode(1234567890L));
+        assertNull(retVal2);
     }
 
     private static UploadFieldDefinition fieldDefForType(UploadFieldType type) {

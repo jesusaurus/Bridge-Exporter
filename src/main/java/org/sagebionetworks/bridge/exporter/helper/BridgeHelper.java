@@ -62,8 +62,8 @@ public class BridgeHelper {
      */
     public void completeUpload(String uploadId) {
         try {
-            sessionHelper(() -> bridgeClientManager.getClient(ForWorkersApi.class).completeUploadSession(uploadId)
-                    .execute());
+            sessionHelper(() -> bridgeClientManager.getClient(ForWorkersApi.class).completeUploadSession(uploadId,
+                    null).execute());
         } catch (IOException ex) {
             throw new BridgeSDKException("Error completing upload to Bridge: " + ex.getMessage(), ex);
         }
