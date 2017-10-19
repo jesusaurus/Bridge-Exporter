@@ -65,6 +65,8 @@ public class SynapseHelper {
     static final String CONFIG_KEY_SYNAPSE_ASYNC_INTERVAL_MILLIS = "synapse.async.interval.millis";
     static final String CONFIG_KEY_SYNAPSE_ASYNC_TIMEOUT_LOOPS = "synapse.async.timeout.loops";
     static final String CONFIG_KEY_SYNAPSE_RATE_LIMIT_PER_SECOND = "synapse.rate.limit.per.second";
+    static final String CONFIG_KEY_SYNAPSE_GET_COLUMN_MODELS_RATE_LIMIT_PER_MINUTE =
+            "synapse.get.column.models.rate.limit.per.minute";
 
     // Shared constants.
     public static final Set<ACCESS_TYPE> ACCESS_TYPE_ALL = ImmutableSet.copyOf(ACCESS_TYPE.values());
@@ -185,6 +187,10 @@ public class SynapseHelper {
     // Rate limiter, used to limit the amount of traffic to Synapse. Synapse throttles at 10 requests per second.
     private final RateLimiter rateLimiter = RateLimiter.create(10.0);
 
+    // Rate limiter for getColumnModelsForEntity(). This is rate limited to 6 per minute per host, for each of 8 hosts,
+    // for a total of 48 calls per minute. Add a safety factor and rate limit to 24 per minute.
+    private final RateLimiter getColumnModelsRateLimiter = RateLimiter.create(24.0 / 60.0);
+
     /** Config, used to get the attachment S3 bucket to get Bridge attachments. */
     @Autowired
     public final void setConfig(Config config) {
@@ -194,6 +200,10 @@ public class SynapseHelper {
 
         int rateLimitPerSecond = config.getInt(CONFIG_KEY_SYNAPSE_RATE_LIMIT_PER_SECOND);
         rateLimiter.setRate(rateLimitPerSecond);
+
+        int getColumnModelsRateLimitPerMinute = config.getInt(
+                CONFIG_KEY_SYNAPSE_GET_COLUMN_MODELS_RATE_LIMIT_PER_MINUTE);
+        getColumnModelsRateLimiter.setRate(getColumnModelsRateLimitPerMinute / 60.0);
     }
 
     /** File helper, used when we need to create a temporary file for downloads and uploads. */
@@ -872,7 +882,7 @@ public class SynapseHelper {
     @RetryOnFailure(attempts = 2, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
             randomize = false)
     public List<ColumnModel> getColumnModelsForTableWithRetry(String tableId) throws SynapseException {
-        rateLimiter.acquire();
+        getColumnModelsRateLimiter.acquire();
         return synapseClient.getColumnModelsForTableEntity(tableId);
     }
 
