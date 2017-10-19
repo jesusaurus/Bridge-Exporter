@@ -250,6 +250,8 @@ public class SynapseHelperUploadAttachmentTest {
 
         // Set a very high number for rate limiting, since we don't want the rate limiter to interfere with our tests.
         when(mockConfig.getInt(SynapseHelper.CONFIG_KEY_SYNAPSE_RATE_LIMIT_PER_SECOND)).thenReturn(1000);
+        when(mockConfig.getInt(SynapseHelper.CONFIG_KEY_SYNAPSE_GET_COLUMN_MODELS_RATE_LIMIT_PER_MINUTE)).thenReturn(
+                1000);
 
         return mockConfig;
     }
