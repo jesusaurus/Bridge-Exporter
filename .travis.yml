@@ -6,10 +6,9 @@ before_deploy: mvn clean verify
 deploy:
   skip_cleanup: true
   provider: elasticbeanstalk
-  access_key_id:
-    secure: AK1r/YXBLIIjQsNxRTC8O4NxConlVkyodRzpG13EIN1K8zgEPWySBvDVvI1f0zIz81bWjpaAkJ88UBC+8JZwKkGFSDM5MxElBRRSK0UHYzEu80K+ZYWxoa4Y9ULPKubtEngLThRKPL+O3WD7kKfJ48JsCtn+BwyOzAaP2a8C4p0=
+  access_key_id: AKIAJ6YWVFOX3GHDXVRQ
   secret_access_key:
-    secure: IVPBSeFrGy/Oe4Jgxmp5BxTCEe1IuCQTPcZcmLr5E2FzVRqq7W7sKEOT8KKvt6OlpF+MUBY6jqJVT9AYweZqw7XrqzYzzLNIwWKwEMUptLlk46gOp0H6TWHPlSBf0jSB3OpaUkIbhaXTykyflyP4pYXzWAse/FL0T4kOCMaa4Fc=
+    secure: h3fBfh/Vg7wD7A3mRIwXU6ZJFUmgM7PgGKAwTq7BR12oK+v3CUpjbhtAHk9EFTMy4Js/CWn3f38vSGuW06OI5pJQnRmBeO6dsfU1jh6ml+XhKO5MCQHjs/S7N6XYvSlMcSPByBmSCdfmOxyRPiAHPJEE1JHFWbPyGbVJ91X3yXw=
   region: us-east-1
   app: Bridge-EX
   env:
