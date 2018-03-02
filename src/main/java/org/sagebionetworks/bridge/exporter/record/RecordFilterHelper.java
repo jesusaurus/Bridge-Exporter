@@ -9,12 +9,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import org.sagebionetworks.bridge.exporter.dynamo.DynamoHelper;
+import org.sagebionetworks.bridge.exporter.helper.BridgeHelper;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterSharingMode;
-import org.sagebionetworks.bridge.exporter.dynamo.SharingScope;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
+import org.sagebionetworks.bridge.rest.model.SharingScope;
+import org.sagebionetworks.bridge.rest.model.StudyParticipant;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
 /**
@@ -25,12 +26,12 @@ import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 public class RecordFilterHelper {
     private static final Logger LOG = LoggerFactory.getLogger(RecordFilterHelper.class);
 
-    private DynamoHelper dynamoHelper;
+    private BridgeHelper bridgeHelper;
 
-    /** Dynamo Helper, used to get a user's sharing preferences. */
+    /** Bridge Helper, used to get the user's health code. */
     @Autowired
-    public final void setDynamoHelper(DynamoHelper dynamoHelper) {
-        this.dynamoHelper = dynamoHelper;
+    public final void setBridgeHelper(BridgeHelper bridgeHelper) {
+        this.bridgeHelper = bridgeHelper;
     }
 
     /**
@@ -91,9 +92,14 @@ public class RecordFilterHelper {
             }
         }
 
-        // Get sharing scope from user's participant options. Dynamo Helper takes care of defaulting to NO_SHARING.
+        // Get user's sharing scope from Bridge. If not specified, defaults to no_sharing.
+        String studyId = record.getString("studyId");
         String healthCode = record.getString("healthCode");
-        SharingScope userSharingScope = dynamoHelper.getSharingScopeForUser(healthCode);
+        StudyParticipant participant = bridgeHelper.getParticipantByHealthCode(studyId, healthCode);
+        SharingScope userSharingScope = participant.getSharingScope();
+        if (userSharingScope == null) {
+            userSharingScope = SharingScope.NO_SHARING;
+        }
 
         // reconcile both sharing scopes to find the most restrictive sharing scope
         SharingScope sharingScope;

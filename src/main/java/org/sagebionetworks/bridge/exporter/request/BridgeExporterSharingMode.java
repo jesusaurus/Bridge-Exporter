@@ -3,7 +3,7 @@ package org.sagebionetworks.bridge.exporter.request;
 import java.util.EnumSet;
 import java.util.Set;
 
-import org.sagebionetworks.bridge.exporter.dynamo.SharingScope;
+import org.sagebionetworks.bridge.rest.model.SharingScope;
 
 /**
  * Configuration for whether Bridge-EX should export all data, shared data, or public data. These somewhat correspond

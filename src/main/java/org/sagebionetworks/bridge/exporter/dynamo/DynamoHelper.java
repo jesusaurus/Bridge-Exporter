@@ -1,6 +1,5 @@
 package org.sagebionetworks.bridge.exporter.dynamo;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -26,7 +25,6 @@ import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.dynamodb.DynamoScanHelper;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
-import org.sagebionetworks.bridge.json.DefaultObjectMapper;
 import org.sagebionetworks.bridge.sqs.PollSqsWorkerBadRequestException;
 
 /**
@@ -48,7 +46,6 @@ public class DynamoHelper {
     static final String LAST_EXPORT_DATE_TIME = "lastExportDateTime";
     static final String STUDY_ID = "studyId";
 
-    private Table ddbParticipantOptionsTable;
     private Table ddbStudyTable;
     private Table ddbExportTimeTable;
     private DynamoScanHelper ddbScanHelper;
@@ -62,12 +59,6 @@ public class DynamoHelper {
     @Autowired
     final void setConfig(Config config) {
         timeZone = DateTimeZone.forID(config.get(BridgeExporterUtil.CONFIG_KEY_TIME_ZONE_NAME));
-    }
-
-    /** Participant options table, used to get user sharing scope. */
-    @Resource(name = "ddbParticipantOptionsTable")
-    public final void setDdbParticipantOptionsTable(Table ddbParticipantOptionsTable) {
-        this.ddbParticipantOptionsTable = ddbParticipantOptionsTable;
     }
 
     /** Study table, used to get study config, like linked Synapse project. */
@@ -85,43 +76,6 @@ public class DynamoHelper {
     @Autowired
     final void setDdbScanHelper(DynamoScanHelper ddbScanHelper) {
         this.ddbScanHelper = ddbScanHelper;
-    }
-
-    /**
-     * Gets the sharing scope for the given user.
-     *
-     * @param healthCode
-     *         health code of user to get sharing scope for
-     * @return the user's sharing scope
-     */
-    @Cacheable(lifetime = 5, unit = TimeUnit.MINUTES)
-    public SharingScope getSharingScopeForUser(String healthCode) {
-        // default sharing scope is no sharing
-        SharingScope sharingScope = SharingScope.NO_SHARING;
-
-        try {
-            Item participantOptionsItem = ddbParticipantOptionsTable.getItem("healthDataCode", healthCode);
-            if (participantOptionsItem != null) {
-                String participantOptionsData = participantOptionsItem.getString("data");
-                Map<String, Object> participantOptionsDataMap = DefaultObjectMapper.INSTANCE.readValue(
-                        participantOptionsData, DefaultObjectMapper.TYPE_REF_RAW_MAP);
-                String sharingScopeStr = String.valueOf(participantOptionsDataMap.get("SHARING_SCOPE"));
-
-                // put this in its own try-catch block for better logging
-                try {
-                    sharingScope = SharingScope.valueOf(sharingScopeStr);
-                } catch (IllegalArgumentException ex) {
-                    LOG.error("Unable to parse sharing options for hash[healthCode]=" + healthCode.hashCode() +
-                            ", sharing scope value=" + sharingScopeStr);
-                }
-            }
-        } catch (IOException | RuntimeException ex) {
-            // log an error, fall back to default
-            LOG.error("Unable to get sharing options for hash[healthCode]=" + healthCode.hashCode() + ": " +
-                    ex.getMessage(), ex);
-        }
-
-        return sharingScope;
     }
 
     /**

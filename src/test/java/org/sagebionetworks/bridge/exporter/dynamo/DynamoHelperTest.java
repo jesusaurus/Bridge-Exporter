@@ -21,7 +21,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import com.amazonaws.AmazonClientException;
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
 import com.google.common.collect.ImmutableList;
@@ -51,90 +50,6 @@ public class DynamoHelperTest {
 
     private static final String CALCULATED_LAST_EXPORT_TIME_STRING = "2016-05-08T00:00:00.000-0700";
     private static final DateTime CALCULATED_LAST_EXPORT_TIME = DateTime.parse(CALCULATED_LAST_EXPORT_TIME_STRING);
-
-    @Test
-    public void getSharingScope() {
-        // mock DDB Participant Options table
-        String optsDataJson = "{\"SHARING_SCOPE\":\"SPONSORS_AND_PARTNERS\"}";
-        Item partOptsItem = new Item().withString("data", optsDataJson);
-
-        Table mockPartOptsTable = mock(Table.class);
-        when(mockPartOptsTable.getItem("healthDataCode", "normal-health-code")).thenReturn(partOptsItem);
-
-        // set up Dynamo Helper
-        DynamoHelper helper = new DynamoHelper();
-        helper.setDdbParticipantOptionsTable(mockPartOptsTable);
-
-        // execute and validate
-        SharingScope sharingScope = helper.getSharingScopeForUser("normal-health-code");
-        assertEquals(sharingScope, SharingScope.SPONSORS_AND_PARTNERS);
-    }
-
-    @Test
-    public void ddbErrorGettingSharingScope() {
-        // mock DDB Participant Options table
-        Table mockPartOptsTable = mock(Table.class);
-        when(mockPartOptsTable.getItem("healthDataCode", "ddb-error-health-code"))
-                .thenThrow(AmazonClientException.class);
-
-        // set up Dynamo Helper
-        DynamoHelper helper = new DynamoHelper();
-        helper.setDdbParticipantOptionsTable(mockPartOptsTable);
-
-        // execute and validate - defaults to no_sharing
-        SharingScope sharingScope = helper.getSharingScopeForUser("ddb-error-health-code");
-        assertEquals(sharingScope, SharingScope.NO_SHARING);
-    }
-
-    @Test
-    public void noParticipantOptions() {
-        // mock DDB Participant Options table
-        Table mockPartOptsTable = mock(Table.class);
-        when(mockPartOptsTable.getItem("healthDataCode", "missing-health-code")).thenReturn(null);
-
-        // set up Dynamo Helper
-        DynamoHelper helper = new DynamoHelper();
-        helper.setDdbParticipantOptionsTable(mockPartOptsTable);
-
-        // execute and validate - defaults to no_sharing
-        SharingScope sharingScope = helper.getSharingScopeForUser("missing-health-code");
-        assertEquals(sharingScope, SharingScope.NO_SHARING);
-    }
-
-    @Test
-    public void noSharingScopeInParticipantOptions() {
-        // mock DDB Participant Options table
-        Item partOptsItem = new Item().withString("data", "{}");
-
-        Table mockPartOptsTable = mock(Table.class);
-        when(mockPartOptsTable.getItem("healthDataCode", "missing-sharing-health-code")).thenReturn(partOptsItem);
-
-        // set up Dynamo Helper
-        DynamoHelper helper = new DynamoHelper();
-        helper.setDdbParticipantOptionsTable(mockPartOptsTable);
-
-        // execute and validate - defaults to no_sharing
-        SharingScope sharingScope = helper.getSharingScopeForUser("missing-sharing-health-code");
-        assertEquals(sharingScope, SharingScope.NO_SHARING);
-    }
-
-    @Test
-    public void errorParsingSharingScope() {
-        // mock DDB Participant Options table
-        String optsDataJson = "{\"SHARING_SCOPE\":\"foobarbaz\"}";
-        Item partOptsItem = new Item().withString("data", optsDataJson);
-
-        Table mockPartOptsTable = mock(Table.class);
-        when(mockPartOptsTable.getItem("healthDataCode", "malformed-data-health-code")).thenReturn(partOptsItem);
-
-        // set up Dynamo Helper
-        DynamoHelper helper = new DynamoHelper();
-        helper.setDdbParticipantOptionsTable(mockPartOptsTable);
-
-        // execute and validate - defaults to no_sharing
-        SharingScope sharingScope = helper.getSharingScopeForUser("malformed-data-health-code");
-        assertEquals(sharingScope, SharingScope.NO_SHARING);
-    }
 
     @Test
     public void getStudyInfo() {

@@ -13,11 +13,12 @@ import org.joda.time.DateTime;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import org.sagebionetworks.bridge.exporter.dynamo.DynamoHelper;
-import org.sagebionetworks.bridge.exporter.dynamo.SharingScope;
+import org.sagebionetworks.bridge.exporter.helper.BridgeHelper;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterSharingMode;
+import org.sagebionetworks.bridge.rest.model.SharingScope;
+import org.sagebionetworks.bridge.rest.model.StudyParticipant;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
 public class RecordFilterHelperTest {
@@ -49,6 +50,22 @@ public class RecordFilterHelperTest {
 
         // execute and validate
         RecordFilterHelper helper = makeRecordFilterHelper(SharingScope.SPONSORS_AND_PARTNERS);
+        assertTrue(helper.shouldExcludeRecord(metrics, request, record));
+
+        Multiset<String> counterMap = metrics.getCounterMap();
+        assertEquals(counterMap.count("accepted[NO_SHARING]"), 0);
+        assertEquals(counterMap.count("excluded[NO_SHARING]"), 1);
+    }
+
+    @Test
+    public void userMissingSharingScope() {
+        // set up inputs
+        Metrics metrics = new Metrics();
+        BridgeExporterRequest request = makeRequestBuilder().build();
+        Item record = makeRecord(SharingScope.SPONSORS_AND_PARTNERS, TEST_STUDY);
+
+        // execute and validate
+        RecordFilterHelper helper = makeRecordFilterHelper(null);
         assertTrue(helper.shouldExcludeRecord(metrics, request, record));
 
         Multiset<String> counterMap = metrics.getCounterMap();
@@ -169,16 +186,16 @@ public class RecordFilterHelperTest {
     public void studyFilterExcludes() {
         // set up inputs
         Metrics metrics = new Metrics();
-        BridgeExporterRequest request = makeRequestBuilder().withStudyWhitelist(ImmutableSet.of(TEST_STUDY)).build();
-        Item record = makeRecord(SharingScope.ALL_QUALIFIED_RESEARCHERS, "excluded-study");
+        BridgeExporterRequest request = makeRequestBuilder().withStudyWhitelist(ImmutableSet.of("excluded-study")).build();
+        Item record = makeRecord(SharingScope.ALL_QUALIFIED_RESEARCHERS, TEST_STUDY);
 
         // execute and validate
         RecordFilterHelper helper = makeRecordFilterHelper(SharingScope.ALL_QUALIFIED_RESEARCHERS);
         assertTrue(helper.shouldExcludeRecord(metrics, request, record));
 
         Multiset<String> counterMap = metrics.getCounterMap();
-        assertEquals(counterMap.count("accepted[excluded-study]"), 0);
-        assertEquals(counterMap.count("excluded[excluded-study]"), 1);
+        assertEquals(counterMap.count("accepted[test-study]"), 0);
+        assertEquals(counterMap.count("excluded[test-study]"), 1);
     }
 
     @Test
@@ -238,13 +255,16 @@ public class RecordFilterHelperTest {
     }
 
     private static RecordFilterHelper makeRecordFilterHelper(SharingScope userSharingScope) {
-        // mock DynamoHelper
-        DynamoHelper mockDynamoHelper = mock(DynamoHelper.class);
-        when(mockDynamoHelper.getSharingScopeForUser(DUMMY_HEALTH_CODE)).thenReturn(userSharingScope);
+        // mock BridgeHelper
+        StudyParticipant participant = new StudyParticipant();
+        participant.setSharingScope(userSharingScope);
+
+        BridgeHelper mockBridgeHelper = mock(BridgeHelper.class);
+        when(mockBridgeHelper.getParticipantByHealthCode(TEST_STUDY, DUMMY_HEALTH_CODE)).thenReturn(participant);
 
         // set up record filter helper
         RecordFilterHelper helper = new RecordFilterHelper();
-        helper.setDynamoHelper(mockDynamoHelper);
+        helper.setBridgeHelper(mockBridgeHelper);
         return helper;
     }
 
