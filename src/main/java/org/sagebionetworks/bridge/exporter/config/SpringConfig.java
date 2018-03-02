@@ -106,11 +106,6 @@ public class SpringConfig {
         return ddbClient().getTable(ddbPrefix() + "HealthDataAttachment");
     }
 
-    @Bean(name = "ddbParticipantOptionsTable")
-    public Table ddbParticipantOptionsTable() {
-        return ddbClient().getTable(ddbPrefix() + "ParticipantOptions");
-    }
-
     @Bean
     public DynamoQueryHelper ddbQueryHelper() {
         return new DynamoQueryHelper();

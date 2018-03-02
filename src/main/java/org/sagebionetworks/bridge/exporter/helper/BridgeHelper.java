@@ -7,21 +7,17 @@ import java.util.concurrent.TimeUnit;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.RateLimiter;
 import com.jcabi.aspects.Cacheable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.rest.ClientManager;
-import org.sagebionetworks.bridge.rest.api.AuthenticationApi;
 import org.sagebionetworks.bridge.rest.api.ForWorkersApi;
 import org.sagebionetworks.bridge.rest.exceptions.BridgeSDKException;
-import org.sagebionetworks.bridge.rest.exceptions.NotAuthenticatedException;
 import org.sagebionetworks.bridge.rest.model.RecordExportStatusRequest;
-import org.sagebionetworks.bridge.rest.model.SignIn;
 import org.sagebionetworks.bridge.rest.model.Study;
+import org.sagebionetworks.bridge.rest.model.StudyParticipant;
 import org.sagebionetworks.bridge.rest.model.SynapseExporterStatus;
 import org.sagebionetworks.bridge.rest.model.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
@@ -31,11 +27,9 @@ import org.sagebionetworks.bridge.schema.UploadSchemaKey;
  */
 @Component
 public class BridgeHelper {
-    private static final Logger LOG = LoggerFactory.getLogger(BridgeHelper.class);
     private static final int MAX_BATCH_SIZE = 25;
 
     private ClientManager bridgeClientManager;
-    private SignIn bridgeCredentials;
 
     // Rate limiter, used to limit the amount of traffic to Bridge, specifically for when we loop over a potentially
     // unbounded series of studies. Conservatively limit at 1 req/sec.
@@ -47,12 +41,6 @@ public class BridgeHelper {
         this.bridgeClientManager = bridgeClientManager;
     }
 
-    /** Bridge credentials, used by the session helper to refresh the session. */
-    @Autowired
-    public final void setBridgeCredentials(SignIn bridgeCredentials) {
-        this.bridgeCredentials = bridgeCredentials;
-    }
-
     /**
      * Signals Bridge Server that the upload is completed and to begin processing the upload. Used by Upload
      * Auto-Complete.
@@ -62,10 +50,21 @@ public class BridgeHelper {
      */
     public void completeUpload(String uploadId) {
         try {
-            sessionHelper(() -> bridgeClientManager.getClient(ForWorkersApi.class).completeUploadSession(uploadId,
-                    null).execute());
+            bridgeClientManager.getClient(ForWorkersApi.class).completeUploadSession(uploadId, null)
+                    .execute();
         } catch (IOException ex) {
             throw new BridgeSDKException("Error completing upload to Bridge: " + ex.getMessage(), ex);
+        }
+    }
+
+    /** Gets the participant from Bridge for the specified study and health code. */
+    @Cacheable(lifetime = 5, unit = TimeUnit.MINUTES)
+    public StudyParticipant getParticipantByHealthCode(String studyId, String healthCode) {
+        try {
+            return bridgeClientManager.getClient(ForWorkersApi.class).getParticipantInStudyByHealthCode(studyId,
+                    healthCode, false).execute().body();
+        } catch (IOException ex) {
+            throw new BridgeSDKException("Error getting participant from Bridge: " + ex.getMessage(), ex);
         }
     }
 
@@ -82,8 +81,7 @@ public class BridgeHelper {
             RecordExportStatusRequest request = new RecordExportStatusRequest().recordIds(batch).synapseExporterStatus(
                     status);
             try {
-                sessionHelper(() -> bridgeClientManager.getClient(ForWorkersApi.class)
-                        .updateRecordExportStatuses(request).execute());
+                bridgeClientManager.getClient(ForWorkersApi.class).updateRecordExportStatuses(request).execute();
             } catch (IOException ex) {
                 throw new BridgeSDKException("Error sending record export statuses to Bridge: " + ex.getMessage(), ex);
             }
@@ -114,8 +112,8 @@ public class BridgeHelper {
     @Cacheable(lifetime = 5, unit = TimeUnit.MINUTES)
     private UploadSchema getSchemaCached(UploadSchemaKey schemaKey) {
         try {
-            return sessionHelper(() -> bridgeClientManager.getClient(ForWorkersApi.class).getSchemaRevisionInStudy(
-                    schemaKey.getStudyId(), schemaKey.getSchemaId(), (long) schemaKey.getRevision()).execute().body());
+            return bridgeClientManager.getClient(ForWorkersApi.class).getSchemaRevisionInStudy(schemaKey.getStudyId(),
+                    schemaKey.getSchemaId(), (long) schemaKey.getRevision()).execute().body();
         } catch (IOException ex) {
             throw new BridgeSDKException("Error getting schema from Bridge: " + ex.getMessage(), ex);
         }
@@ -125,33 +123,9 @@ public class BridgeHelper {
     @Cacheable(lifetime = 5, unit = TimeUnit.MINUTES)
     public Study getStudy(String studyId) {
         try {
-            return sessionHelper(() -> bridgeClientManager.getClient(ForWorkersApi.class).getStudy(studyId).execute()
-                    .body());
+            return bridgeClientManager.getClient(ForWorkersApi.class).getStudy(studyId).execute().body();
         } catch (IOException ex) {
             throw new BridgeSDKException("Error getting study " + studyId + " from Bridge: " + ex.getMessage(), ex);
         }
-    }
-
-    // Helper method, which wraps a Bridge Server call with logic for initializing and refreshing a session.
-    private <T> T sessionHelper(BridgeCallable<T> callable) throws IOException {
-        // First attempt. This should be enough for most cases.
-        try {
-            return callable.call();
-        } catch (NotAuthenticatedException ex) {
-            // Code readability reasons, the error handling will be done after the catch block instead of inside the
-            // catch block.
-        }
-
-        // Refresh session and try again. This time, if the call fails, just let the exception bubble up.
-        LOG.info("Bridge server session expired. Refreshing session...");
-        bridgeClientManager.getClient(AuthenticationApi.class).signIn(bridgeCredentials).execute();
-
-        return callable.call();
-    }
-
-    // Functional interface used to make lambdas for the session helper.
-    @FunctionalInterface
-    interface BridgeCallable<T> {
-        T call() throws IOException;
     }
 }

@@ -5,7 +5,7 @@ import static org.testng.Assert.assertEquals;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import org.sagebionetworks.bridge.exporter.dynamo.SharingScope;
+import org.sagebionetworks.bridge.rest.model.SharingScope;
 
 public class BridgeExporterSharingModeTest {
     @DataProvider(name = "sharingModeTestParams")
