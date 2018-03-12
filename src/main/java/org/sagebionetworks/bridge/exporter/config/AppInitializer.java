@@ -1,5 +1,7 @@
 package org.sagebionetworks.bridge.exporter.config;
 
+import java.security.Security;
+
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.web.SpringBootServletInitializer;
@@ -22,6 +24,10 @@ import org.springframework.boot.context.web.SpringBootServletInitializer;
 @SpringBootApplication
 public class AppInitializer extends SpringBootServletInitializer {
     public static void main(String[] args) {
+        // Set DNS TTL. According to AWS support, this will remove the spurious "host not found" errors when polling SQS.
+        Security.setProperty("networkaddress.cache.ttl" , "60");
+
+        // Start Spring App and run.
         SpringApplication.run(AppInitializer.class, args);
     }
 }
