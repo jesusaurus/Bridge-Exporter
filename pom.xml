@@ -82,7 +82,7 @@
         <dependency>
             <groupId>org.sagebionetworks.bridge</groupId>
             <artifactId>rest-client</artifactId>
-            <version>0.15.0</version>
+            <version>0.15.3</version>
         </dependency>
         <dependency>
             <groupId>org.sagebionetworks</groupId>
