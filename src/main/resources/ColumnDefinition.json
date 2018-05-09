@@ -13,7 +13,7 @@
   },
   {
     "name": "dataGroups",
-    "maximumSize": 100,
+    "maximumSize": 250,
     "transferMethod": "STRINGSET",
     "ddbName": "userDataGroups"
   },
