@@ -20,6 +20,8 @@ import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 @JsonDeserialize(builder = BridgeExporterRequest.Builder.class)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class BridgeExporterRequest {
+    static final String DEFAULT_TAG = "(no tag)";
+
     private final DateTime startDateTime;
     private final DateTime endDateTime;
     private final String exporterDdbPrefixOverride;
@@ -142,7 +144,7 @@ public class BridgeExporterRequest {
         if (this == o) {
             return true;
         }
-        if (o == null || !(o instanceof BridgeExporterRequest)) {
+        if (!(o instanceof BridgeExporterRequest)) {
             return false;
         }
         BridgeExporterRequest that = (BridgeExporterRequest) o;
@@ -375,7 +377,10 @@ public class BridgeExporterRequest {
                 sharingMode = BridgeExporterSharingMode.SHARED;
             }
 
-            // tag is always optional and doesn't need to be validated
+            // Tag is optional but must be non-null. If null, replace with default tag.
+            if (tag == null) {
+                tag = DEFAULT_TAG;
+            }
 
             // Replace collections with immutable copies, to maintain request object integrity.
             if (studyWhitelist != null) {

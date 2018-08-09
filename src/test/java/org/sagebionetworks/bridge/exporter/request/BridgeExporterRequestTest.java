@@ -42,10 +42,11 @@ public class BridgeExporterRequestTest {
         assertEquals(request.getEndDateTime(), END_DATE_TIME);
         assertEquals(request.getSharingMode(), BridgeExporterSharingMode.SHARED);
         assertTrue(request.getUseLastExportTime());
+        assertEquals(request.getTag(), BridgeExporterRequest.DEFAULT_TAG);
 
         // test toString
-        assertEquals(request.toString(), "endDateTime=" + END_DATE_TIME + ", redriveCount=0, tag=null, " +
-                "useLastExportTime=true");
+        assertEquals(request.toString(), "endDateTime=" + END_DATE_TIME + ", redriveCount=0, tag=" +
+                BridgeExporterRequest.DEFAULT_TAG + ", " + "useLastExportTime=true");
 
         // test copy
         BridgeExporterRequest copy = new BridgeExporterRequest.Builder().copyOf(request).build();
@@ -60,10 +61,11 @@ public class BridgeExporterRequestTest {
         assertEquals(request.getEndDateTime(), END_DATE_TIME);
         assertEquals(request.getSharingMode(), BridgeExporterSharingMode.SHARED);
         assertFalse(request.getUseLastExportTime());
+        assertEquals(request.getTag(), BridgeExporterRequest.DEFAULT_TAG);
 
         // test toString
         assertEquals(request.toString(), "startDateTime=" + START_DATE_TIME + ", endDateTime=" + END_DATE_TIME +
-                ", redriveCount=0, tag=null, useLastExportTime=false");
+                ", redriveCount=0, tag=" + BridgeExporterRequest.DEFAULT_TAG + ", useLastExportTime=false");
 
         // test copy
         BridgeExporterRequest copy = new BridgeExporterRequest.Builder().copyOf(request).build();
@@ -77,10 +79,11 @@ public class BridgeExporterRequestTest {
         assertEquals(request.getRecordIdS3Override(), TEST_RECORD_OVERRIDE);
         assertEquals(request.getSharingMode(), BridgeExporterSharingMode.SHARED);
         assertFalse(request.getUseLastExportTime());
+        assertEquals(request.getTag(), BridgeExporterRequest.DEFAULT_TAG);
 
         // test toString
         assertEquals(request.toString(), "recordIdS3Override=" + TEST_RECORD_OVERRIDE + ", redriveCount=0, " +
-                "tag=null, useLastExportTime=false");
+                "tag=" + BridgeExporterRequest.DEFAULT_TAG + ", useLastExportTime=false");
 
         // test copy
         BridgeExporterRequest copy = new BridgeExporterRequest.Builder().copyOf(request).build();
