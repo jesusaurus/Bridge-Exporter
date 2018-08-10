@@ -282,6 +282,7 @@ public class SynapseHelper {
         }
 
         // This should never happen, but if the names are somehow different, they aren't compatible.
+        //noinspection RedundantIfStatement
         if (!Objects.equals(oldColumn.getName(), newColumn.getName())) {
             return false;
         }
@@ -751,7 +752,8 @@ public class SynapseHelper {
     public FileHandle createFileHandleWithRetry(File file, String contentType, String projectId) throws IOException,
             SynapseException {
         rateLimiter.acquire();
-        return synapseClient.multipartUpload(file, null, null, null);
+        // Pass in forceRestart=true. Otherwise, retries will fail deterministically.
+        return synapseClient.multipartUpload(file, null, null, true);
     }
 
     /**

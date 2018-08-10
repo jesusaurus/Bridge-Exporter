@@ -238,7 +238,7 @@ public class SynapseHelperTest {
 
         File mockFile = mock(File.class);
         S3FileHandle mockFileHandle = mock(S3FileHandle.class);
-        when(mockSynapseClient.multipartUpload(mockFile, null, null, null)).thenReturn(mockFileHandle);
+        when(mockSynapseClient.multipartUpload(mockFile, null, null, true)).thenReturn(mockFileHandle);
 
         SynapseHelper synapseHelper = new SynapseHelper();
         synapseHelper.setSynapseClient(mockSynapseClient);
