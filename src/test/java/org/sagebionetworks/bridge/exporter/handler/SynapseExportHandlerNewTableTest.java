@@ -258,8 +258,9 @@ public class SynapseExportHandlerNewTableTest {
         // validate tsv file
         List<String> tsvLineList = TestUtil.bytesToLines(tsvBytes);
         assertEquals(tsvLineList.size(), 2);
-        SynapseExportHandlerTest.validateTsvHeaders(tsvLineList.get(0), "foo", "bar");
-        SynapseExportHandlerTest.validateTsvRow(tsvLineList.get(1), "This is a string.", "42");
+        SynapseExportHandlerTest.validateTsvHeaders(tsvLineList.get(0), "foo", "bar",
+                HealthDataExportHandler.COLUMN_NAME_RAW_DATA);
+        SynapseExportHandlerTest.validateTsvRow(tsvLineList.get(1), "This is a string.", "42", "");
 
         validateTableCreation(handler);
     }

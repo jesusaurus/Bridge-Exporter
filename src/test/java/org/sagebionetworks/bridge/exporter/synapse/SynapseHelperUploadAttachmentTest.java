@@ -22,7 +22,6 @@ import com.google.common.io.CharStreams;
 import org.sagebionetworks.client.exceptions.SynapseClientException;
 import org.sagebionetworks.client.exceptions.SynapseException;
 import org.sagebionetworks.repo.model.file.FileHandle;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.config.Config;
@@ -37,6 +36,14 @@ import org.sagebionetworks.bridge.s3.S3Helper;
 @SuppressWarnings("unchecked")
 public class SynapseHelperUploadAttachmentTest {
     private static final String TEST_ATTACHMENT_ID = "attId";
+
+    @Test
+    public void filenameAttachmentIdEndsWithFieldName() {
+        UploadFieldDefinition fieldDef = new UploadFieldDefinition().name("test.foo")
+                .type(UploadFieldType.ATTACHMENT_V2).fileExtension(".foo");
+        String filename = SynapseHelper.generateFilename(fieldDef, "my-upload-id-test.foo");
+        assertEquals(filename, "my-upload-id-test.foo");
+    }
 
     @Test
     public void filenameFromFieldDef() {
@@ -126,28 +133,12 @@ public class SynapseHelperUploadAttachmentTest {
     private static final String TEST_FILE_HANDLE_ID = "file-handle-id";
     private static final String TEST_PROJECT_ID = "project-id";
 
-    @DataProvider(name = "uploadTestDataProvider")
-    public Object[][] uploadTestDataProvider() {
-        // { fieldDef, expectedFilename, expectedMimeType }
-        return new Object[][] {
-                { new UploadFieldDefinition().name("foo.blob").type(UploadFieldType.ATTACHMENT_BLOB),"foo-attId.blob",
-                        "application/octet-stream" },
-                { new UploadFieldDefinition().name("bar.csv").type(UploadFieldType.ATTACHMENT_CSV), "bar-attId.csv",
-                        "text/csv" },
-                { new UploadFieldDefinition().name("baz.json").type(UploadFieldType.ATTACHMENT_JSON_BLOB),
-                        "baz-attId.json", "text/json" },
-                { new UploadFieldDefinition().name("qwerty.json").type(UploadFieldType.ATTACHMENT_JSON_TABLE),
-                        "qwerty-attId.json", "text/json" },
-                { new UploadFieldDefinition().name("asdf.file").type(UploadFieldType.ATTACHMENT_V2), "asdf-attId.file",
-                        "application/octet-stream" },
-                { new UploadFieldDefinition().name("jkl.txt").type(UploadFieldType.ATTACHMENT_V2).fileExtension(".txt")
-                        .mimeType("text/plain"), "jkl-attId.txt", "text/plain" },
-        };
-    }
+    @Test
+    public void uploadTest() throws Exception {
+        UploadFieldDefinition fieldDef = new UploadFieldDefinition().name("foo.blob")
+                .type(UploadFieldType.ATTACHMENT_BLOB);
+        String expectedFilename = "foo-attId.blob";
 
-    @Test(dataProvider = "uploadTestDataProvider")
-    public void uploadTest(UploadFieldDefinition fieldDef, String expectedFilename, String expectedMimeType)
-            throws Exception {
         // mock (in-memory) file helper
         InMemoryFileHelper mockFileHelper = new InMemoryFileHelper();
         File tmpDir = mockFileHelper.createTempDir();
@@ -174,7 +165,7 @@ public class SynapseHelperUploadAttachmentTest {
             FileHandle fileHandle = mock(FileHandle.class);
             when(fileHandle.getId()).thenReturn(TEST_FILE_HANDLE_ID);
             return fileHandle;
-        }).when(synapseHelper).createFileHandleWithRetry(any(), eq(expectedMimeType), eq(TEST_PROJECT_ID));
+        }).when(synapseHelper).createFileHandleWithRetry(any());
 
         // execute and validate
         String fileHandleId = synapseHelper.uploadFromS3ToSynapseFileHandle(tmpDir, TEST_PROJECT_ID,
@@ -205,7 +196,7 @@ public class SynapseHelperUploadAttachmentTest {
         assertNull(fileHandleId);
 
         // validate that createFileHandle is never called
-        verify(synapseHelper, never()).createFileHandleWithRetry(any(), any() ,any());
+        verify(synapseHelper, never()).createFileHandleWithRetry(any());
 
         // validate that SynapseHelper cleans up after itself
         mockFileHelper.deleteDir(tmpDir);
@@ -227,8 +218,7 @@ public class SynapseHelperUploadAttachmentTest {
         // Spy createFileHandle. This is tested somewhere else, and spying it here means we don't have to change tests
         // in 3 different places when we change the createFileHandle implementation.
         // Mock to throw exception.
-        doThrow(SynapseClientException.class).when(synapseHelper).createFileHandleWithRetry(any(),
-                eq("application/octet-stream"), eq(TEST_PROJECT_ID));
+        doThrow(SynapseClientException.class).when(synapseHelper).createFileHandleWithRetry(any());
 
         // execute and validate
         try {
@@ -238,6 +228,41 @@ public class SynapseHelperUploadAttachmentTest {
         } catch (SynapseException ex) {
             // expected exception
         }
+
+        // validate that SynapseHelper cleans up after itself
+        mockFileHelper.deleteDir(tmpDir);
+        assertTrue(mockFileHelper.isEmpty());
+    }
+
+    @Test
+    public void uploadWithoutFieldDef() throws Exception {
+        String dummyFilename = "my-file.txt";
+
+        // mock (in-memory) file helper
+        InMemoryFileHelper mockFileHelper = new InMemoryFileHelper();
+        File tmpDir = mockFileHelper.createTempDir();
+
+        // set up other mocks
+        SynapseHelper synapseHelper = spy(new SynapseHelper());
+        synapseHelper.setConfig(mockConfig());
+        synapseHelper.setFileHelper(mockFileHelper);
+        synapseHelper.setS3Helper(mockS3Helper(mockFileHelper, dummyFilename, DUMMY_FILE_CONTENT));
+
+        // Spy createFileHandle. A lot of this is tested elsewhere. The part that matters the most is that we can
+        // specify the filename.
+        doAnswer(invocation -> {
+            File file = invocation.getArgumentAt(0, File.class);
+            assertEquals(file.getName(), dummyFilename);
+
+            // Create return value. Only thing we care about is file handle ID.
+            FileHandle fileHandle = mock(FileHandle.class);
+            when(fileHandle.getId()).thenReturn(TEST_FILE_HANDLE_ID);
+            return fileHandle;
+        }).when(synapseHelper).createFileHandleWithRetry(any());
+
+        // execute and validate
+        String fileHandleId = synapseHelper.uploadFromS3ToSynapseFileHandle(tmpDir, dummyFilename, TEST_ATTACHMENT_ID);
+        assertEquals(fileHandleId, TEST_FILE_HANDLE_ID);
 
         // validate that SynapseHelper cleans up after itself
         mockFileHelper.deleteDir(tmpDir);

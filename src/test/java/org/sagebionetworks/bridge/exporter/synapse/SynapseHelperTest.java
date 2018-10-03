@@ -244,7 +244,7 @@ public class SynapseHelperTest {
         synapseHelper.setSynapseClient(mockSynapseClient);
 
         // execute and validate
-        FileHandle retVal = synapseHelper.createFileHandleWithRetry(mockFile, "application/mock", "project-id");
+        FileHandle retVal = synapseHelper.createFileHandleWithRetry(mockFile);
         assertSame(retVal, mockFileHandle);
     }
 
