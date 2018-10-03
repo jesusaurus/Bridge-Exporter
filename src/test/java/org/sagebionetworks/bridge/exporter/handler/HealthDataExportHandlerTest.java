@@ -3,8 +3,10 @@ package org.sagebionetworks.bridge.exporter.handler;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Matchers.notNull;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -61,6 +63,8 @@ public class HealthDataExportHandlerTest {
     private static final String FIELD_NAME = "foo-field";
     private static final String FIELD_NAME_TIMEZONE = FIELD_NAME + ".timezone";
     private static final String FIELD_VALUE = "asdf jkl;";
+    private static final String RAW_DATA_ATTACHMENT_ID = "my-raw.zip";
+    private static final String RAW_DATA_FILEHANDLE_ID = "my-raw-data-filehandle";
 
     private static final UploadFieldDefinition MULTI_CHOICE_FIELD_DEF = new UploadFieldDefinition().name(FIELD_NAME)
             .type(UploadFieldType.MULTI_CHOICE).multiChoiceAnswerList(ImmutableList.of("foo", "bar", "baz", "true",
@@ -72,6 +76,7 @@ public class HealthDataExportHandlerTest {
     private HealthDataExportHandler handler;
     private BridgeHelper mockBridgeHelper;
     private InMemoryFileHelper mockFileHelper;
+    private SynapseHelper mockSynapseHelper;
     private byte[] tsvBytes;
 
     @Test
@@ -284,16 +289,21 @@ public class HealthDataExportHandlerTest {
         mockFileHelper = new InMemoryFileHelper();
 
         // mock Synapse helper
-        SynapseHelper mockSynapseHelper = mock(SynapseHelper.class);
+        mockSynapseHelper = mock(SynapseHelper.class);
         List<ColumnModel> columnModelList = new ArrayList<>();
         columnModelList.addAll(MOCK_COLUMN_LIST);
         columnModelList.addAll(expectedColumnList);
+        columnModelList.add(HealthDataExportHandler.RAW_DATA_COLUMN);
         when(mockSynapseHelper.getColumnModelsForTableWithRetry(SynapseExportHandlerTest.TEST_SYNAPSE_TABLE_ID))
                 .thenReturn(columnModelList);
 
         // mock serializeToSynapseType() - We actually call through to the real method. Don't need to mock
         // uploadFromS3ToSynapseFileHandle() because we don't have file handles this time.
         when(mockSynapseHelper.serializeToSynapseType(any(), any(), any(), any(), any(), any())).thenCallRealMethod();
+
+        // Mock uploadFromS3ToSynapseFileHandle() for raw data attachment.
+        when(mockSynapseHelper.uploadFromS3ToSynapseFileHandle(any(), eq(RAW_DATA_ATTACHMENT_ID),
+                eq(RAW_DATA_ATTACHMENT_ID))).thenReturn(RAW_DATA_FILEHANDLE_ID);
 
         // mock upload the TSV and capture the upload
         tsvBytes = null;
@@ -359,9 +369,13 @@ public class HealthDataExportHandlerTest {
                     .withMetrics(new Metrics()).withRequest(SynapseExportHandlerTest.DUMMY_REQUEST).withTmpDir(tmpDir)
                     .build();
 
+            // This test will test raw data.
+            Item ddbRecord = SynapseExportHandlerTest.makeDdbRecord()
+                    .withString(HealthDataExportHandler.DDB_KEY_RAW_DATA_ATTACHMENT_ID, RAW_DATA_ATTACHMENT_ID);
+
             // However, for the purposes of our tests, we can re-use subtasks.
             ExportSubtask subtask = new ExportSubtask.Builder()
-                    .withOriginalRecord(SynapseExportHandlerTest.makeDdbRecord())
+                    .withOriginalRecord(ddbRecord)
                     .withParentTask(task).withRecordData(recordJsonNode).withSchemaKey(BridgeHelperTest.TEST_SCHEMA_KEY)
                     .build();
 
@@ -380,13 +394,18 @@ public class HealthDataExportHandlerTest {
             handler.uploadToSynapseForTask(task);
             List<String> tsvLineList = TestUtil.bytesToLines(tsvBytes);
             assertEquals(tsvLineList.size(), 3);
-            SynapseExportHandlerTest.validateTsvHeaders(tsvLineList.get(0), BridgeHelperTest.TEST_FIELD_NAME);
-            SynapseExportHandlerTest.validateTsvRow(tsvLineList.get(1), FIELD_VALUE);
-            SynapseExportHandlerTest.validateTsvRow(tsvLineList.get(2), FIELD_VALUE);
+            SynapseExportHandlerTest.validateTsvHeaders(tsvLineList.get(0), BridgeHelperTest.TEST_FIELD_NAME,
+                    HealthDataExportHandler.COLUMN_NAME_RAW_DATA);//todo
+            SynapseExportHandlerTest.validateTsvRow(tsvLineList.get(1), FIELD_VALUE, RAW_DATA_FILEHANDLE_ID);
+            SynapseExportHandlerTest.validateTsvRow(tsvLineList.get(2), FIELD_VALUE, RAW_DATA_FILEHANDLE_ID);
         }
 
         // Sanity check to make sure we have the expected number of getSchema calls.
         assertEquals(numGetSchemaCalls, 6);
+
+        // Verify calls to upload raw data.
+        verify(mockSynapseHelper, atLeastOnce()).uploadFromS3ToSynapseFileHandle(any(), eq(RAW_DATA_ATTACHMENT_ID),
+                eq(RAW_DATA_ATTACHMENT_ID));
     }
 
     // Similarly, this test primarily tests upload metadata. Most of the other stuff is tested in other tests.
@@ -519,8 +538,12 @@ public class HealthDataExportHandlerTest {
         assertEquals(tsvLineList.size(), 2);
         SynapseExportHandlerTest.validateTsvHeaders(tsvLineList.get(0), "metadata.choose-one.A",
                 "metadata.choose-one.B", "metadata.choose-one.C", "metadata.choose-one.other", "metadata.when",
-                "metadata.when.timezone", "metadata.foo", "metadata.bar", "record.foo", "record.baz");
+                "metadata.when.timezone", "metadata.foo", "metadata.bar", "record.foo", "record.baz",
+                HealthDataExportHandler.COLUMN_NAME_RAW_DATA);
         SynapseExportHandlerTest.validateTsvRow(tsvLineList.get(1), "false", "false", "true", "None of the above",
-                String.valueOf(whenMillis), "+0900", "37", "metadata-bar", "foo-value", "baz-value");
+                String.valueOf(whenMillis), "+0900", "37", "metadata-bar", "foo-value", "baz-value", "");
+
+        // This test doesn't upload any raw data.
+        verify(mockSynapseHelper, never()).uploadFromS3ToSynapseFileHandle(any(), any(), any());
     }
 }

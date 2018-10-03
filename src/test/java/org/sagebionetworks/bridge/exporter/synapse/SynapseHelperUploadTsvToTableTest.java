@@ -66,8 +66,7 @@ public class SynapseHelperUploadTsvToTableTest {
         // in 3 different places when we change the createFileHandle implementation.
         FileHandle mockFileHandle = mock(FileHandle.class);
         when(mockFileHandle.getId()).thenReturn(TEST_FILE_HANDLE_ID);
-        doReturn(mockFileHandle).when(synapseHelper).createFileHandleWithRetry(mockTsvFile,
-                "text/tab-separated-values", TEST_PROJECT_ID);
+        doReturn(mockFileHandle).when(synapseHelper).createFileHandleWithRetry(mockTsvFile);
     }
 
     @Test

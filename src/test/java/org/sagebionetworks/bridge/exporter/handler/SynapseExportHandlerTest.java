@@ -435,10 +435,11 @@ public class SynapseExportHandlerTest {
         assertEquals(tsvLineList.size(), 2);
         validateTsvHeaders(tsvLineList.get(0), "foo", "foooo", "unbounded-foo", "bar", "submitTime",
                 "submitTime.timezone", "sports.fencing", "sports.football", "sports.running", "sports.swimming",
-                "delicious.Yes", "delicious.No", "delicious.other", "my-large-text-attachment", FREEFORM_FIELD_NAME);
+                "delicious.Yes", "delicious.No", "delicious.other", "my-large-text-attachment", FREEFORM_FIELD_NAME,
+                HealthDataExportHandler.COLUMN_NAME_RAW_DATA);
         validateTsvRow(tsvLineList.get(1), "This is a string.", "Example (not) long string",
                 "Potentially unbounded string", "42", String.valueOf(submitTimeMillis), "+0900", "true", "false",
-                "true", "false", "true", "true", "Maybe", "This is my large text attachment", DUMMY_FILEHANDLE_ID);
+                "true", "false", "true", "true", "Maybe", "This is my large text attachment", DUMMY_FILEHANDLE_ID, "");
 
         // validate metrics
         Multiset<String> counterMap = task.getMetrics().getCounterMap();

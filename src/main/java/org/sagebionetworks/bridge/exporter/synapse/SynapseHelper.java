@@ -126,17 +126,6 @@ public class SynapseHelper {
                     .put(UploadFieldType.ATTACHMENT_JSON_TABLE, ".json")
                     .build();
 
-    /** Mapping from attachment types to MIME types, for use with telling Synapse what kind of file handle this is. */
-    private static final Map<UploadFieldType, String> BRIDGE_TYPE_TO_MIME_TYPE =
-            ImmutableMap.<UploadFieldType, String>builder()
-                    .put(UploadFieldType.ATTACHMENT_CSV, "text/csv")
-                    .put(UploadFieldType.ATTACHMENT_JSON_BLOB, "text/json")
-                    .put(UploadFieldType.ATTACHMENT_JSON_TABLE, "text/json")
-                    .build();
-
-    /** Default MIME type. application/octet-stream is used for arbitrary (potentially binary) data. */
-    private static final String DEFAULT_MIME_TYPE = "application/octet-stream";
-
     /**
      * Mapping from Bridge schema column types to Synapse table column types. Excludes types that map to multiple
      * Synapse columns, such as MULTI_CHOICE or TIMESTAMP.
@@ -436,9 +425,16 @@ public class SynapseHelper {
             String attachmentId) throws IOException, SynapseException {
         // Create temp file with unique name based on field name, bridge type, and attachment ID.
         String uniqueFilename = generateFilename(fieldDef, attachmentId);
-        File tempFile = fileHelper.newFile(tmpDir, uniqueFilename);
-        String mimeType = getMimeTypeForFieldDef(fieldDef);
+        return uploadFromS3ToSynapseFileHandle(tmpDir, uniqueFilename, attachmentId);
+    }
 
+    /**
+     * Downloads the specified health data attachment and uploads it to Synapse as a file handle, using the specified
+     * filename.
+     */
+    public String uploadFromS3ToSynapseFileHandle(File tmpDir, String filename, String attachmentId)
+            throws IOException, SynapseException {
+        File tempFile = fileHelper.newFile(tmpDir, filename);
         try {
             // download from S3
             s3Helper.downloadS3File(attachmentBucket, attachmentId, tempFile);
@@ -449,7 +445,7 @@ public class SynapseHelper {
             }
 
             // upload to Synapse
-            FileHandle synapseFileHandle = createFileHandleWithRetry(tempFile, mimeType, projectId);
+            FileHandle synapseFileHandle = createFileHandleWithRetry(tempFile);
             return synapseFileHandle.getId();
         } finally {
             // delete temp file
@@ -460,10 +456,17 @@ public class SynapseHelper {
     // Helper method to generate a unique filename for attachments / file handles.
     // Package-scoped to facilitate testing.
     static String generateFilename(UploadFieldDefinition fieldDef, String attachmentId) {
+        String fieldName = fieldDef.getName();
+
+        // Newer attachment IDs are already in the the form [uploadId]-[fieldName]. These are uniquely named well
+        // enough that we can use them as is.
+        if (attachmentId.endsWith(fieldName)) {
+            return attachmentId;
+        }
+
+        // Legacy uploads:
         // File name with pattern [fileBaseName]-[attachmentId][fileExt]. This guarantees filename uniqueness and
         // allows us to have a useful file extension, for OSes that still depend on file extension.
-
-        String fieldName = fieldDef.getName();
 
         // Check field def to determine file extension first.
         String fileExt = null;
@@ -510,27 +513,6 @@ public class SynapseHelper {
         } else {
             return filename.substring(0, filename.length() - fileExt.length());
         }
-    }
-
-    /**
-     * Helper method to get the MIME type for the given field definitions, using the field definitions parameters and
-     * its type.
-     */
-    private static String getMimeTypeForFieldDef(UploadFieldDefinition fieldDef) {
-        // First try MIME type defined in the field def.
-        String defMimeType = fieldDef.getMimeType();
-        if (defMimeType != null) {
-            return defMimeType;
-        }
-
-        // Fall back to type specific MIME types.
-        String typeMimeType = BRIDGE_TYPE_TO_MIME_TYPE.get(fieldDef.getType());
-        if (typeMimeType != null) {
-            return typeMimeType;
-        }
-
-        // Fall back to global default.
-        return DEFAULT_MIME_TYPE;
     }
 
     /**
@@ -636,7 +618,7 @@ public class SynapseHelper {
     public long uploadTsvFileToTable(String projectId, String tableId, File file) throws BridgeExporterException,
             IOException, SynapseException {
         // Upload TSV as a file handle.
-        FileHandle tableFileHandle = createFileHandleWithRetry(file, "text/tab-separated-values", projectId);
+        FileHandle tableFileHandle = createFileHandleWithRetry(file);
         String fileHandleId = tableFileHandle.getId();
 
         // start tsv import
@@ -736,10 +718,6 @@ public class SynapseHelper {
      *
      * @param file
      *         file to upload
-     * @param contentType
-     *         file MIME type
-     * @param projectId
-     *         Synapse project to upload the file handle to
      * @return file handle object from Synapse
      * @throws IOException
      *         if reading the file from disk fails
@@ -748,8 +726,7 @@ public class SynapseHelper {
      */
     @RetryOnFailure(attempts = 2, delay = 1, unit = TimeUnit.SECONDS,
             types = { AmazonClientException.class, SynapseException.class }, randomize = false)
-    @SuppressWarnings("UnusedParameters")
-    public FileHandle createFileHandleWithRetry(File file, String contentType, String projectId) throws IOException,
+    public FileHandle createFileHandleWithRetry(File file) throws IOException,
             SynapseException {
         rateLimiter.acquire();
         // Pass in forceRestart=true. Otherwise, retries will fail deterministically.

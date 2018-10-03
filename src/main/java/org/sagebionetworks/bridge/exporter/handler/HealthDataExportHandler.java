@@ -45,6 +45,8 @@ import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 public class HealthDataExportHandler extends SynapseExportHandler {
     private static final Logger LOG = LoggerFactory.getLogger(HealthDataExportHandler.class);
 
+    static final String COLUMN_NAME_RAW_DATA = "rawData";
+    static final String DDB_KEY_RAW_DATA_ATTACHMENT_ID = "rawDataAttachmentId";
     private static final String METADATA_FIELD_NAME_PREFIX = "metadata.";
     private static final char MULTI_CHOICE_FIELD_SEPARATOR = '.';
     private static final String OTHER_CHOICE_FIELD_SUFFIX = ".other";
@@ -52,6 +54,13 @@ public class HealthDataExportHandler extends SynapseExportHandler {
     private static final long TIME_ZONE_FIELD_LENGTH = 5;
     private static final DateTimeFormatter TIME_ZONE_FORMATTER = DateTimeFormat.forPattern("Z");
     private static final String TIME_ZONE_UTC_STRING = "+0000";
+
+    static final ColumnModel RAW_DATA_COLUMN;
+    static {
+        RAW_DATA_COLUMN = new ColumnModel();
+        RAW_DATA_COLUMN.setName(COLUMN_NAME_RAW_DATA);
+        RAW_DATA_COLUMN.setColumnType(ColumnType.FILEHANDLEID);
+    }
 
     private UploadSchemaKey schemaKey;
 
@@ -174,6 +183,9 @@ public class HealthDataExportHandler extends SynapseExportHandler {
             }
         }
 
+        // Add raw data field.
+        columnList.add(RAW_DATA_COLUMN);
+
         return columnList;
     }
 
@@ -264,6 +276,14 @@ public class HealthDataExportHandler extends SynapseExportHandler {
         Map<String, String> schemaFieldMap = extractAndSerializeFields(subtask, schemaFieldDefList,
                 subtask.getRecordData());
         rowValueMap.putAll(schemaFieldMap);
+
+        // Upload raw data. Attachment ID includes record ID, so we can use it verbatim.
+        String rawDataAttachmentId = subtask.getOriginalRecord().getString(DDB_KEY_RAW_DATA_ATTACHMENT_ID);
+        if (StringUtils.isNotBlank(rawDataAttachmentId)) {
+            String fileHandleId = getManager().getSynapseHelper().uploadFromS3ToSynapseFileHandle(task.getTmpDir(),
+                    rawDataAttachmentId, rawDataAttachmentId);
+            rowValueMap.put(COLUMN_NAME_RAW_DATA, fileHandleId);
+        }
 
         return rowValueMap;
     }
