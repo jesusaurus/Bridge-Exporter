@@ -133,6 +133,30 @@ public class SynapseHelperTest {
         assertEquals(SynapseHelper.isCompatibleColumn(oldColumn, newColumn), expected);
     }
 
+    @Test
+    public void isCompatibleCanConvertToLargeText() throws Exception {
+        ColumnModel intColumn = new ColumnModel();
+        intColumn.setName("my-column");
+        intColumn.setColumnType(ColumnType.INTEGER);
+
+        ColumnModel doubleColumn = new ColumnModel();
+        doubleColumn.setName("my-column");
+        doubleColumn.setColumnType(ColumnType.DOUBLE);
+
+        ColumnModel stringColumn = new ColumnModel();
+        stringColumn.setName("my-column");
+        stringColumn.setColumnType(ColumnType.STRING);
+        stringColumn.setMaximumSize(1000L);
+
+        ColumnModel largeTextColumn = new ColumnModel();
+        largeTextColumn.setName("my-column");
+        largeTextColumn.setColumnType(ColumnType.LARGETEXT);
+
+        assertTrue(SynapseHelper.isCompatibleColumn(intColumn, largeTextColumn));
+        assertTrue(SynapseHelper.isCompatibleColumn(doubleColumn, largeTextColumn));
+        assertTrue(SynapseHelper.isCompatibleColumn(largeTextColumn, largeTextColumn));
+    }
+
     // branch coverage
     @Test(expectedExceptions = BridgeExporterNonRetryableException.class, expectedExceptionsMessageRegExp =
             "old column my-string has type STRING and no max length")
