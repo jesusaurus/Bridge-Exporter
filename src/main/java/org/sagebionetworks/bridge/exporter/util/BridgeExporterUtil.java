@@ -117,7 +117,8 @@ public class BridgeExporterUtil {
      */
     public static String sanitizeDdbValue(Item item, String fieldName, int maxLength, String recordId) {
         String value = item.getString(fieldName);
-        return sanitizeString(value, fieldName, maxLength, recordId);
+        String studyId = item.getString("studyId");
+        return sanitizeString(value, fieldName, maxLength, recordId, studyId);
     }
 
     /**
@@ -131,13 +132,16 @@ public class BridgeExporterUtil {
      *         max length of the column
      * @param recordId
      *         record ID, for logging purposes
+     * @param studyId
+     *         study ID, for logging purposes
      * @return sanitized JSON string value
      */
-    public static String sanitizeJsonValue(JsonNode node, String fieldName, int maxLength, String recordId) {
+    public static String sanitizeJsonValue(JsonNode node, String fieldName, int maxLength, String recordId,
+            String studyId) {
         if (!node.hasNonNull(fieldName)) {
             return null;
         }
-        return sanitizeString(node.get(fieldName).textValue(), fieldName, maxLength, recordId);
+        return sanitizeString(node.get(fieldName).textValue(), fieldName, maxLength, recordId, studyId);
     }
 
     /**
@@ -158,9 +162,12 @@ public class BridgeExporterUtil {
      *         max length of the column, null if the string can be unbounded
      * @param recordId
      *         record ID, for logging purposes
+     * @param studyId
+     *         study ID, for logging purposes
      * @return sanitized string
      */
-    public static String sanitizeString(String in, String fieldName, Integer maxLength, String recordId) {
+    public static String sanitizeString(String in, String fieldName, Integer maxLength, String recordId,
+            String studyId) {
         if (in == null) {
             return null;
         }
@@ -177,8 +184,8 @@ public class BridgeExporterUtil {
 
         // Check against max length, truncating and warning as necessary.
         if (maxLength != null && in.length() > maxLength) {
-            LOG.error("Truncating string for field " + fieldName + " in record " + recordId + ", original length " +
-                    in.length() + " to max length " + maxLength);
+            LOG.error("Truncating string for field " + fieldName + " in record " + recordId + " in study " + studyId +
+                    ", original length " + in.length() + " to max length " + maxLength);
             in = in.substring(0, maxLength);
         }
 

@@ -94,35 +94,40 @@ public class BridgeExporterUtilTest {
     public void sanitizeJsonValueNotObject() throws Exception {
         String jsonText = "\"not an object\"";
         JsonNode node = DefaultObjectMapper.INSTANCE.readTree(jsonText);
-        assertNull(BridgeExporterUtil.sanitizeJsonValue(node, "key", 100, "dummy-record"));
+        assertNull(BridgeExporterUtil.sanitizeJsonValue(node, "key", 100, "dummy-record",
+                "dummy-study"));
     }
 
     @Test
     public void sanitizeJsonValueNoValue() throws Exception {
         String jsonText = "{}";
         JsonNode node = DefaultObjectMapper.INSTANCE.readTree(jsonText);
-        assertNull(BridgeExporterUtil.sanitizeJsonValue(node, "key", 100, "dummy-record"));
+        assertNull(BridgeExporterUtil.sanitizeJsonValue(node, "key", 100, "dummy-record",
+                "dummy-study"));
     }
 
     @Test
     public void sanitizeJsonValueNullValue() throws Exception {
         String jsonText = "{\"key\":null}";
         JsonNode node = DefaultObjectMapper.INSTANCE.readTree(jsonText);
-        assertNull(BridgeExporterUtil.sanitizeJsonValue(node, "key", 100, "dummy-record"));
+        assertNull(BridgeExporterUtil.sanitizeJsonValue(node, "key", 100, "dummy-record",
+                "dummy-study"));
     }
 
     @Test
     public void sanitizeJsonValueNotString() throws Exception {
         String jsonText = "{\"key\":42}";
         JsonNode node = DefaultObjectMapper.INSTANCE.readTree(jsonText);
-        assertNull(BridgeExporterUtil.sanitizeJsonValue(node, "key", 100, "dummy-record"));
+        assertNull(BridgeExporterUtil.sanitizeJsonValue(node, "key", 100, "dummy-record",
+                "dummy-study"));
     }
 
     @Test
     public void sanitizeJsonValueNormalCase() throws Exception {
         String jsonText = "{\"key\":\"123\\t\\t\\t456\"}";
         JsonNode node = DefaultObjectMapper.INSTANCE.readTree(jsonText);
-        String out = BridgeExporterUtil.sanitizeJsonValue(node, "key", 5, "dummy-record");
+        String out = BridgeExporterUtil.sanitizeJsonValue(node, "key", 5, "dummy-record",
+                "dummy-study");
         assertEquals(out, "123 4");
     }
 
@@ -145,7 +150,8 @@ public class BridgeExporterUtilTest {
 
     @Test(dataProvider = "sanitizeStringDataProvider")
     public void sanitizeString(String in, Integer maxLength, String expected) {
-        assertEquals(BridgeExporterUtil.sanitizeString(in, "key", maxLength, "dummy-record"), expected);
+        assertEquals(BridgeExporterUtil.sanitizeString(in, "key", maxLength, "dummy-record",
+                "dummy-study"), expected);
     }
 
     @Test
