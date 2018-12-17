@@ -37,6 +37,7 @@ public class SynapseHelperSerializeTest {
     private static final String TEST_PROJECT_ID = "test-project-id";
     private static final String TEST_RECORD_ID = "test-record-id";
     private static final String TEST_FIELD_NAME = "test-field-name";
+    private static final String TEST_STUDY_ID = "test-study-id";
 
     @DataProvider(name = "testSerializeProvider")
     public Object[][] testSerializeProvider() {
@@ -92,7 +93,7 @@ public class SynapseHelperSerializeTest {
 
         // serialize, which basically just copies the JSON text as is
         String retVal = new SynapseHelper().serializeToSynapseType(new Metrics(), MOCK_TEMP_DIR, TEST_PROJECT_ID,
-                TEST_RECORD_ID, fieldDefForType(UploadFieldType.INLINE_JSON_BLOB), originalNode);
+                TEST_RECORD_ID, TEST_STUDY_ID, fieldDefForType(UploadFieldType.INLINE_JSON_BLOB), originalNode);
 
         // parse back into JSON and compare
         JsonNode reparsedNode = DefaultObjectMapper.INSTANCE.readTree(retVal);
@@ -174,7 +175,7 @@ public class SynapseHelperSerializeTest {
         // execute
         Metrics metrics = new Metrics();
         String retVal = synapseHelper.serializeToSynapseType(metrics, MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                attachmentFieldDef, new TextNode("dummy-attachment-id"));
+                TEST_STUDY_ID, attachmentFieldDef, new TextNode("dummy-attachment-id"));
         assertEquals(retVal, "dummy-filehandle-id");
 
         // Validate metrics
@@ -210,12 +211,12 @@ public class SynapseHelperSerializeTest {
 
         // Test case 1: attachment with sanitization
         String retVal1 = synapseHelper.serializeToSynapseType(metrics, MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                fieldDef, new TextNode("my-large-text-attachment-id"));
+                TEST_STUDY_ID, fieldDef, new TextNode("my-large-text-attachment-id"));
         assertEquals(retVal1, "This is my large text attachment");
 
         // Test case 2: wrong type
         String retVal2 = synapseHelper.serializeToSynapseType(metrics, MOCK_TEMP_DIR, TEST_PROJECT_ID, TEST_RECORD_ID,
-                fieldDef, new LongNode(1234567890L));
+                TEST_STUDY_ID, fieldDef, new LongNode(1234567890L));
         assertNull(retVal2);
     }
 
@@ -226,7 +227,7 @@ public class SynapseHelperSerializeTest {
     private static void testHelper(Metrics metrics, UploadFieldDefinition fieldDef, JsonNode input,
             String expected) throws Exception {
         String retVal = new SynapseHelper().serializeToSynapseType(metrics, MOCK_TEMP_DIR, TEST_PROJECT_ID,
-                TEST_RECORD_ID, fieldDef, input);
+                TEST_RECORD_ID, TEST_STUDY_ID, fieldDef, input);
         assertEquals(retVal, expected);
     }
 }

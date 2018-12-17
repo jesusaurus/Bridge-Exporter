@@ -24,6 +24,7 @@ public class PhoneAppVersionInfo {
      */
     public static PhoneAppVersionInfo fromRecord(Item record) {
         String recordId = record.getString("id");
+        String studyId = record.getString("studyId");
 
         String appVersion = null;
         String phoneInfo = null;
@@ -31,8 +32,10 @@ public class PhoneAppVersionInfo {
         if (StringUtils.isNotBlank(metadataString)) {
             try {
                 JsonNode metadataJson = DefaultObjectMapper.INSTANCE.readTree(metadataString);
-                appVersion = BridgeExporterUtil.sanitizeJsonValue(metadataJson, "appVersion", 48, recordId);
-                phoneInfo = BridgeExporterUtil.sanitizeJsonValue(metadataJson, "phoneInfo", 48, recordId);
+                appVersion = BridgeExporterUtil.sanitizeJsonValue(metadataJson, "appVersion", 48,
+                        recordId, studyId);
+                phoneInfo = BridgeExporterUtil.sanitizeJsonValue(metadataJson, "phoneInfo", 48,
+                        recordId, studyId);
             } catch (IOException ex) {
                 // We don't want callers to have to deal with boilerplate error handling code, so we log the error and
                 // return null fields.

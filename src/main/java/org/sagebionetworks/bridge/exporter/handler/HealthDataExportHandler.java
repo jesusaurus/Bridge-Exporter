@@ -336,7 +336,7 @@ public class HealthDataExportHandler extends SynapseExportHandler {
                 rowValueMap.putAll(serializedTimestampFields);
             } else {
                 String value = manager.getSynapseHelper().serializeToSynapseType(task.getMetrics(), task.getTmpDir(),
-                        synapseProjectId, recordId, oneFieldDef, valueNode);
+                        synapseProjectId, recordId, getStudyId(), oneFieldDef, valueNode);
                 rowValueMap.put(oneFieldName, value);
             }
         }

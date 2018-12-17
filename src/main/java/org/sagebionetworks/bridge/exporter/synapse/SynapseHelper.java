@@ -296,6 +296,8 @@ public class SynapseHelper {
      *         Synapse project ID, used to determine where to upload attachments to
      * @param recordId
      *         Bridge record ID, used for logging
+     * @param studyId
+     *         Bridge study ID, used for logging
      * @param fieldDef
      *         field definition, to determine how to serialize the field
      * @param node
@@ -307,7 +309,7 @@ public class SynapseHelper {
      *         if uploading the attachment to Synapse fails
      */
     public String serializeToSynapseType(Metrics metrics, File tmpDir, String projectId, String recordId,
-            UploadFieldDefinition fieldDef, JsonNode node) throws IOException, SynapseException {
+            String studyId, UploadFieldDefinition fieldDef, JsonNode node) throws IOException, SynapseException {
         if (node == null || node.isNull()) {
             return null;
         }
@@ -360,7 +362,7 @@ public class SynapseHelper {
                 }
 
                 String sanitizedValue = BridgeExporterUtil.sanitizeString(nodeValue, fieldDef.getName(), maxLength,
-                        recordId);
+                        recordId, studyId);
                 return sanitizedValue;
             }
             case FLOAT: {
@@ -385,7 +387,7 @@ public class SynapseHelper {
 
                     // We also need to sanitize the content (remove HTML, newlines, tabs, quote strings, etc).
                     String sanitizedValue = BridgeExporterUtil.sanitizeString(value, fieldDef.getName(), null,
-                            recordId);
+                            recordId, studyId);
                     return sanitizedValue;
                 }
                 return null;
