@@ -540,7 +540,9 @@ public class ExportWorkerManager {
                 // The real exception is in the inner exception (if it's an ExecutionException).
                 Throwable originalEx = ex.getCause();
 
-                String recordId = subtaskFuture.getSubtask().getRecordId();
+                ExportSubtask subtask = subtaskFuture.getSubtask();
+                String recordId = subtask.getRecordId();
+                UploadSchemaKey schemaKey = subtask.getSchemaKey();
                 if (isSynapseDown(originalEx)) {
                     // If Synapse is down, we should restart the BridgeEX request. Note that since BridgeEX is
                     // multi-threaded, there may be other subtasks scheduled that will run to completion. Nothing will
@@ -549,7 +551,8 @@ public class ExportWorkerManager {
                     throw new RestartBridgeExporterException("Restarting Bridge Exporter; last recordId=" + recordId +
                             ": " + originalEx.getMessage(), originalEx);
                 } else {
-                    LOG.error("Error completing subtask for recordId=" + recordId + ": " + ex.getMessage(), ex);
+                    LOG.error("Error completing subtask for schema=" + schemaKey + ", recordId=" + recordId + ": " +
+                            ex.getMessage(), ex);
                     // We exclude TSV exceptions here. Since TSVs cause the whole table to fail, redrive the table
                     // instead of individual records.
                     if (!(originalEx instanceof BridgeExporterTsvException) && isRetryable(originalEx)) {
