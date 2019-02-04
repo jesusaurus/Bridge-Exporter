@@ -34,5 +34,11 @@
   {
     "name": "validationErrors",
     "transferMethod": "LARGETEXT"
+  },
+  {
+    "name": "substudyMemberships",
+    "maximumSize": 250,
+    "transferMethod": "STRING",
+    "ddbName": "userSubstudyMemberships"
   }
 ]
