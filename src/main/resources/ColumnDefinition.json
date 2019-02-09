@@ -33,6 +33,7 @@
   },
   {
     "name": "validationErrors",
-    "transferMethod": "LARGETEXT"
+    "transferMethod": "LARGETEXT",
+    "sanitize": true
   }
 ]
