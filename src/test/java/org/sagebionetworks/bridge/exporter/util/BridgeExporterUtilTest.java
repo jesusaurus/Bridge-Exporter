@@ -11,8 +11,9 @@ import java.util.Map;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+
 import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
 import org.sagebionetworks.bridge.exporter.synapse.TransferMethod;
 import org.sagebionetworks.repo.model.table.ColumnModel;
@@ -332,22 +333,22 @@ public class BridgeExporterUtilTest {
     
     @Test
     public void serializeSubstudyMemberships() throws Exception {
-        Map<String,String> map = new HashMap<>();
+        Map<String,Object> map = new HashMap<>();
         map.put("subA", "");
         map.put("subB", "extB");
         map.put("subC", "extC");
         map.put("subD", "");
         
-        String mapSer = new ObjectMapper().writeValueAsString(map);
-        String output = BridgeExporterUtil.serializeSubstudyMemberships(mapSer);
-        
+        String output = BridgeExporterUtil.serializeSubstudyMemberships(map);
         assertEquals("|subA=|subB=extB|subC=extC|subD=|", output);
     }    
     
     @Test
     public void serializeSubstudyMembershipsOneEntry() {
-        String output = BridgeExporterUtil.serializeSubstudyMemberships("{\"subB\":\"extB\"}");
+        Map<String,Object> map = new HashMap<>();
+        map.put("subB", "extB");
         
+        String output = BridgeExporterUtil.serializeSubstudyMemberships(map);
         assertEquals("|subB=extB|", output);
     }
     
@@ -358,7 +359,7 @@ public class BridgeExporterUtilTest {
     
     @Test
     public void serializeSubstudyMembershipsBlank() {
-        assertNull(BridgeExporterUtil.serializeSubstudyMemberships(""));
+        assertNull(BridgeExporterUtil.serializeSubstudyMemberships(ImmutableMap.of()));
     }
     
 }

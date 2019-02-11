@@ -21,7 +21,6 @@ import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
 import org.sagebionetworks.bridge.rest.model.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -253,26 +252,17 @@ public class BridgeExporterUtil {
         }
     }
     
-    public static String serializeSubstudyMemberships(String substudyMemberships) {
-        if (substudyMemberships == null || "".equals(substudyMemberships)) {
+    public static String serializeSubstudyMemberships(Map<String, Object> substudyMemberships) {
+        if (substudyMemberships == null || substudyMemberships.size() == 0) {
             return null;
         }
-        try {
-            Map<String, String> memberships = MAPPER.readValue(substudyMemberships, STRING_MAP_TYPE_REF);
-            List<String> pairs = new ArrayList<>();
-            for (Map.Entry<String, String> entry : memberships.entrySet()) {
-                String key = entry.getKey();
-                String value = entry.getValue();
-                pairs.add(key + "=" + value);
-            }
-            
-            Collections.sort(pairs);
-            return "|" + PIPE_JOINER.join(pairs) + "|";
-            
-        } catch(IOException e) {
-            LOG.warn("Exception serializing substudy memberships: '" + e.getMessage() + "', " + substudyMemberships);
+        List<String> pairs = new ArrayList<>();
+        for (Map.Entry<String, Object> entry : substudyMemberships.entrySet()) {
+            String key = entry.getKey();
+            String value = (String)entry.getValue();
+            pairs.add(key + "=" + value);
         }
-        return null;
+        Collections.sort(pairs);
+        return "|" + PIPE_JOINER.join(pairs) + "|";
     }
-
 }
