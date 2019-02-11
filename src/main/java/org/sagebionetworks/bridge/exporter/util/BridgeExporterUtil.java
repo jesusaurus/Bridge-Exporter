@@ -2,7 +2,9 @@ package org.sagebionetworks.bridge.exporter.util;
 
 
 import com.amazonaws.services.dynamodbv2.document.Item;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSetMultimap;
@@ -19,6 +21,9 @@ import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
 import org.sagebionetworks.bridge.rest.model.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +40,10 @@ public class BridgeExporterUtil {
     public static final String CONFIG_KEY_TIME_ZONE_NAME = "time.zone.name";
     public static final String CONFIG_KEY_RECORD_ID_OVERRIDE_BUCKET = "record.id.override.bucket";
     public static final String CONFIG_KEY_SQS_QUEUE_URL = "exporter.request.sqs.queue.url";
+    
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final TypeReference<Map<String, String>> STRING_MAP_TYPE_REF = new TypeReference<Map<String, String>>() {};
+    public static final Joiner PIPE_JOINER = Joiner.on("|");
 
     private static final ImmutableSetMultimap<UploadSchemaKey, String> SCHEMA_FIELDS_TO_CONVERT;
     static {
@@ -243,4 +252,27 @@ public class BridgeExporterUtil {
             rowMap.put(columnDefinition.getName(), valueToAdd);
         }
     }
+    
+    public static String serializeSubstudyMemberships(String substudyMemberships) {
+        if (substudyMemberships == null || "".equals(substudyMemberships)) {
+            return null;
+        }
+        try {
+            Map<String, String> memberships = MAPPER.readValue(substudyMemberships, STRING_MAP_TYPE_REF);
+            List<String> pairs = new ArrayList<>();
+            for (Map.Entry<String, String> entry : memberships.entrySet()) {
+                String key = entry.getKey();
+                String value = entry.getValue();
+                pairs.add(key + "=" + value);
+            }
+            
+            Collections.sort(pairs);
+            return "|" + PIPE_JOINER.join(pairs) + "|";
+            
+        } catch(IOException e) {
+            LOG.warn("Exception serializing substudy memberships: '" + e.getMessage() + "', " + substudyMemberships);
+        }
+        return null;
+    }
+
 }

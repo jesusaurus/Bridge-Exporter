@@ -1,10 +1,16 @@
 package org.sagebionetworks.bridge.exporter.synapse;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import org.sagebionetworks.repo.model.table.ColumnType;
 import org.testng.annotations.Test;
 
+import static org.junit.Assert.assertNull;
 import static org.testng.Assert.assertEquals;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Test for transfer() in TransferMethod
@@ -44,5 +50,35 @@ public class TransferMethodTest {
         assertEquals(TransferMethod.STRINGSET.getColumnType(), ColumnType.STRING);
         assertEquals(TransferMethod.DATE.getColumnType(), ColumnType.DATE);
         assertEquals(TransferMethod.LARGETEXT.getColumnType(), ColumnType.LARGETEXT);
+        assertEquals(TransferMethod.STRINGMAP.getColumnType(), ColumnType.STRING);
     }
-}
+    
+    @Test
+    public void testTransferStringMap() throws Exception {
+        Map<String,String> map = new LinkedHashMap<>();
+        map.put("substudyA", "");
+        map.put("substudyB", "externalIdB");
+        String ser = new ObjectMapper().writeValueAsString(map);
+        
+        Item testRecord = new Item();
+        testRecord.withString("testStringName", ser);
+        
+        String output = TransferMethod.STRINGMAP.transfer("testStringName", testRecord);
+        assertEquals("|substudyA=|substudyB=externalIdB|", output);
+    }
+    
+    @Test
+    public void testTransferStringMapWithNullValue() {
+        Item testRecord = new Item();
+        
+        assertNull(TransferMethod.STRINGMAP.transfer("testStringName", testRecord));
+    }
+    
+    @Test
+    public void testTransferStringMapWithEmptyValue() {
+        Item testRecord = new Item();
+        testRecord.withString("testStringName", "");
+        
+        assertNull(TransferMethod.STRINGMAP.transfer("testStringName", testRecord));
+    }
+}    

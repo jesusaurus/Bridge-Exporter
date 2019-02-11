@@ -44,6 +44,21 @@ public enum TransferMethod {
             return ColumnType.STRING;
         }
     },
+    STRINGMAP {
+        @Override
+        public String transfer(String ddbName, Item record) {
+            String value = record.getString(ddbName);
+            if (value == null || "".equals(value)) {
+                return null;
+            }
+            return BridgeExporterUtil.serializeSubstudyMemberships( value );
+        }
+
+        @Override
+        public ColumnType getColumnType() {
+            return ColumnType.STRING;
+        }
+    },
     DATE {
         @Override
         public String transfer(String ddbName, Item record) {

@@ -1,7 +1,5 @@
 package org.sagebionetworks.bridge.exporter.synapse;
 
-import org.sagebionetworks.repo.model.table.ColumnType;
-
 public class ColumnDefinition  {
     private String name;
     private Long maximumSize;

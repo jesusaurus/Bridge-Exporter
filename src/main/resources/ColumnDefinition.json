@@ -38,7 +38,7 @@
   {
     "name": "substudyMemberships",
     "maximumSize": 250,
-    "transferMethod": "STRING",
+    "transferMethod": "STRINGMAP",
     "ddbName": "userSubstudyMemberships"
   }
 ]
