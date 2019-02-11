@@ -26,6 +26,7 @@ import java.util.Set;
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Multiset;
 import com.google.common.collect.SetMultimap;
@@ -501,6 +502,7 @@ public class SynapseExportHandlerTest {
                 .withString("id", DUMMY_RECORD_ID).withString("metadata", DUMMY_METADATA_JSON_TEXT)
                 .withStringSet("userDataGroups", DUMMY_DATA_GROUPS)
                 .withString("userSubstudyMemberships", DUMMY_SUBSTUDY_MEMBERSHIPS)
+                .withMap("userSubstudyMemberships", ImmutableMap.of("subA", "extA", "subB", ""))
                 .withString("userExternalId", "unsanitized\t\texternal\t\tid")
                 .withString("userSharingScope", DUMMY_USER_SHARING_SCOPE);
     }
@@ -590,7 +592,7 @@ public class SynapseExportHandlerTest {
         substudyMembershipsDefinition.setName("substudyMemberships");
         substudyMembershipsDefinition.setDdbName("userSubstudyMemberships");
         substudyMembershipsDefinition.setMaximumSize(250L);
-        substudyMembershipsDefinition.setTransferMethod(TransferMethod.STRING);
+        substudyMembershipsDefinition.setTransferMethod(TransferMethod.STRINGMAP);
         columnDefinitionsBuilder.add(substudyMembershipsDefinition);
         
         ColumnDefinition createdOnDefinition = new ColumnDefinition();
