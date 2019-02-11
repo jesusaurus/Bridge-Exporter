@@ -48,8 +48,8 @@ public enum TransferMethod {
     STRINGMAP {
         @Override
         public String transfer(String ddbName, Item record) {
-            Map<String,Object> substudyMap = record.getRawMap(ddbName);
-            if (substudyMap == null || substudyMap.size() == 0) {
+            Map<String,String> substudyMap = record.getMap(ddbName);
+            if (substudyMap == null || substudyMap.isEmpty()) {
                 return null;
             }
             return BridgeExporterUtil.serializeSubstudyMemberships(substudyMap);

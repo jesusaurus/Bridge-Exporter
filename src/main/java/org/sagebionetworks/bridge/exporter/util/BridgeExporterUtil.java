@@ -252,14 +252,14 @@ public class BridgeExporterUtil {
         }
     }
     
-    public static String serializeSubstudyMemberships(Map<String, Object> substudyMemberships) {
-        if (substudyMemberships == null || substudyMemberships.size() == 0) {
+    public static String serializeSubstudyMemberships(Map<String, String> substudyMemberships) {
+        if (substudyMemberships == null || substudyMemberships.isEmpty()) {
             return null;
         }
         List<String> pairs = new ArrayList<>();
-        for (Map.Entry<String, Object> entry : substudyMemberships.entrySet()) {
+        for (Map.Entry<String, String> entry : substudyMemberships.entrySet()) {
             String key = entry.getKey();
-            String value = (String)entry.getValue();
+            String value = entry.getValue();
             pairs.add(key + "=" + value);
         }
         Collections.sort(pairs);

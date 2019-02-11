@@ -333,7 +333,7 @@ public class BridgeExporterUtilTest {
     
     @Test
     public void serializeSubstudyMemberships() throws Exception {
-        Map<String,Object> map = new HashMap<>();
+        Map<String,String> map = new HashMap<>();
         map.put("subA", "");
         map.put("subB", "extB");
         map.put("subC", "extC");
@@ -345,7 +345,7 @@ public class BridgeExporterUtilTest {
     
     @Test
     public void serializeSubstudyMembershipsOneEntry() {
-        Map<String,Object> map = new HashMap<>();
+        Map<String,String> map = new HashMap<>();
         map.put("subB", "extB");
         
         String output = BridgeExporterUtil.serializeSubstudyMemberships(map);
