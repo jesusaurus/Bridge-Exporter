@@ -501,7 +501,6 @@ public class SynapseExportHandlerTest {
         return new Item().withLong("createdOn", DUMMY_CREATED_ON).withString("healthCode", DUMMY_HEALTH_CODE)
                 .withString("id", DUMMY_RECORD_ID).withString("metadata", DUMMY_METADATA_JSON_TEXT)
                 .withStringSet("userDataGroups", DUMMY_DATA_GROUPS)
-                .withString("userSubstudyMemberships", DUMMY_SUBSTUDY_MEMBERSHIPS)
                 .withMap("userSubstudyMemberships", ImmutableMap.of("subA", "extA", "subB", ""))
                 .withString("userExternalId", "unsanitized\t\texternal\t\tid")
                 .withString("userSharingScope", DUMMY_USER_SHARING_SCOPE);

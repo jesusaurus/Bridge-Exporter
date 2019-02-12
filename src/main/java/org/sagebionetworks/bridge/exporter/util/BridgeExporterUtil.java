@@ -2,9 +2,7 @@ package org.sagebionetworks.bridge.exporter.util;
 
 
 import com.amazonaws.services.dynamodbv2.document.Item;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSetMultimap;
@@ -40,8 +38,6 @@ public class BridgeExporterUtil {
     public static final String CONFIG_KEY_RECORD_ID_OVERRIDE_BUCKET = "record.id.override.bucket";
     public static final String CONFIG_KEY_SQS_QUEUE_URL = "exporter.request.sqs.queue.url";
     
-    private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final TypeReference<Map<String, String>> STRING_MAP_TYPE_REF = new TypeReference<Map<String, String>>() {};
     public static final Joiner PIPE_JOINER = Joiner.on("|");
 
     private static final ImmutableSetMultimap<UploadSchemaKey, String> SCHEMA_FIELDS_TO_CONVERT;

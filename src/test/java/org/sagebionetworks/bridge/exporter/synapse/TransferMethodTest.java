@@ -1,7 +1,6 @@
 package org.sagebionetworks.bridge.exporter.synapse;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
 
 import org.sagebionetworks.repo.model.table.ColumnType;
