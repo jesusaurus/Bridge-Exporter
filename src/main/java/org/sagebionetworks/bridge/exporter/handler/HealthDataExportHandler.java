@@ -424,13 +424,13 @@ public class HealthDataExportHandler extends SynapseExportHandler {
                 otherChoice = Iterables.getOnlyElement(selectedSet);
             } else {
                 otherChoice = BridgeExporterUtil.COMMA_SPACE_JOINER.join(selectedSet);
-                LOG.error("Multiple other choices " + otherChoice + " for field " + fieldName + " record " + recordId);
+                LOG.warn("Multiple other choices " + otherChoice + " for field " + fieldName + " record " + recordId);
             }
 
             if (Boolean.TRUE.equals(fieldDef.getAllowOtherChoices())) {
                 partialValueMap.put(fieldName + OTHER_CHOICE_FIELD_SUFFIX, otherChoice);
             } else {
-                LOG.error("Unknown choice(s) " + otherChoice + " for field " + fieldName + " record " + recordId);
+                LOG.warn("Unknown choice(s) " + otherChoice + " for field " + fieldName + " record " + recordId);
             }
         }
 
@@ -466,8 +466,8 @@ public class HealthDataExportHandler extends SynapseExportHandler {
                     return ImmutableMap.<String, String>builder().put(fieldName, epochMillisString)
                             .put(fieldName + TIME_ZONE_FIELD_SUFFIX, timeZoneString).build();
                 } catch (IllegalArgumentException ex) {
-                    // log an error, but throw out malformatted dates
-                    LOG.error("Invalid timestamp " + timestampString + " for record ID " + recordId);
+                    // log a warning, but throw out malformatted dates
+                    LOG.warn("Invalid timestamp " + timestampString + " for record ID " + recordId);
                 }
             } else if (node.isNumber()) {
                 // Timestamp is epoch milliseconds. Push this straight across as the timestamp. The timezone is UTC
