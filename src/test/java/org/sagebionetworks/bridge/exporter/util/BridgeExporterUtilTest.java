@@ -334,10 +334,10 @@ public class BridgeExporterUtilTest {
     @Test
     public void serializeSubstudyMemberships() throws Exception {
         Map<String,String> map = new HashMap<>();
-        map.put("subA", "");
+        map.put("subA", "<none>"); // so DDB serialization doesn't drop the entry, use "<none>" as missing key
         map.put("subB", "extB");
         map.put("subC", "extC");
-        map.put("subD", "");
+        map.put("subD", ""); // this works, though we don't persist this.
         
         String output = BridgeExporterUtil.serializeSubstudyMemberships(map);
         assertEquals("|subA=|subB=extB|subC=extC|subD=|", output);

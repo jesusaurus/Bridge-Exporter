@@ -255,7 +255,7 @@ public class BridgeExporterUtil {
         List<String> pairs = new ArrayList<>();
         for (Map.Entry<String, String> entry : substudyMemberships.entrySet()) {
             String key = entry.getKey();
-            String value = entry.getValue();
+            String value = "<none>".equals(entry.getValue()) ? "" : entry.getValue();
             pairs.add(key + "=" + value);
         }
         Collections.sort(pairs);
