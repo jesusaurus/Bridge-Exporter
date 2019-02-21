@@ -26,6 +26,7 @@ import java.util.Set;
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Multiset;
 import com.google.common.collect.SetMultimap;
@@ -82,6 +83,7 @@ public class SynapseExportHandlerTest {
     private static final long DUMMY_CREATED_ON = 7777777;
     private static final Set<String> DUMMY_DATA_GROUPS = ImmutableSet.of("foo", "bar", "baz");
     private static final String DUMMY_DATA_GROUPS_FLATTENED = "bar,baz,foo";
+    private static final String DUMMY_SUBSTUDY_MEMBERSHIPS = "|subA=extA|subB=|";
     private static final String DUMMY_HEALTH_CODE = "dummy-health-code";
     private static final String DUMMY_RECORD_ID = "dummy-record-id";
 
@@ -499,13 +501,14 @@ public class SynapseExportHandlerTest {
         return new Item().withLong("createdOn", DUMMY_CREATED_ON).withString("healthCode", DUMMY_HEALTH_CODE)
                 .withString("id", DUMMY_RECORD_ID).withString("metadata", DUMMY_METADATA_JSON_TEXT)
                 .withStringSet("userDataGroups", DUMMY_DATA_GROUPS)
+                .withMap("userSubstudyMemberships", ImmutableMap.of("subA", "extA", "subB", ""))
                 .withString("userExternalId", "unsanitized\t\texternal\t\tid")
                 .withString("userSharingScope", DUMMY_USER_SHARING_SCOPE);
     }
 
     public static void validateTsvHeaders(String line, String... extraColumnNameVarargs) {
         StringBuilder expectedLineBuilder = new StringBuilder("recordId\tappVersion\tphoneInfo\tuploadDate\thealthCode\texternalId\tdataGroups\t" +
-                "createdOn\tuserSharingScope");
+                "substudyMemberships\tcreatedOn\tuserSharingScope");
         for (String oneExtraColumnName : extraColumnNameVarargs) {
             expectedLineBuilder.append('\t');
             expectedLineBuilder.append(oneExtraColumnName);
@@ -517,7 +520,8 @@ public class SynapseExportHandlerTest {
         StringBuilder expectedLineBuilder = new StringBuilder(DUMMY_RECORD_ID + '\t' + DUMMY_APP_VERSION + '\t' +
                 DUMMY_PHONE_INFO + '\t' + DUMMY_REQUEST_DATE + '\t' + DUMMY_HEALTH_CODE + '\t' +
                 DUMMY_EXTERNAL_ID + '\t' + DUMMY_DATA_GROUPS_FLATTENED + '\t' +
-                DUMMY_CREATED_ON + '\t' + DUMMY_USER_SHARING_SCOPE);
+                DUMMY_SUBSTUDY_MEMBERSHIPS + '\t' + DUMMY_CREATED_ON + '\t' + 
+                DUMMY_USER_SHARING_SCOPE);
         for (String oneExtraValue : extraValueVarargs) {
             expectedLineBuilder.append('\t');
             expectedLineBuilder.append(oneExtraValue);
@@ -583,6 +587,13 @@ public class SynapseExportHandlerTest {
         dataGroupsDefinition.setTransferMethod(TransferMethod.STRINGSET);
         columnDefinitionsBuilder.add(dataGroupsDefinition);
 
+        ColumnDefinition substudyMembershipsDefinition = new ColumnDefinition();
+        substudyMembershipsDefinition.setName("substudyMemberships");
+        substudyMembershipsDefinition.setDdbName("userSubstudyMemberships");
+        substudyMembershipsDefinition.setMaximumSize(250L);
+        substudyMembershipsDefinition.setTransferMethod(TransferMethod.STRINGMAP);
+        columnDefinitionsBuilder.add(substudyMembershipsDefinition);
+        
         ColumnDefinition createdOnDefinition = new ColumnDefinition();
         createdOnDefinition.setName("createdOn");
         createdOnDefinition.setTransferMethod(TransferMethod.DATE);

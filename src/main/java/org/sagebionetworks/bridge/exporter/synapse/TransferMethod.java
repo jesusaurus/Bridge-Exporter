@@ -7,6 +7,7 @@ import org.sagebionetworks.repo.model.table.ColumnType;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -37,6 +38,21 @@ public enum TransferMethod {
                 valueToAdd = BridgeExporterUtil.STRING_SET_JOINER.join(stringSetList);
             }
             return valueToAdd;
+        }
+
+        @Override
+        public ColumnType getColumnType() {
+            return ColumnType.STRING;
+        }
+    },
+    STRINGMAP {
+        @Override
+        public String transfer(String ddbName, Item record) {
+            Map<String,String> substudyMap = record.getMap(ddbName);
+            if (substudyMap == null || substudyMap.isEmpty()) {
+                return null;
+            }
+            return BridgeExporterUtil.serializeSubstudyMemberships(substudyMap);
         }
 
         @Override
