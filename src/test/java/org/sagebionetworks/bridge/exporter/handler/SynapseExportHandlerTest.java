@@ -590,7 +590,7 @@ public class SynapseExportHandlerTest {
         ColumnDefinition substudyMembershipsDefinition = new ColumnDefinition();
         substudyMembershipsDefinition.setName("substudyMemberships");
         substudyMembershipsDefinition.setDdbName("userSubstudyMemberships");
-        substudyMembershipsDefinition.setMaximumSize(250L);
+        substudyMembershipsDefinition.setMaximumSize(250);
         substudyMembershipsDefinition.setTransferMethod(TransferMethod.STRINGMAP);
         columnDefinitionsBuilder.add(substudyMembershipsDefinition);
         
