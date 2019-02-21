@@ -41,6 +41,5 @@
     "maximumSize": 250,
     "transferMethod": "STRINGMAP",
     "ddbName": "userSubstudyMemberships"
-    "transferMethod": "LARGETEXT"
   }
 ]
