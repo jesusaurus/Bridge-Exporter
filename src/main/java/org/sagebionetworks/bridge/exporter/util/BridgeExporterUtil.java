@@ -119,7 +119,7 @@ public class BridgeExporterUtil {
      *         record ID, for logging purposes
      * @return sanitized DDB string value
      */
-    public static String sanitizeDdbValue(Item item, String fieldName, int maxLength, String recordId) {
+    public static String sanitizeDdbValue(Item item, String fieldName, Integer maxLength, String recordId) {
         String value = item.getString(fieldName);
         String studyId = item.getString("studyId");
         return sanitizeString(value, fieldName, maxLength, recordId, studyId);
@@ -223,7 +223,13 @@ public class BridgeExporterUtil {
             ColumnModel columnModel = new ColumnModel();
             columnModel.setName(columnDefinition.getName());
             columnModel.setColumnType(columnDefinition.getTransferMethod().getColumnType());
-            columnModel.setMaximumSize(columnDefinition.getMaximumSize());
+
+            // For some reason, ColumnModel.maximumSize is a long, but we have ints. It can't ever be more than 1000
+            // anyway.
+            if (columnDefinition.getMaximumSize() != null) {
+                columnModel.setMaximumSize(columnDefinition.getMaximumSize().longValue());
+            }
+
             columnListBuilder.add(columnModel);
         }
 
@@ -238,7 +244,7 @@ public class BridgeExporterUtil {
 
             String valueToAdd;
             if (columnDefinition.getSanitize()) {
-                valueToAdd = sanitizeDdbValue(record, ddbName, columnDefinition.getMaximumSize().intValue(), recordId);
+                valueToAdd = sanitizeDdbValue(record, ddbName, columnDefinition.getMaximumSize(), recordId);
             } else {
                 TransferMethod transferMethod = columnDefinition.getTransferMethod();
                 valueToAdd = transferMethod.transfer(ddbName, record);

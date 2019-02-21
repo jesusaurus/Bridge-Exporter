@@ -93,6 +93,13 @@ public class BridgeExporterUtilTest {
     }
 
     @Test
+    public void sanitizeDdbValueNoMaxLength() {
+        Item item = new Item().withString("key", "1234567890");
+        String out = BridgeExporterUtil.sanitizeDdbValue(item, "key", null, "dummy-record");
+        assertEquals(out, "1234567890");
+    }
+
+    @Test
     public void sanitizeJsonValueNotObject() throws Exception {
         String jsonText = "\"not an object\"";
         JsonNode node = DefaultObjectMapper.INSTANCE.readTree(jsonText);
@@ -196,12 +203,12 @@ public class BridgeExporterUtilTest {
         ColumnDefinition stringDef = new ColumnDefinition();
         stringDef.setName("my-string");
         stringDef.setTransferMethod(TransferMethod.STRING);
-        stringDef.setMaximumSize(42L);
+        stringDef.setMaximumSize(42);
 
         ColumnDefinition stringSetDef = new ColumnDefinition();
         stringSetDef.setName("my-string-set");
         stringSetDef.setTransferMethod(TransferMethod.STRINGSET);
-        stringSetDef.setMaximumSize(128L);
+        stringSetDef.setMaximumSize(128);
 
         ColumnDefinition dateDef = new ColumnDefinition();
         dateDef.setName("my-date");
@@ -219,17 +226,19 @@ public class BridgeExporterUtilTest {
 
         assertEquals(columnModelList.get(0).getName(), "my-string");
         assertEquals(columnModelList.get(0).getColumnType(), ColumnType.STRING);
-        assertEquals(columnModelList.get(0).getMaximumSize().longValue(), 42);
+        assertEquals(columnModelList.get(0).getMaximumSize().intValue(), 42);
 
         assertEquals(columnModelList.get(1).getName(), "my-string-set");
         assertEquals(columnModelList.get(1).getColumnType(), ColumnType.STRING);
-        assertEquals(columnModelList.get(1).getMaximumSize().longValue(), 128);
+        assertEquals(columnModelList.get(1).getMaximumSize().intValue(), 128);
 
         assertEquals(columnModelList.get(2).getName(), "my-date");
         assertEquals(columnModelList.get(2).getColumnType(), ColumnType.DATE);
+        assertNull(columnModelList.get(2).getMaximumSize());
 
         assertEquals(columnModelList.get(3).getName(), "my-large-text");
         assertEquals(columnModelList.get(3).getColumnType(), ColumnType.LARGETEXT);
+        assertNull(columnModelList.get(3).getMaximumSize());
     }
 
     @Test
@@ -238,12 +247,12 @@ public class BridgeExporterUtilTest {
         ColumnDefinition stringDef = new ColumnDefinition();
         stringDef.setName("my-string");
         stringDef.setTransferMethod(TransferMethod.STRING);
-        stringDef.setMaximumSize(42L);
+        stringDef.setMaximumSize(42);
 
         ColumnDefinition stringSetDef = new ColumnDefinition();
         stringSetDef.setName("my-string-set");
         stringSetDef.setTransferMethod(TransferMethod.STRINGSET);
-        stringSetDef.setMaximumSize(128L);
+        stringSetDef.setMaximumSize(128);
 
         ColumnDefinition dateDef = new ColumnDefinition();
         dateDef.setName("my-date");
@@ -257,22 +266,27 @@ public class BridgeExporterUtilTest {
         renamedColumnDef.setName("renamed-column");
         renamedColumnDef.setDdbName("ddb-column");
         renamedColumnDef.setTransferMethod(TransferMethod.STRING);
-        renamedColumnDef.setMaximumSize(24L);
+        renamedColumnDef.setMaximumSize(24);
 
         ColumnDefinition sanitizeMeDef = new ColumnDefinition();
         sanitizeMeDef.setName("sanitize-me");
         sanitizeMeDef.setTransferMethod(TransferMethod.STRING);
-        sanitizeMeDef.setMaximumSize(24L);
+        sanitizeMeDef.setMaximumSize(24);
         sanitizeMeDef.setSanitize(true);
+
+        ColumnDefinition sanitizedLargeTextDef = new ColumnDefinition();
+        sanitizedLargeTextDef.setName("sanitized-large-text");
+        sanitizedLargeTextDef.setTransferMethod(TransferMethod.LARGETEXT);
+        sanitizedLargeTextDef.setSanitize(true);
 
         ColumnDefinition truncateMeDef = new ColumnDefinition();
         truncateMeDef.setName("truncate-me");
         truncateMeDef.setTransferMethod(TransferMethod.STRING);
-        truncateMeDef.setMaximumSize(3L);
+        truncateMeDef.setMaximumSize(3);
         truncateMeDef.setSanitize(true);
 
         List<ColumnDefinition> columnDefinitionList = ImmutableList.of(stringDef, stringSetDef, dateDef, largeTextDef,
-                renamedColumnDef, sanitizeMeDef, truncateMeDef);
+                renamedColumnDef, sanitizeMeDef, sanitizedLargeTextDef, truncateMeDef);
 
         // Set up DDB record for test.
         Item ddbRecord = new Item()
@@ -282,19 +296,21 @@ public class BridgeExporterUtilTest {
                 .withString("my-large-text", "my-large-text-value")
                 .withString("ddb-column", "ddb-column-value")
                 .withString("sanitize-me", "<b><i><u>Sanitize me!</b></i></u>")
+                .withString("sanitized-large-text", "quoted \"value\"")
                 .withString("truncate-me", "truncate-me-value");
 
         // execute and validate
         Map<String, String> rowMap = new HashMap<>();
         BridgeExporterUtil.getRowValuesFromRecordBasedOnColumnDefinition(rowMap, ddbRecord, columnDefinitionList,
                 "record-id");
-        assertEquals(rowMap.size(), 7);
+        assertEquals(rowMap.size(), 8);
         assertEquals("my-string-value", rowMap.get("my-string"));
         assertEquals("val1,val2", rowMap.get("my-string-set"));
         assertEquals("1234567890", rowMap.get("my-date"));
         assertEquals("my-large-text-value", rowMap.get("my-large-text"));
         assertEquals("ddb-column-value", rowMap.get("renamed-column"));
         assertEquals("Sanitize me!", rowMap.get("sanitize-me"));
+        assertEquals("quoted \\\"value\\\"", rowMap.get("sanitized-large-text"));
         assertEquals("tru", rowMap.get("truncate-me"));
     }
 
@@ -317,7 +333,7 @@ public class BridgeExporterUtilTest {
 
         ColumnDefinition testDefinition1 = new ColumnDefinition();
         testDefinition1.setName(testStringName);
-        testDefinition1.setMaximumSize(36L);
+        testDefinition1.setMaximumSize(36);
         testDefinition1.setTransferMethod(TransferMethod.STRING);
         columnDefinitionBuilder.add(testDefinition1);
 

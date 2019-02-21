@@ -568,14 +568,14 @@ public class SynapseExportHandlerTest {
 
         ColumnDefinition healthCodeDefinition = new ColumnDefinition();
         healthCodeDefinition.setName("healthCode");
-        healthCodeDefinition.setMaximumSize(36L);
+        healthCodeDefinition.setMaximumSize(36);
         healthCodeDefinition.setTransferMethod(TransferMethod.STRING);
         columnDefinitionsBuilder.add(healthCodeDefinition);
 
         ColumnDefinition externalIdDefinition = new ColumnDefinition();
         externalIdDefinition.setName("externalId");
         externalIdDefinition.setDdbName("userExternalId");
-        externalIdDefinition.setMaximumSize(128L);
+        externalIdDefinition.setMaximumSize(128);
         externalIdDefinition.setTransferMethod(TransferMethod.STRING);
         externalIdDefinition.setSanitize(true);
         columnDefinitionsBuilder.add(externalIdDefinition);
@@ -583,7 +583,7 @@ public class SynapseExportHandlerTest {
         ColumnDefinition dataGroupsDefinition = new ColumnDefinition();
         dataGroupsDefinition.setName("dataGroups");
         dataGroupsDefinition.setDdbName("userDataGroups");
-        dataGroupsDefinition.setMaximumSize(100L);
+        dataGroupsDefinition.setMaximumSize(100);
         dataGroupsDefinition.setTransferMethod(TransferMethod.STRINGSET);
         columnDefinitionsBuilder.add(dataGroupsDefinition);
 
@@ -601,7 +601,7 @@ public class SynapseExportHandlerTest {
 
         ColumnDefinition userSharingScopeDefinition = new ColumnDefinition();
         userSharingScopeDefinition.setName("userSharingScope");
-        userSharingScopeDefinition.setMaximumSize(48L);
+        userSharingScopeDefinition.setMaximumSize(48);
         userSharingScopeDefinition.setTransferMethod(TransferMethod.STRING);
         columnDefinitionsBuilder.add(userSharingScopeDefinition);
 
