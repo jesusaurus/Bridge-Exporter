@@ -87,7 +87,7 @@ public class BridgeExporterUtilTest {
 
     @Test
     public void sanitizeDdbValueNormalCase() {
-        Item item = new Item().withString("key", "123\t\t\t456");
+        Item item = new Item().withString("key", "<p>123 456</p>");
         String out = BridgeExporterUtil.sanitizeDdbValue(item, "key", 5, "dummy-record");
         assertEquals(out, "123 4");
     }
@@ -133,7 +133,7 @@ public class BridgeExporterUtilTest {
 
     @Test
     public void sanitizeJsonValueNormalCase() throws Exception {
-        String jsonText = "{\"key\":\"123\\t\\t\\t456\"}";
+        String jsonText = "{\"key\":\"<p>123 456</p>\"}";
         JsonNode node = DefaultObjectMapper.INSTANCE.readTree(jsonText);
         String out = BridgeExporterUtil.sanitizeJsonValue(node, "key", 5, "dummy-record",
                 "dummy-study");
@@ -149,9 +149,9 @@ public class BridgeExporterUtilTest {
                 { "<b>bold text</b>", 100, "bold text" },
                 { "imbalanced</i> <p>tags", 100, "imbalanced tags" },
                 { "newlines\n\n\nCRLF\r\ntabs\t\ttabs", 1000, "newlines CRLF tabs tabs" },
-                { "quote\"quote", 100, "quote\\\"quote" },
-                { "escaped\\\"quote", 100, "escaped\\\\\\\"quote" },
-                { "[ \"inline\", \"json\", \"blob\" ]", 100, "[ \\\"inline\\\", \\\"json\\\", \\\"blob\\\" ]" },
+                { "quote\"quote", 100, "quote\"quote" },
+                { "escaped\\\"quote", 100, "escaped\\\"quote" },
+                { "[ \"inline\", \"json\", \"blob\" ]", 100, "[ \"inline\", \"json\", \"blob\" ]" },
                 { "1234567890", 4, "1234" },
                 { "stuff", null, "stuff" },
         };
@@ -296,7 +296,7 @@ public class BridgeExporterUtilTest {
                 .withString("my-large-text", "my-large-text-value")
                 .withString("ddb-column", "ddb-column-value")
                 .withString("sanitize-me", "<b><i><u>Sanitize me!</b></i></u>")
-                .withString("sanitized-large-text", "quoted \"value\"")
+                .withString("sanitized-large-text", "<b>formatted string</b>")
                 .withString("truncate-me", "truncate-me-value");
 
         // execute and validate
@@ -310,7 +310,7 @@ public class BridgeExporterUtilTest {
         assertEquals("my-large-text-value", rowMap.get("my-large-text"));
         assertEquals("ddb-column-value", rowMap.get("renamed-column"));
         assertEquals("Sanitize me!", rowMap.get("sanitize-me"));
-        assertEquals("quoted \\\"value\\\"", rowMap.get("sanitized-large-text"));
+        assertEquals("formatted string", rowMap.get("sanitized-large-text"));
         assertEquals("tru", rowMap.get("truncate-me"));
     }
 

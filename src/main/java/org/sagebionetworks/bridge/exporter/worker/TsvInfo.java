@@ -1,14 +1,18 @@
 package org.sagebionetworks.bridge.exporter.worker;
 
 import java.io.File;
-import java.io.PrintWriter;
+import java.io.IOException;
+import java.io.Writer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import com.google.common.base.Joiner;
+import au.com.bytecode.opencsv.CSVWriter;
 
 import com.google.common.collect.ImmutableList;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterTsvException;
 
@@ -17,11 +21,11 @@ import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterTsvException
  * incrementing TSV line counts.
  */
 public class TsvInfo {
-    private static final Joiner JOINER_COLUMN_JOINER = Joiner.on('\t').useForNull("");
+    private static final Logger LOG = LoggerFactory.getLogger(TsvInfo.class);
 
     private final List<String> columnNameList;
     private final File file;
-    private final PrintWriter writer;
+    private final CSVWriter tsvWriter;
     private final Throwable initError;
     private final List<String> recordIds = new ArrayList<>();
 
@@ -37,13 +41,17 @@ public class TsvInfo {
      * @param writer
      *         writer for the TSV file
      */
-    public TsvInfo(List<String> columnNameList, File file, PrintWriter writer) {
+    public TsvInfo(List<String> columnNameList, File file, Writer writer) {
         this.columnNameList = columnNameList;
         this.file = file;
-        this.writer = writer;
         this.initError = null;
 
-        writer.println(JOINER_COLUMN_JOINER.join(columnNameList));
+        // Set CsvWriter with tab separator character.
+        this.tsvWriter = new CSVWriter(writer, '\t');
+
+        // Write headers. The new String[0] looks weird, but according to official Oracle javadoc, this is how you use
+        // toArray().
+        tsvWriter.writeNext(columnNameList.toArray(new String[0]));
     }
 
     /**
@@ -54,7 +62,7 @@ public class TsvInfo {
     public TsvInfo(Throwable t) {
         this.columnNameList = null;
         this.file = null;
-        this.writer = null;
+        this.tsvWriter = null;
         this.initError = t;
     }
 
@@ -70,11 +78,31 @@ public class TsvInfo {
     public void flushAndCloseWriter() throws BridgeExporterException {
         checkInitAndThrow();
 
-        writer.flush();
-        if (writer.checkError()) {
-            throw new BridgeExporterException("TSV writer has unknown error");
+        // Error handling code here is a bit of a mess. Internally, CSVWriter creates a PrintWriter, which doesn't
+        // throw, but exposes checkError() check for errors. However, CSVWriter declares that flush() throws, even
+        // though internally it doesn't, and then in close(), it calls close on both the PrintWriter and the internal
+        // Writer, one of which closes, and the other does not. Because we need to test with the actual CSVWriter
+        // implementation to make sure all the libraries are doing what we expect, this makes testing error handling
+        // code difficult at best. As such, none of the error handling code is exercised by tests. Fortunately, we log
+        // and rethrow very thoroughly, so if an error occurs, we shouldn't have any problems.
+        try {
+            tsvWriter.flush();
+            if (tsvWriter.checkError()) {
+                LOG.error("TSV writer has unknown error");
+                throw new BridgeExporterException("TSV writer has unknown error");
+            }
+        } catch (IOException ex) {
+            LOG.error("Error flushing TSV writer: " + ex.getMessage(), ex);
+            throw new BridgeExporterException("Error flushing TSV writer: " + ex.getMessage(), ex);
+        } finally {
+            try {
+                tsvWriter.close();
+            } catch (IOException ex) {
+                LOG.error("Error closing TSV writer: " + ex.getMessage(), ex);
+                //noinspection ThrowFromFinallyBlock
+                throw new BridgeExporterException("Error closing TSV writer: " + ex.getMessage(), ex);
+            }
         }
-        writer.close();
     }
 
     /** TSV file. */
@@ -110,14 +138,14 @@ public class TsvInfo {
     public synchronized void writeRow(Map<String, String> rowValueMap) throws BridgeExporterException {
         checkInitAndThrow();
 
-        // Using the columnNameList, go through the row values in order and flatten them into a list.
-        List<String> rowValueList = new ArrayList<>();
-        //noinspection Convert2streamapi
-        for (String oneColumnName : columnNameList) {
-            rowValueList.add(rowValueMap.get(oneColumnName));
+        // Using the columnNameList, go through the row values in order and flatten them into an array.
+        int numColumns = columnNameList.size();
+        String[] rowValueArray = new String[numColumns];
+        for (int i = 0; i < numColumns; i++) {
+            rowValueArray[i] = rowValueMap.get(columnNameList.get(i));
         }
 
-        writer.println(JOINER_COLUMN_JOINER.join(rowValueList));
+        tsvWriter.writeNext(rowValueArray);
         lineCount++;
     }
 }
