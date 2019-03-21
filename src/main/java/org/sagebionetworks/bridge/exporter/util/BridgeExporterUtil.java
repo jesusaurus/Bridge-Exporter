@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSetMultimap;
-import org.apache.commons.lang.StringEscapeUtils;
 import org.jsoup.Jsoup;
 import org.jsoup.safety.Whitelist;
 import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
@@ -146,12 +145,15 @@ public class BridgeExporterUtil {
 
     /**
      * <p>
-     * Sanitizes the given string to make it acceptable for a TSV to upload to Synapse. This involves removing
-     * TSV-unfriendly chars (newlines, carriage returns, and tabs) and truncating columns that are too wide. This
-     * will log an error if truncation happens, so this can be detected post-run.
+     * Sanitizes the given string to make it acceptable for a TSV to upload to Synapse. This involves truncating
+     * columns that are too wide. This will log an error if truncation happens, so this can be detected post-run.
      * </p>
      * <p>
      * Also strips HTML to defend against HTML Injection attacks.
+     * </p>
+     * <p>
+     * We don't handle newlines, carriage returns, tabs, or escaping strings, as we now use CSVWriter to take care of
+     * that for us.
      * </p>
      *
      * @param in
@@ -173,14 +175,8 @@ public class BridgeExporterUtil {
         }
 
         // Strip HTML.
+        // As it turns out, Jsoup also flattens all whitespace (tabs, newlines, carriage returns, etc).
         in = Jsoup.clean(in, Whitelist.none());
-
-        // Remove tabs and newlines and carriage returns. This is needed to serialize strings into TSVs.
-        // We can't just escape these because Synapse will turn an escaped \n into n, and so forth.
-        in = in.replaceAll("[\n\r\t]+", " ");
-
-        // Finally, escape the string. Unescaped quotes lead to weird stuff happening in Synapse.
-        in = StringEscapeUtils.escapeJava(in);
 
         // Check against max length, truncating and warning as necessary.
         if (maxLength != null && in.length() > maxLength) {

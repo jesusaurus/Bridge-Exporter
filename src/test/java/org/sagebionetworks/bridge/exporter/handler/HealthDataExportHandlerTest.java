@@ -542,7 +542,7 @@ public class HealthDataExportHandlerTest {
                 "metadata.when.timezone", "metadata.foo", "metadata.bar", "record.foo", "record.baz",
                 HealthDataExportHandler.COLUMN_NAME_RAW_DATA);
         SynapseExportHandlerTest.validateTsvRow(tsvLineList.get(1), "false", "false", "true", "None of the above",
-                String.valueOf(whenMillis), "+0900", "37", "metadata-bar", "foo-value", "baz-value", "");
+                String.valueOf(whenMillis), "+0900", "37", "metadata-bar", "foo-value", "baz-value", null);
 
         // This test doesn't upload any raw data.
         verify(mockSynapseHelper, never()).uploadFromS3ToSynapseFileHandle(any(), any(), any());

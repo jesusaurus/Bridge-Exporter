@@ -20,6 +20,7 @@ import static org.testng.Assert.fail;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 
@@ -112,6 +113,12 @@ public class SynapseExportHandlerTest {
     public static final int TEST_SYNAPSE_PRINCIPAL_ID = 123456;
     public static final String TEST_SYNAPSE_PROJECT_ID = "test-synapse-project-id";
     public static final String TEST_SYNAPSE_TABLE_ID = "test-synapse-table-id";
+
+    private static final List<String> COMMON_COLUMN_NAME_LIST = ImmutableList.of("recordId", "appVersion", "phoneInfo",
+            "uploadDate", "healthCode", "externalId", "dataGroups", "createdOn", "userSharingScope");
+    private static final List<String> COMMON_COLUMN_VALUE_LIST = ImmutableList.of(DUMMY_RECORD_ID, DUMMY_APP_VERSION,
+            DUMMY_PHONE_INFO, DUMMY_REQUEST_DATE.toString(), DUMMY_HEALTH_CODE, DUMMY_EXTERNAL_ID,
+            DUMMY_DATA_GROUPS_FLATTENED, String.valueOf(DUMMY_CREATED_ON), DUMMY_USER_SHARING_SCOPE);
 
     private ExportWorkerManager manager;
     private InMemoryFileHelper mockFileHelper;
@@ -440,7 +447,7 @@ public class SynapseExportHandlerTest {
                 HealthDataExportHandler.COLUMN_NAME_RAW_DATA);
         validateTsvRow(tsvLineList.get(1), "This is a string.", "Example (not) long string",
                 "Potentially unbounded string", "42", String.valueOf(submitTimeMillis), "+0900", "true", "false",
-                "true", "false", "true", "true", "Maybe", "This is my large text attachment", DUMMY_FILEHANDLE_ID, "");
+                "true", "false", "true", "true", "Maybe", "This is my large text attachment", DUMMY_FILEHANDLE_ID, null);
 
         // validate metrics
         Multiset<String> counterMap = task.getMetrics().getCounterMap();
@@ -499,29 +506,44 @@ public class SynapseExportHandlerTest {
         return new Item().withLong("createdOn", DUMMY_CREATED_ON).withString("healthCode", DUMMY_HEALTH_CODE)
                 .withString("id", DUMMY_RECORD_ID).withString("metadata", DUMMY_METADATA_JSON_TEXT)
                 .withStringSet("userDataGroups", DUMMY_DATA_GROUPS)
-                .withString("userExternalId", "unsanitized\t\texternal\t\tid")
+                .withString("userExternalId", "<p>unsanitized external id</p>")
                 .withString("userSharingScope", DUMMY_USER_SHARING_SCOPE);
     }
 
     public static void validateTsvHeaders(String line, String... extraColumnNameVarargs) {
-        StringBuilder expectedLineBuilder = new StringBuilder("recordId\tappVersion\tphoneInfo\tuploadDate\thealthCode\texternalId\tdataGroups\t" +
-                "createdOn\tuserSharingScope");
-        for (String oneExtraColumnName : extraColumnNameVarargs) {
-            expectedLineBuilder.append('\t');
-            expectedLineBuilder.append(oneExtraColumnName);
-        }
-        assertEquals(line, expectedLineBuilder.toString());
+        List<String> expectedColumnList = new ArrayList<>(COMMON_COLUMN_NAME_LIST);
+        Collections.addAll(expectedColumnList, extraColumnNameVarargs);
+        validateTsvRowHelper(line, expectedColumnList);
     }
 
     public static void validateTsvRow(String line, String... extraValueVarargs) {
-        StringBuilder expectedLineBuilder = new StringBuilder(DUMMY_RECORD_ID + '\t' + DUMMY_APP_VERSION + '\t' +
-                DUMMY_PHONE_INFO + '\t' + DUMMY_REQUEST_DATE + '\t' + DUMMY_HEALTH_CODE + '\t' +
-                DUMMY_EXTERNAL_ID + '\t' + DUMMY_DATA_GROUPS_FLATTENED + '\t' +
-                DUMMY_CREATED_ON + '\t' + DUMMY_USER_SHARING_SCOPE);
-        for (String oneExtraValue : extraValueVarargs) {
-            expectedLineBuilder.append('\t');
-            expectedLineBuilder.append(oneExtraValue);
+        List<String> expectedColumnList = new ArrayList<>(COMMON_COLUMN_VALUE_LIST);
+        Collections.addAll(expectedColumnList, extraValueVarargs);
+        validateTsvRowHelper(line, expectedColumnList);
+    }
+
+    private static void validateTsvRowHelper(String line, List<String> expectedColumnList) {
+        // Convert the columns to a TSV. This mimics the way CSVWriter escapes strings. Namely:
+        // * It doesn't quote null values.
+        // * It escapes " -> "" and \ -> \\
+        // * It doesn't escape anything else.
+        boolean firstColumn = true;
+        StringBuilder expectedLineBuilder = new StringBuilder();
+        for (String expectedColumn : expectedColumnList) {
+            if (firstColumn) {
+                firstColumn = false;
+            } else {
+                expectedLineBuilder.append('\t');
+            }
+
+            if (expectedColumn != null) {
+                expectedLineBuilder.append('\"');
+                expectedLineBuilder.append(expectedColumn.replace("\"", "\"\"").replace("\\",
+                        "\\\\"));
+                expectedLineBuilder.append('\"');
+            }
         }
+
         assertEquals(line, expectedLineBuilder.toString());
     }
 
