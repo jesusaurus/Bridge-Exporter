@@ -18,6 +18,8 @@ import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
 import org.sagebionetworks.bridge.rest.model.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,6 +36,8 @@ public class BridgeExporterUtil {
     public static final String CONFIG_KEY_TIME_ZONE_NAME = "time.zone.name";
     public static final String CONFIG_KEY_RECORD_ID_OVERRIDE_BUCKET = "record.id.override.bucket";
     public static final String CONFIG_KEY_SQS_QUEUE_URL = "exporter.request.sqs.queue.url";
+    
+    public static final Joiner PIPE_JOINER = Joiner.on("|");
 
     private static final ImmutableSetMultimap<UploadSchemaKey, String> SCHEMA_FIELDS_TO_CONVERT;
     static {
@@ -244,5 +248,19 @@ public class BridgeExporterUtil {
 
             rowMap.put(columnDefinition.getName(), valueToAdd);
         }
+    }
+    
+    public static String serializeSubstudyMemberships(Map<String, String> substudyMemberships) {
+        if (substudyMemberships == null || substudyMemberships.isEmpty()) {
+            return null;
+        }
+        List<String> pairs = new ArrayList<>();
+        for (Map.Entry<String, String> entry : substudyMemberships.entrySet()) {
+            String key = entry.getKey();
+            String value = "<none>".equals(entry.getValue()) ? "" : entry.getValue();
+            pairs.add(key + "=" + value);
+        }
+        Collections.sort(pairs);
+        return "|" + PIPE_JOINER.join(pairs) + "|";
     }
 }

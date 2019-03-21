@@ -12,6 +12,8 @@ import java.util.Map;
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+
 import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
 import org.sagebionetworks.bridge.exporter.synapse.TransferMethod;
 import org.sagebionetworks.repo.model.table.ColumnModel;
@@ -344,4 +346,36 @@ public class BridgeExporterUtilTest {
         // verify
         assertEquals(retMap, expectedMap);
     }
+    
+    @Test
+    public void serializeSubstudyMemberships() throws Exception {
+        Map<String,String> map = new HashMap<>();
+        map.put("subA", "<none>"); // so DDB serialization doesn't drop the entry, use "<none>" as missing key
+        map.put("subB", "extB");
+        map.put("subC", "extC");
+        map.put("subD", ""); // this works, though we don't persist this.
+        
+        String output = BridgeExporterUtil.serializeSubstudyMemberships(map);
+        assertEquals("|subA=|subB=extB|subC=extC|subD=|", output);
+    }    
+    
+    @Test
+    public void serializeSubstudyMembershipsOneEntry() {
+        Map<String,String> map = new HashMap<>();
+        map.put("subB", "extB");
+        
+        String output = BridgeExporterUtil.serializeSubstudyMemberships(map);
+        assertEquals("|subB=extB|", output);
+    }
+    
+    @Test
+    public void serializeSubstudyMembershipsNull() {
+        assertNull(BridgeExporterUtil.serializeSubstudyMemberships(null));
+    }
+    
+    @Test
+    public void serializeSubstudyMembershipsBlank() {
+        assertNull(BridgeExporterUtil.serializeSubstudyMemberships(ImmutableMap.of()));
+    }
+    
 }

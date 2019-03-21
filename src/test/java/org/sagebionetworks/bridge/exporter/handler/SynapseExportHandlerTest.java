@@ -27,6 +27,7 @@ import java.util.Set;
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Multiset;
 import com.google.common.collect.SetMultimap;
@@ -83,6 +84,7 @@ public class SynapseExportHandlerTest {
     private static final long DUMMY_CREATED_ON = 7777777;
     private static final Set<String> DUMMY_DATA_GROUPS = ImmutableSet.of("foo", "bar", "baz");
     private static final String DUMMY_DATA_GROUPS_FLATTENED = "bar,baz,foo";
+    private static final String DUMMY_SUBSTUDY_MEMBERSHIPS = "|subA=extA|subB=|";
     private static final String DUMMY_HEALTH_CODE = "dummy-health-code";
     private static final String DUMMY_RECORD_ID = "dummy-record-id";
 
@@ -115,10 +117,10 @@ public class SynapseExportHandlerTest {
     public static final String TEST_SYNAPSE_TABLE_ID = "test-synapse-table-id";
 
     private static final List<String> COMMON_COLUMN_NAME_LIST = ImmutableList.of("recordId", "appVersion", "phoneInfo",
-            "uploadDate", "healthCode", "externalId", "dataGroups", "createdOn", "userSharingScope");
+            "uploadDate", "healthCode", "externalId", "dataGroups", "substudyMemberships", "createdOn", "userSharingScope");
     private static final List<String> COMMON_COLUMN_VALUE_LIST = ImmutableList.of(DUMMY_RECORD_ID, DUMMY_APP_VERSION,
             DUMMY_PHONE_INFO, DUMMY_REQUEST_DATE.toString(), DUMMY_HEALTH_CODE, DUMMY_EXTERNAL_ID,
-            DUMMY_DATA_GROUPS_FLATTENED, String.valueOf(DUMMY_CREATED_ON), DUMMY_USER_SHARING_SCOPE);
+            DUMMY_DATA_GROUPS_FLATTENED, DUMMY_SUBSTUDY_MEMBERSHIPS, String.valueOf(DUMMY_CREATED_ON), DUMMY_USER_SHARING_SCOPE);
 
     private ExportWorkerManager manager;
     private InMemoryFileHelper mockFileHelper;
@@ -507,6 +509,7 @@ public class SynapseExportHandlerTest {
                 .withString("id", DUMMY_RECORD_ID).withString("metadata", DUMMY_METADATA_JSON_TEXT)
                 .withStringSet("userDataGroups", DUMMY_DATA_GROUPS)
                 .withString("userExternalId", "<p>unsanitized external id</p>")
+                .withMap("userSubstudyMemberships", ImmutableMap.of("subA", "extA", "subB", ""))
                 .withString("userSharingScope", DUMMY_USER_SHARING_SCOPE);
     }
 
@@ -605,6 +608,13 @@ public class SynapseExportHandlerTest {
         dataGroupsDefinition.setTransferMethod(TransferMethod.STRINGSET);
         columnDefinitionsBuilder.add(dataGroupsDefinition);
 
+        ColumnDefinition substudyMembershipsDefinition = new ColumnDefinition();
+        substudyMembershipsDefinition.setName("substudyMemberships");
+        substudyMembershipsDefinition.setDdbName("userSubstudyMemberships");
+        substudyMembershipsDefinition.setMaximumSize(250);
+        substudyMembershipsDefinition.setTransferMethod(TransferMethod.STRINGMAP);
+        columnDefinitionsBuilder.add(substudyMembershipsDefinition);
+        
         ColumnDefinition createdOnDefinition = new ColumnDefinition();
         createdOnDefinition.setName("createdOn");
         createdOnDefinition.setTransferMethod(TransferMethod.DATE);
