@@ -88,7 +88,7 @@ public class SynapseHelperSerializeTest {
     @Test
     public void inlineJsonBlob() throws Exception {
         // based on real JSON blobs
-        String jsonText = "[1, 3, 5, 7]";
+        String jsonText = "[1, 3, 5, 7, \"this is a string\"]";
         JsonNode originalNode = DefaultObjectMapper.INSTANCE.readTree(jsonText);
 
         // serialize, which basically just copies the JSON text as is
@@ -98,11 +98,12 @@ public class SynapseHelperSerializeTest {
         // parse back into JSON and compare
         JsonNode reparsedNode = DefaultObjectMapper.INSTANCE.readTree(retVal);
         assertTrue(reparsedNode.isArray());
-        assertEquals(reparsedNode.size(), 4);
+        assertEquals(reparsedNode.size(), 5);
         assertEquals(reparsedNode.get(0).intValue(), 1);
         assertEquals(reparsedNode.get(1).intValue(), 3);
         assertEquals(reparsedNode.get(2).intValue(), 5);
         assertEquals(reparsedNode.get(3).intValue(), 7);
+        assertEquals(reparsedNode.get(4).textValue(), "this is a string");
     }
 
     @DataProvider(name = "stringTypeProvider")

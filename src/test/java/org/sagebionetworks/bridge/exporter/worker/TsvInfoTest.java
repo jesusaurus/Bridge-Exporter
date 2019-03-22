@@ -1,12 +1,13 @@
 package org.sagebionetworks.bridge.exporter.worker;
 
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertSame;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 import java.io.File;
-import java.io.PrintWriter;
+import java.io.Writer;
 import java.util.List;
 
 import com.google.common.collect.ImmutableList;
@@ -16,58 +17,57 @@ import org.testng.annotations.Test;
 
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterTsvException;
+import org.sagebionetworks.bridge.file.InMemoryFileHelper;
 
 public class TsvInfoTest {
     private static final List<String> COLUMN_NAME_LIST = ImmutableList.of("foo", "bar");
     private static final String TEST_RECORD_ID = "test record id";
 
-    private File mockFile;
-    private PrintWriter mockWriter;
+    private InMemoryFileHelper inMemoryFileHelper;
+    private File tsvFile;
     private TsvInfo tsvInfo;
 
     @BeforeMethod
-    public void before() {
-        mockFile = mock(File.class);
-        mockWriter = mock(PrintWriter.class);
-        tsvInfo = new TsvInfo(COLUMN_NAME_LIST, mockFile, mockWriter);
+    public void before() throws Exception {
+        inMemoryFileHelper = new InMemoryFileHelper();
+        File tmpDir = inMemoryFileHelper.createTempDir();
+        tsvFile = inMemoryFileHelper.newFile(tmpDir, "test.tsv");
+        Writer tsvWriter = inMemoryFileHelper.getWriter(tsvFile);
+        tsvInfo = new TsvInfo(COLUMN_NAME_LIST, tsvFile, tsvWriter);
     }
 
     @Test
     public void happyCase() throws Exception {
-        // set up mocks
-        when(mockWriter.checkError()).thenReturn(false);
-
         // write some lines
         tsvInfo.writeRow(new ImmutableMap.Builder<String, String>().put("foo", "foo value").put("bar", "bar value")
                 .build());
         tsvInfo.writeRow(new ImmutableMap.Builder<String, String>().put("foo", "second foo value")
                 .put("extraneous", "extraneous value").put("bar", "second bar value").build());
         tsvInfo.writeRow(new ImmutableMap.Builder<String, String>().put("bar", "has bar but not foo").build());
+        tsvInfo.writeRow(new ImmutableMap.Builder<String, String>()
+                .put("foo", "newlines\n\ncrlf\r\ntabs\t\tend of line")
+                .put("bar", "quotes\"escaped quotes\\\"end of line").build());
         tsvInfo.addRecordId(TEST_RECORD_ID);
         tsvInfo.flushAndCloseWriter();
 
         // validate TSV info fields
-        assertSame(tsvInfo.getFile(), mockFile);
-        assertEquals(tsvInfo.getLineCount(), 3);
+        assertSame(tsvInfo.getFile(), tsvFile);
+        assertEquals(tsvInfo.getLineCount(), 4);
         assertEquals(tsvInfo.getRecordIds().get(0), TEST_RECORD_ID);
 
-        // validate writer
-        verify(mockWriter).println("foo\tbar");
-        verify(mockWriter).println("foo value\tbar value");
-        verify(mockWriter).println("second foo value\tsecond bar value");
-        verify(mockWriter).println("\thas bar but not foo");
-        verify(mockWriter).flush();
-        verify(mockWriter).checkError();
-        verify(mockWriter).close();
-    }
-
-    @Test(expectedExceptions = BridgeExporterException.class, expectedExceptionsMessageRegExp =
-            "TSV writer has unknown error")
-    public void writerError() throws Exception {
-        when(mockWriter.checkError()).thenReturn(true);
-        tsvInfo.writeRow(new ImmutableMap.Builder<String, String>().put("foo", "realistic").put("bar", "lines")
-                .build());
-        tsvInfo.flushAndCloseWriter();
+        // Validate TSV File.
+        // A few quirks about CSVWriter (all of which are in our test space):
+        // * If the value is empty, it doesn't quote it.
+        // * It escapes quotes by double-quoting (" -> "").
+        // * It escapes slashes by double-slashing (\ -> \\).
+        // * It doesn't escape anything else (newlines, carriage returns, tabs, etc).
+        String expectedFileContents = "\"foo\"\t\"bar\"\n" +
+                "\"foo value\"\t\"bar value\"\n" +
+                "\"second foo value\"\t\"second bar value\"\n" +
+                "\t\"has bar but not foo\"\n" +
+                "\"newlines\n\ncrlf\r\ntabs\t\tend of line\"\t\"quotes\"\"escaped quotes\\\\\"\"end of line\"\n";
+        String actualFileContents = new String(inMemoryFileHelper.getBytes(tsvFile));
+        assertEquals(actualFileContents, expectedFileContents);
     }
 
     @Test

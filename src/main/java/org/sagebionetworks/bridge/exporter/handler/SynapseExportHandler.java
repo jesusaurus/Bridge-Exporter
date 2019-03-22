@@ -3,7 +3,7 @@ package org.sagebionetworks.bridge.exporter.handler;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.io.PrintWriter;
+import java.io.Writer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -139,10 +139,10 @@ public abstract class SynapseExportHandler extends ExportHandler {
             // create TSV and writer
             FileHelper fileHelper = getManager().getFileHelper();
             File tsvFile = fileHelper.newFile(task.getTmpDir(), getDdbTableKeyValue() + ".tsv");
-            PrintWriter tsvWriter = new PrintWriter(fileHelper.getWriter(tsvFile));
+            Writer fileWriter = fileHelper.getWriter(tsvFile);
 
             // create TSV info
-            tsvInfo = new TsvInfo(columnNameList, tsvFile, tsvWriter);
+            tsvInfo = new TsvInfo(columnNameList, tsvFile, fileWriter);
         } catch (BridgeExporterException | FileNotFoundException | SchemaNotFoundException | SynapseException ex) {
             LOG.error("Error initializing TSV for table " + getDdbTableKeyValue() + ": " + ex.getMessage(), ex);
             tsvInfo = new TsvInfo(ex);

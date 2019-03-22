@@ -38,12 +38,12 @@ public class PhoneAppVersionInfoTest {
     @Test
     public void sanitizeFields() {
         String metadataText = "{\n" +
-                "   \"appVersion\":\"Bridge-EX\\t\\t2.0\",\n" +
-                "   \"phoneInfo\":\"Extra\\t\\ttabs\"\n" +
+                "   \"appVersion\":\"<p>Bridge-EX 2.0</p>\",\n" +
+                "   \"phoneInfo\":\"<b>formatting tag</b>\"\n" +
                 "}";
         Item record = new Item().withString("id", "test-record-id").withString("metadata", metadataText);
         PhoneAppVersionInfo info = PhoneAppVersionInfo.fromRecord(record);
         assertEquals(info.getAppVersion(), "Bridge-EX 2.0");
-        assertEquals(info.getPhoneInfo(), "Extra tabs");
+        assertEquals(info.getPhoneInfo(), "formatting tag");
     }
 }

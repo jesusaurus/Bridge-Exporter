@@ -33,6 +33,13 @@
   },
   {
     "name": "validationErrors",
-    "transferMethod": "LARGETEXT"
+    "transferMethod": "LARGETEXT",
+    "sanitize": true
+  },
+  {
+    "name": "substudyMemberships",
+    "maximumSize": 250,
+    "transferMethod": "STRINGMAP",
+    "ddbName": "userSubstudyMemberships"
   }
 ]

@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSetMultimap;
-import org.apache.commons.lang.StringEscapeUtils;
 import org.jsoup.Jsoup;
 import org.jsoup.safety.Whitelist;
 import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
@@ -19,6 +18,8 @@ import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
 import org.sagebionetworks.bridge.rest.model.UploadSchema;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +36,8 @@ public class BridgeExporterUtil {
     public static final String CONFIG_KEY_TIME_ZONE_NAME = "time.zone.name";
     public static final String CONFIG_KEY_RECORD_ID_OVERRIDE_BUCKET = "record.id.override.bucket";
     public static final String CONFIG_KEY_SQS_QUEUE_URL = "exporter.request.sqs.queue.url";
+    
+    public static final Joiner PIPE_JOINER = Joiner.on("|");
 
     private static final ImmutableSetMultimap<UploadSchemaKey, String> SCHEMA_FIELDS_TO_CONVERT;
     static {
@@ -115,7 +118,7 @@ public class BridgeExporterUtil {
      *         record ID, for logging purposes
      * @return sanitized DDB string value
      */
-    public static String sanitizeDdbValue(Item item, String fieldName, int maxLength, String recordId) {
+    public static String sanitizeDdbValue(Item item, String fieldName, Integer maxLength, String recordId) {
         String value = item.getString(fieldName);
         String studyId = item.getString("studyId");
         return sanitizeString(value, fieldName, maxLength, recordId, studyId);
@@ -146,12 +149,15 @@ public class BridgeExporterUtil {
 
     /**
      * <p>
-     * Sanitizes the given string to make it acceptable for a TSV to upload to Synapse. This involves removing
-     * TSV-unfriendly chars (newlines, carriage returns, and tabs) and truncating columns that are too wide. This
-     * will log an error if truncation happens, so this can be detected post-run.
+     * Sanitizes the given string to make it acceptable for a TSV to upload to Synapse. This involves truncating
+     * columns that are too wide. This will log an error if truncation happens, so this can be detected post-run.
      * </p>
      * <p>
      * Also strips HTML to defend against HTML Injection attacks.
+     * </p>
+     * <p>
+     * We don't handle newlines, carriage returns, tabs, or escaping strings, as we now use CSVWriter to take care of
+     * that for us.
      * </p>
      *
      * @param in
@@ -173,14 +179,8 @@ public class BridgeExporterUtil {
         }
 
         // Strip HTML.
+        // As it turns out, Jsoup also flattens all whitespace (tabs, newlines, carriage returns, etc).
         in = Jsoup.clean(in, Whitelist.none());
-
-        // Remove tabs and newlines and carriage returns. This is needed to serialize strings into TSVs.
-        // We can't just escape these because Synapse will turn an escaped \n into n, and so forth.
-        in = in.replaceAll("[\n\r\t]+", " ");
-
-        // Finally, escape the string. Unescaped quotes lead to weird stuff happening in Synapse.
-        in = StringEscapeUtils.escapeJava(in);
 
         // Check against max length, truncating and warning as necessary.
         if (maxLength != null && in.length() > maxLength) {
@@ -219,7 +219,13 @@ public class BridgeExporterUtil {
             ColumnModel columnModel = new ColumnModel();
             columnModel.setName(columnDefinition.getName());
             columnModel.setColumnType(columnDefinition.getTransferMethod().getColumnType());
-            columnModel.setMaximumSize(columnDefinition.getMaximumSize());
+
+            // For some reason, ColumnModel.maximumSize is a long, but we have ints. It can't ever be more than 1000
+            // anyway.
+            if (columnDefinition.getMaximumSize() != null) {
+                columnModel.setMaximumSize(columnDefinition.getMaximumSize().longValue());
+            }
+
             columnListBuilder.add(columnModel);
         }
 
@@ -234,7 +240,7 @@ public class BridgeExporterUtil {
 
             String valueToAdd;
             if (columnDefinition.getSanitize()) {
-                valueToAdd = sanitizeDdbValue(record, ddbName, columnDefinition.getMaximumSize().intValue(), recordId);
+                valueToAdd = sanitizeDdbValue(record, ddbName, columnDefinition.getMaximumSize(), recordId);
             } else {
                 TransferMethod transferMethod = columnDefinition.getTransferMethod();
                 valueToAdd = transferMethod.transfer(ddbName, record);
@@ -242,5 +248,19 @@ public class BridgeExporterUtil {
 
             rowMap.put(columnDefinition.getName(), valueToAdd);
         }
+    }
+    
+    public static String serializeSubstudyMemberships(Map<String, String> substudyMemberships) {
+        if (substudyMemberships == null || substudyMemberships.isEmpty()) {
+            return null;
+        }
+        List<String> pairs = new ArrayList<>();
+        for (Map.Entry<String, String> entry : substudyMemberships.entrySet()) {
+            String key = entry.getKey();
+            String value = "<none>".equals(entry.getValue()) ? "" : entry.getValue();
+            pairs.add(key + "=" + value);
+        }
+        Collections.sort(pairs);
+        return "|" + PIPE_JOINER.join(pairs) + "|";
     }
 }

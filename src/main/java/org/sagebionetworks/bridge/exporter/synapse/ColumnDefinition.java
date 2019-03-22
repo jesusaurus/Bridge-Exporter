@@ -1,10 +1,8 @@
 package org.sagebionetworks.bridge.exporter.synapse;
 
-import org.sagebionetworks.repo.model.table.ColumnType;
-
 public class ColumnDefinition  {
     private String name;
-    private Long maximumSize;
+    private Integer maximumSize;
     private TransferMethod transferMethod;
     private String ddbName;
     private boolean sanitize;
@@ -17,11 +15,11 @@ public class ColumnDefinition  {
         this.name = name;
     }
 
-    public Long getMaximumSize() {
+    public Integer getMaximumSize() {
         return maximumSize;
     }
 
-    public void setMaximumSize(Long maximumSize) {
+    public void setMaximumSize(Integer maximumSize) {
         this.maximumSize = maximumSize;
     }
 
