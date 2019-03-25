@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
+import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Charsets;
@@ -212,8 +213,11 @@ public class ExportHelper {
         attachment.withString("recordId", recordId);
         ddbAttachmentTable.putItem(attachment);
 
+        ObjectMetadata metadata = new ObjectMetadata();
+        metadata.setSSEAlgorithm(ObjectMetadata.AES_256_SERVER_SIDE_ENCRYPTION);
+        
         // upload to S3
-        s3Helper.writeBytesToS3(attachmentBucket, attachmentId, text.getBytes(Charsets.UTF_8));
+        s3Helper.writeBytesToS3(attachmentBucket, attachmentId, text.getBytes(Charsets.UTF_8), metadata);
         return attachmentId;
     }
 }

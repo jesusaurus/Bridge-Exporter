@@ -9,6 +9,7 @@ import static org.testng.Assert.assertTrue;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
+import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.google.common.base.Charsets;
 import org.apache.commons.lang3.StringUtils;
 import org.joda.time.DateTime;
@@ -73,10 +74,12 @@ public class ExportHelperTest {
 
         // verify S3 attachment
         ArgumentCaptor<byte[]> attachmentBytesCaptor = ArgumentCaptor.forClass(byte[].class);
+        ArgumentCaptor<ObjectMetadata> metadataCaptor = ArgumentCaptor.forClass(ObjectMetadata.class);
         verify(mockS3Helper).writeBytesToS3(eq(DUMMY_ATTACHMENT_BUCKET), eq(attachmentId),
-                attachmentBytesCaptor.capture());
+                attachmentBytesCaptor.capture(), metadataCaptor.capture());
 
         String attachmentText = new String(attachmentBytesCaptor.getValue(), Charsets.UTF_8);
         assertEquals(attachmentText, DUMMY_ATTACHMENT_CONTENT);
+        assertEquals(ObjectMetadata.AES_256_SERVER_SIDE_ENCRYPTION, metadataCaptor.getValue().getSSEAlgorithm());
     }
 }
