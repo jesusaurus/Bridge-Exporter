@@ -45,11 +45,6 @@ import org.sagebionetworks.bridge.rest.model.UploadFieldType;
 
 @SuppressWarnings({ "unchecked", "rawtypes" })
 public class SynapseHelperTest {
-    private static final long BRIDGE_ADMIN_TEAM_ID = 1357L;
-    private static final long BRIDGE_STAFF_TEAM_ID = 2468L;
-    private static final long DATA_ACCESS_TEAM_ID = 1234L;
-    private static final long PRINCIPAL_ID = 5678L;
-
     @DataProvider
     public Object[][] maxLengthTestDataProvider() {
         // { fieldDef, expectedMaxLength }
@@ -303,10 +298,6 @@ public class SynapseHelperTest {
         // imeplementations of create column, create table, and create ACLs.
         SynapseHelper synapseHelper = spy(new SynapseHelper());
 
-        // Set Bridge Admin and Staff Team IDs.
-        synapseHelper.setBridgeAdminTeamId(BRIDGE_ADMIN_TEAM_ID);
-        synapseHelper.setBridgeStaffTeamId(BRIDGE_STAFF_TEAM_ID);
-
         // mock create column call - We only care about the IDs, so don't bother instantiating the rest.
         ColumnModel createdFooColumn = new ColumnModel();
         createdFooColumn.setId("foo-col-id");
@@ -332,8 +323,8 @@ public class SynapseHelperTest {
         doReturn(new AccessControlList()).when(synapseHelper).createAclWithRetry(aclCaptor.capture());
 
         // execute and validate
-        String retVal = synapseHelper.createTableWithColumnsAndAcls(columnList, DATA_ACCESS_TEAM_ID, PRINCIPAL_ID,
-                "test-project", "My Table");
+        String retVal = synapseHelper.createTableWithColumnsAndAcls(columnList, /*data access team ID*/ 1234,
+                /*principal ID*/ 5678, "test-project", "My Table");
         assertEquals(retVal, "test-table");
 
         // validate tableCaptor
@@ -347,27 +338,17 @@ public class SynapseHelperTest {
         assertEquals(acl.getId(), "test-table");
 
         Set<ResourceAccess> resourceAccessSet = acl.getResourceAccess();
-        assertEquals(resourceAccessSet.size(), 4);
+        assertEquals(resourceAccessSet.size(), 2);
 
         ResourceAccess exporterOwnerAccess = new ResourceAccess();
-        exporterOwnerAccess.setPrincipalId(PRINCIPAL_ID);
-        exporterOwnerAccess.setAccessType(SynapseHelper.ACCESS_TYPE_ADMIN);
+        exporterOwnerAccess.setPrincipalId(5678L);
+        exporterOwnerAccess.setAccessType(SynapseHelper.ACCESS_TYPE_ALL);
         assertTrue(resourceAccessSet.contains(exporterOwnerAccess));
 
         ResourceAccess dataAccessTeamAccess = new ResourceAccess();
-        dataAccessTeamAccess.setPrincipalId(DATA_ACCESS_TEAM_ID);
+        dataAccessTeamAccess.setPrincipalId(1234L);
         dataAccessTeamAccess.setAccessType(SynapseHelper.ACCESS_TYPE_READ);
         assertTrue(resourceAccessSet.contains(dataAccessTeamAccess));
-
-        ResourceAccess bridgeAdminTeamAccess = new ResourceAccess();
-        bridgeAdminTeamAccess.setPrincipalId(BRIDGE_ADMIN_TEAM_ID);
-        bridgeAdminTeamAccess.setAccessType(SynapseHelper.ACCESS_TYPE_ADMIN);
-        assertTrue(resourceAccessSet.contains(bridgeAdminTeamAccess));
-
-        ResourceAccess bridgeStaffTeamAccess = new ResourceAccess();
-        bridgeStaffTeamAccess.setPrincipalId(BRIDGE_STAFF_TEAM_ID);
-        bridgeStaffTeamAccess.setAccessType(SynapseHelper.ACCESS_TYPE_READ);
-        assertTrue(resourceAccessSet.contains(bridgeStaffTeamAccess));
     }
 
     @Test

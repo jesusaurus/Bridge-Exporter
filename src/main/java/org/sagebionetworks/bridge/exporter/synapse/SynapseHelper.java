@@ -19,7 +19,6 @@ import com.google.common.collect.ImmutableSetMultimap;
 import com.google.common.collect.SetMultimap;
 import com.google.common.util.concurrent.RateLimiter;
 import com.jcabi.aspects.RetryOnFailure;
-import org.apache.commons.lang3.StringUtils;
 import org.sagebionetworks.client.SynapseClient;
 import org.sagebionetworks.client.exceptions.SynapseException;
 import org.sagebionetworks.client.exceptions.SynapseResultNotReadyException;
@@ -68,13 +67,9 @@ public class SynapseHelper {
     static final String CONFIG_KEY_SYNAPSE_RATE_LIMIT_PER_SECOND = "synapse.rate.limit.per.second";
     static final String CONFIG_KEY_SYNAPSE_GET_COLUMN_MODELS_RATE_LIMIT_PER_MINUTE =
             "synapse.get.column.models.rate.limit.per.minute";
-    static final String CONFIG_KEY_TEAM_BRIDGE_ADMIN = "team.bridge.admin";
-    static final String CONFIG_KEY_TEAM_BRIDGE_STAFF = "team.bridge.staff";
 
     // Shared constants.
-    public static final Set<ACCESS_TYPE> ACCESS_TYPE_ADMIN = ImmutableSet.of(ACCESS_TYPE.READ, ACCESS_TYPE.DOWNLOAD,
-            ACCESS_TYPE.UPDATE, ACCESS_TYPE.DELETE, ACCESS_TYPE.CREATE, ACCESS_TYPE.CHANGE_PERMISSIONS,
-            ACCESS_TYPE.CHANGE_SETTINGS, ACCESS_TYPE.MODERATE);
+    public static final Set<ACCESS_TYPE> ACCESS_TYPE_ALL = ImmutableSet.copyOf(ACCESS_TYPE.values());
     public static final Set<ACCESS_TYPE> ACCESS_TYPE_READ = ImmutableSet.of(ACCESS_TYPE.READ, ACCESS_TYPE.DOWNLOAD);
     public static final String DDB_TABLE_SYNAPSE_META_TABLES = "SynapseMetaTables";
     public static final String DDB_KEY_TABLE_NAME = "tableName";
@@ -173,8 +168,6 @@ public class SynapseHelper {
     private int asyncIntervalMillis;
     private int asyncTimeoutLoops;
     private String attachmentBucket;
-    private long bridgeAdminTeamId;
-    private long bridgeStaffTeamId;
 
     // Spring helpers
     private FileHelper fileHelper;
@@ -195,31 +188,12 @@ public class SynapseHelper {
         this.asyncTimeoutLoops = config.getInt(CONFIG_KEY_SYNAPSE_ASYNC_TIMEOUT_LOOPS);
         this.attachmentBucket = config.get(BridgeExporterUtil.CONFIG_KEY_ATTACHMENT_S3_BUCKET);
 
-        String bridgeAdminTeamIdStr = config.get(CONFIG_KEY_TEAM_BRIDGE_ADMIN);
-        if (StringUtils.isNotBlank(bridgeAdminTeamIdStr)) {
-            this.bridgeAdminTeamId = Long.parseLong(bridgeAdminTeamIdStr);
-        }
-        String bridgeStaffTeamIdStr = config.get(CONFIG_KEY_TEAM_BRIDGE_STAFF);
-        if (StringUtils.isNotBlank(bridgeStaffTeamIdStr)) {
-            this.bridgeStaffTeamId = Long.parseLong(bridgeStaffTeamIdStr);
-        }
-
         int rateLimitPerSecond = config.getInt(CONFIG_KEY_SYNAPSE_RATE_LIMIT_PER_SECOND);
         rateLimiter.setRate(rateLimitPerSecond);
 
         int getColumnModelsRateLimitPerMinute = config.getInt(
                 CONFIG_KEY_SYNAPSE_GET_COLUMN_MODELS_RATE_LIMIT_PER_MINUTE);
         getColumnModelsRateLimiter.setRate(getColumnModelsRateLimitPerMinute / 60.0);
-    }
-
-    // Package-scoped for unit tests.
-    void setBridgeAdminTeamId(long bridgeAdminTeamId) {
-        this.bridgeAdminTeamId = bridgeAdminTeamId;
-    }
-
-    // Package-scoped for unit tests.
-    void setBridgeStaffTeamId(long bridgeStaffTeamId) {
-        this.bridgeStaffTeamId = bridgeStaffTeamId;
     }
 
     /** File helper, used when we need to create a temporary file for downloads and uploads. */
@@ -806,38 +780,19 @@ public class SynapseHelper {
         String synapseTableId = createdTable.getId();
 
         // create ACLs
-        // There are 4 ACLs that need to be added.
-        // 1. BridgeExporter (admin)
-        // 2. Data Access team (read-only)
-        // 3. BridgeAdmin team (admin)
-        // 4. BridgeStaff team (read-only)
         // ResourceAccess is a mutable object, but the Synapse API takes them in a Set. This is a little weird.
         // IMPORTANT: Do not modify ResourceAccess objects after adding them to the set. This will break the set.
         Set<ResourceAccess> resourceAccessSet = new HashSet<>();
 
-        // BridgeExporter
         ResourceAccess exporterOwnerAccess = new ResourceAccess();
         exporterOwnerAccess.setPrincipalId(principalId);
-        exporterOwnerAccess.setAccessType(ACCESS_TYPE_ADMIN);
+        exporterOwnerAccess.setAccessType(ACCESS_TYPE_ALL);
         resourceAccessSet.add(exporterOwnerAccess);
 
-        // Data Access Team
         ResourceAccess dataAccessTeamAccess = new ResourceAccess();
         dataAccessTeamAccess.setPrincipalId(dataAccessTeamId);
         dataAccessTeamAccess.setAccessType(ACCESS_TYPE_READ);
         resourceAccessSet.add(dataAccessTeamAccess);
-
-        // BridgeAdmin Team
-        ResourceAccess bridgeAdminAccess = new ResourceAccess();
-        bridgeAdminAccess.setPrincipalId(bridgeAdminTeamId);
-        bridgeAdminAccess.setAccessType(ACCESS_TYPE_ADMIN);
-        resourceAccessSet.add(bridgeAdminAccess);
-
-        // BridgeStaff Team
-        ResourceAccess bridgeStaffAccess = new ResourceAccess();
-        bridgeStaffAccess.setPrincipalId(bridgeStaffTeamId);
-        bridgeStaffAccess.setAccessType(ACCESS_TYPE_READ);
-        resourceAccessSet.add(bridgeStaffAccess);
 
         AccessControlList acl = new AccessControlList();
         acl.setId(synapseTableId);
