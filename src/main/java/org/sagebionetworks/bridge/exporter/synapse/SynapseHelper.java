@@ -11,6 +11,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import com.amazonaws.AmazonClientException;
+import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -22,11 +23,20 @@ import com.jcabi.aspects.RetryOnFailure;
 import org.apache.commons.lang3.StringUtils;
 import org.sagebionetworks.client.SynapseClient;
 import org.sagebionetworks.client.exceptions.SynapseException;
+import org.sagebionetworks.client.exceptions.SynapseNotFoundException;
 import org.sagebionetworks.client.exceptions.SynapseResultNotReadyException;
 import org.sagebionetworks.repo.model.ACCESS_TYPE;
 import org.sagebionetworks.repo.model.AccessControlList;
 import org.sagebionetworks.repo.model.ResourceAccess;
 import org.sagebionetworks.repo.model.file.FileHandle;
+import org.sagebionetworks.repo.model.file.S3FileHandle;
+import org.sagebionetworks.repo.model.file.UploadDestinationLocation;
+import org.sagebionetworks.repo.model.file.UploadType;
+import org.sagebionetworks.repo.model.project.ExternalS3StorageLocationSetting;
+import org.sagebionetworks.repo.model.project.ProjectSetting;
+import org.sagebionetworks.repo.model.project.ProjectSettingsType;
+import org.sagebionetworks.repo.model.project.StorageLocationSetting;
+import org.sagebionetworks.repo.model.project.UploadDestinationListSetting;
 import org.sagebionetworks.repo.model.status.StackStatus;
 import org.sagebionetworks.repo.model.status.StatusEnum;
 import org.sagebionetworks.repo.model.table.AppendableRowSet;
@@ -49,7 +59,6 @@ import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterNonRetryableException;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
-import org.sagebionetworks.bridge.file.FileHelper;
 import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
 import org.sagebionetworks.bridge.rest.model.UploadFieldType;
 import org.sagebionetworks.bridge.s3.S3Helper;
@@ -123,16 +132,6 @@ public class SynapseHelper {
     private static final int DEFAULT_MAX_LENGTH = 100;
 
     /**
-     * Mapping from attachment types to file extensions. This helps generate a more user-friendly attachment filename.
-     */
-    private static final Map<UploadFieldType, String> BRIDGE_TYPE_TO_FILE_EXTENSION =
-            ImmutableMap.<UploadFieldType, String>builder()
-                    .put(UploadFieldType.ATTACHMENT_CSV, ".csv")
-                    .put(UploadFieldType.ATTACHMENT_JSON_BLOB, ".json")
-                    .put(UploadFieldType.ATTACHMENT_JSON_TABLE, ".json")
-                    .build();
-
-    /**
      * Mapping from Bridge schema column types to Synapse table column types. Excludes types that map to multiple
      * Synapse columns, such as MULTI_CHOICE or TIMESTAMP.
      */
@@ -177,7 +176,6 @@ public class SynapseHelper {
     private long bridgeStaffTeamId;
 
     // Spring helpers
-    private FileHelper fileHelper;
     private S3Helper s3Helper;
     private SynapseClient synapseClient;
 
@@ -213,19 +211,23 @@ public class SynapseHelper {
     }
 
     // Package-scoped for unit tests.
-    void setBridgeAdminTeamId(long bridgeAdminTeamId) {
+    void setAttachmentBucket(@SuppressWarnings("SameParameterValue") String attachmentBucket) {
+        this.attachmentBucket = attachmentBucket;
+    }
+
+    // Package-scoped for unit tests.
+    void setBridgeAdminTeamId(@SuppressWarnings("SameParameterValue") long bridgeAdminTeamId) {
         this.bridgeAdminTeamId = bridgeAdminTeamId;
     }
 
     // Package-scoped for unit tests.
-    void setBridgeStaffTeamId(long bridgeStaffTeamId) {
+    void setBridgeStaffTeamId(@SuppressWarnings("SameParameterValue") long bridgeStaffTeamId) {
         this.bridgeStaffTeamId = bridgeStaffTeamId;
     }
 
-    /** File helper, used when we need to create a temporary file for downloads and uploads. */
-    @Autowired
-    public final void setFileHelper(FileHelper fileHelper) {
-        this.fileHelper = fileHelper;
+    // Package-scoped for unit tests.
+    void setRateLimit(@SuppressWarnings("SameParameterValue") double rateLimit) {
+        rateLimiter.setRate(rateLimit);
     }
 
     /** S3 Helper, used to download Bridge attachments before uploading them to Synapse. */
@@ -309,6 +311,90 @@ public class SynapseHelper {
 
     /**
      * <p>
+     * Ensures that the storage location setting exists in the project, and if not, creates it. Returns the S3 storage
+     * location ID.
+     * </p>
+     * <p>
+     * Synchronized, because calling this method concurrently causes bad things to happen.
+     * </p>
+     */
+    public synchronized long ensureS3StorageLocationInProject(String projectId) throws SynapseException {
+        // Check to see if the storage location setting already exists.
+        Long storageLocationId = getS3StorageLocationIdForProject(projectId);
+        if (storageLocationId != null) {
+            return storageLocationId;
+        }
+
+        // If not, create it.
+        ExternalS3StorageLocationSetting storageLocationSetting = new ExternalS3StorageLocationSetting();
+        storageLocationSetting.setBucket(attachmentBucket);
+        storageLocationSetting.setUploadType(UploadType.S3);
+        return createOrUpdateS3StorageLocationForProject(projectId, storageLocationSetting);
+    }
+
+    /**
+     * <p>
+     * Get the S3 storage location ID for the given project. Returns null if there is no S3 storage location.
+     * </p>
+     * <p>
+     * Package-scoped for unit tests.
+     * </p>
+     */
+    Long getS3StorageLocationIdForProject(String projectId) throws SynapseException {
+        UploadDestinationLocation[] locationArray = getUploadDestinationLocationsWithRetry(projectId);
+        for (UploadDestinationLocation location : locationArray) {
+            // Note that the default storage location appears to be 1.
+            if (location.getUploadType() == UploadType.S3 && location.getStorageLocationId() != 1) {
+                return location.getStorageLocationId();
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * <p>
+     * Creates the storage location setting and adds it to the given project. Returns the storage location ID.
+     * </p>
+     * <p>
+     * Package-scoped for unit tests.
+     * </p>
+     */
+    long createOrUpdateS3StorageLocationForProject(String projectId, StorageLocationSetting storageLocationSetting)
+            throws SynapseException {
+        // First, create the storage location setting.
+        StorageLocationSetting createdStorageLocationSetting = createStorageLocationSettingWithRetry(
+                storageLocationSetting);
+        long storageLocationId = createdStorageLocationSetting.getStorageLocationId();
+
+        // Check to see if the project has existing storage settings.
+        UploadDestinationListSetting projectSetting;
+        try {
+            projectSetting = (UploadDestinationListSetting) getProjectSettingWithRetry(projectId,
+                    ProjectSettingsType.upload);
+        } catch (SynapseNotFoundException ex) {
+            // This is normal, if the setting hasn't been created yet.
+            projectSetting = null;
+        }
+
+        if (projectSetting != null) {
+            // Project setting already exists. Add it to the list of existing storage locations.
+            projectSetting.getLocations().add(storageLocationId);
+            updateProjectSettingWithRetry(projectSetting);
+        } else {
+            // Project setting does not exist. Create one.
+            UploadDestinationListSetting uploadDestinationListSetting = new UploadDestinationListSetting();
+            uploadDestinationListSetting.setLocations(ImmutableList.of(storageLocationId));
+            uploadDestinationListSetting.setProjectId(projectId);
+            uploadDestinationListSetting.setSettingsType(ProjectSettingsType.upload);
+            createProjectSettingWithRetry(uploadDestinationListSetting);
+        }
+
+        return storageLocationId;
+    }
+
+    /**
+     * <p>
      * Serializes a Bridge health data record column into a Synapse table column.
      * </p>
      * <p>
@@ -354,7 +440,7 @@ public class SynapseHelper {
                     metrics.incrementCounter("numAttachments");
 
                     String s3Key = node.textValue();
-                    return uploadFromS3ToSynapseFileHandle(tmpDir, projectId, fieldDef, s3Key);
+                    return uploadFromS3ToSynapseFileHandle(projectId, s3Key);
                 }
                 return null;
             }
@@ -433,115 +519,33 @@ public class SynapseHelper {
     }
 
     /**
-     * Downloads the specified health data attachment from S3 and uploads it to Synapse as a file handle. This is a
-     * fairly complex component, so it's made public to allow for partial mocking in tests.
-     *
-     * @param tmpDir
-     *         temporary directory to use as scratch space for downloading from S3 and uploading to Synapse
-     * @param projectId
-     *         synapse project ID to upload
-     * @param fieldDef
-     *         field definition, used to determine file name, extension, and MIME type
-     * @param attachmentId
-     *         attachment ID, also used as the S3 key into the attachments bucket
-     * @return the uploaded Synapse file handle ID, or null if no file handle was created
-     * @throws IOException
-     *         if downloading the attachment from S3 fails
-     * @throws SynapseException
-     *         if uploading the file handle to Synapse fails
+     * Creates a Synapse file handle for the given Synapse project and Bridge attachment ID. Uses External S3
+     * file handles.
      */
-    public String uploadFromS3ToSynapseFileHandle(File tmpDir, String projectId, UploadFieldDefinition fieldDef,
-            String attachmentId) throws IOException, SynapseException {
-        // Create temp file with unique name based on field name, bridge type, and attachment ID.
-        String uniqueFilename = generateFilename(fieldDef, attachmentId);
-        return uploadFromS3ToSynapseFileHandle(tmpDir, uniqueFilename, attachmentId);
-    }
+    public String uploadFromS3ToSynapseFileHandle(String projectId, String attachmentId) throws SynapseException {
+        // Ensure that our S3 storage location exists.
+        long storageLocationId = ensureS3StorageLocationInProject(projectId);
 
-    /**
-     * Downloads the specified health data attachment and uploads it to Synapse as a file handle, using the specified
-     * filename.
-     */
-    public String uploadFromS3ToSynapseFileHandle(File tmpDir, String filename, String attachmentId)
-            throws IOException, SynapseException {
-        File tempFile = fileHelper.newFile(tmpDir, filename);
-        try {
-            // download from S3
-            s3Helper.downloadS3File(attachmentBucket, attachmentId, tempFile);
-
-            // don't upload empty files
-            if (fileHelper.fileSize(tempFile) == 0) {
-                return null;
-            }
-
-            // upload to Synapse
-            FileHandle synapseFileHandle = createFileHandleWithRetry(tempFile);
-            return synapseFileHandle.getId();
-        } finally {
-            // delete temp file
-            fileHelper.deleteFile(tempFile);
+        // Create a Synapse S3 file handle from the S3 object metadata.
+        ObjectMetadata s3ObjectMetadata = s3Helper.getObjectMetadata(attachmentBucket, attachmentId);
+        if (s3ObjectMetadata.getContentLength() == 0) {
+            // Don't upload empty files.
+            return null;
         }
-    }
+        S3FileHandle s3FileHandle = new S3FileHandle();
+        s3FileHandle.setBucketName(attachmentBucket);
+        s3FileHandle.setContentSize(s3ObjectMetadata.getContentLength());
+        s3FileHandle.setContentType(s3ObjectMetadata.getContentType());
+        s3FileHandle.setFileName(attachmentId);
+        s3FileHandle.setKey(attachmentId);
+        s3FileHandle.setStorageLocationId(storageLocationId);
 
-    // Helper method to generate a unique filename for attachments / file handles.
-    // Package-scoped to facilitate testing.
-    static String generateFilename(UploadFieldDefinition fieldDef, String attachmentId) {
-        String fieldName = fieldDef.getName();
+        // For some reason set/getContentMD5() doesn't work, so Bridge uses the user metadata key Custom-Content-MD5.
+        s3FileHandle.setContentMd5(s3ObjectMetadata.getUserMetaDataOf(BridgeExporterUtil.KEY_CUSTOM_CONTENT_MD5));
 
-        // Newer attachment IDs are already in the the form [uploadId]-[fieldName]. These are uniquely named well
-        // enough that we can use them as is.
-        if (attachmentId.endsWith(fieldName)) {
-            return attachmentId;
-        }
-
-        // Legacy uploads:
-        // File name with pattern [fileBaseName]-[attachmentId][fileExt]. This guarantees filename uniqueness and
-        // allows us to have a useful file extension, for OSes that still depend on file extension.
-
-        // Check field def to determine file extension first.
-        String fileExt = null;
-        String defFileExt = fieldDef.getFileExtension();
-        if (defFileExt != null) {
-            fileExt = defFileExt;
-        }
-
-        // Fall back to defaults per field type.
-        if (fileExt == null) {
-            String typeFileExt = BRIDGE_TYPE_TO_FILE_EXTENSION.get(fieldDef.getType());
-            if (typeFileExt != null) {
-                fileExt = typeFileExt;
-            }
-        }
-
-        // Fall back to the file's own file extension.
-        if (fileExt == null) {
-            // If there's a dot and it's not the first or last char. (That is, there's a dot separating the base name
-            // and extension.)
-            int dotIndex = fieldName.lastIndexOf('.');
-            if (dotIndex > 0 && dotIndex < fieldName.length() - 1) {
-                fileExt = fieldName.substring(dotIndex);
-            }
-        }
-
-        if (fileExt != null) {
-            // If we have a file extension, remove it from the from the base name, or we end up with things like
-            // foo.json-attachmentId.json.
-            String fileBaseName = removeFileExtensionIfPresent(fieldName, fileExt);
-
-            // Note that fileExt already includes the dot.
-            return fileBaseName + '-' + attachmentId + fileExt;
-        } else {
-            return fieldName + '-' + attachmentId;
-        }
-    }
-
-    // Helper method which removes the extension from a filename, unless it doesn't have the extension.
-    private static String removeFileExtensionIfPresent(String filename, String fileExt) {
-        if (!filename.endsWith(fileExt)) {
-            // Easy case: no extension, return as is.
-            return filename;
-        } else {
-            return filename.substring(0, filename.length() - fileExt.length());
-        }
+        // Create file handle in Synapse.
+        S3FileHandle createdS3FileHandle = createS3FileHandleWithRetry(s3FileHandle);
+        return createdS3FileHandle.getId();
     }
 
     /**
@@ -760,6 +764,49 @@ public class SynapseHelper {
         rateLimiter.acquire();
         // Pass in forceRestart=true. Otherwise, retries will fail deterministically.
         return synapseClient.multipartUpload(file, null, null, true);
+    }
+
+    /** Creates the S3 file handle in Synapse. This is a retry wrapper. */
+    @RetryOnFailure(attempts = 2, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
+            randomize = false)
+    public S3FileHandle createS3FileHandleWithRetry(S3FileHandle s3FileHandle) throws SynapseException {
+        rateLimiter.acquire();
+        return synapseClient.createExternalS3FileHandle(s3FileHandle);
+    }
+
+    /** Create a project setting. This is a retry wrapper. */
+    @RetryOnFailure(attempts = 2, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
+            randomize = false)
+    @SuppressWarnings("UnusedReturnValue")
+    public ProjectSetting createProjectSettingWithRetry(ProjectSetting projectSetting) throws SynapseException {
+        rateLimiter.acquire();
+        return synapseClient.createProjectSetting(projectSetting);
+    }
+
+    /** Retrieve a project setting for the given project. This is a retry wrapper. */
+    @RetryOnFailure(attempts = 2, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
+            randomize = false)
+    public ProjectSetting getProjectSettingWithRetry(String projectId, ProjectSettingsType type)
+            throws SynapseException {
+        rateLimiter.acquire();
+        return synapseClient.getProjectSetting(projectId, type);
+    }
+
+    /** Update a project setting. */
+    @RetryOnFailure(attempts = 2, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
+            randomize = false)
+    public void updateProjectSettingWithRetry(ProjectSetting projectSetting) throws SynapseException {
+        rateLimiter.acquire();
+        synapseClient.updateProjectSetting(projectSetting);
+    }
+
+    /** Create a storage location setting. This is a retry wrapper. */
+    @RetryOnFailure(attempts = 2, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
+            randomize = false)
+    public <T extends StorageLocationSetting> T createStorageLocationSettingWithRetry(T storageLocationSetting)
+            throws SynapseException {
+        rateLimiter.acquire();
+        return synapseClient.createStorageLocationSetting(storageLocationSetting);
     }
 
     /**
@@ -988,6 +1035,15 @@ public class SynapseHelper {
     public TableEntity updateTableWithRetry(TableEntity table) throws SynapseException {
         rateLimiter.acquire();
         return synapseClient.putEntity(table);
+    }
+
+    /** Get upload destination locations for the given parent (usually a project). */
+    @RetryOnFailure(attempts = 2, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
+            randomize = false)
+    public UploadDestinationLocation[] getUploadDestinationLocationsWithRetry(String parentEntityId)
+            throws SynapseException {
+        rateLimiter.acquire();
+        return synapseClient.getUploadDestinationLocations(parentEntityId);
     }
 
     /**

@@ -18,6 +18,7 @@ import com.amazonaws.services.sqs.AmazonSQSClient;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.sagebionetworks.client.SynapseAdminClientImpl;
 import org.sagebionetworks.client.SynapseClient;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -146,6 +147,11 @@ public class SpringConfig {
         HeartbeatLogger heartbeatLogger = new HeartbeatLogger();
         heartbeatLogger.setIntervalMinutes(bridgeConfig().getInt("heartbeat.interval.minutes"));
         return heartbeatLogger;
+    }
+
+    @Bean(name = "md5DigestUtils")
+    public DigestUtils md5DigestUtils() {
+        return new DigestUtils(DigestUtils.getMd5Digest());
     }
 
     @Bean

@@ -170,8 +170,8 @@ public class SynapseHelperSerializeTest {
         // Spy uploadFromS3ToSynapseFileHandle(). This has some complex logic that is tested elsewhere. For simplicity
         // of tests, just mock it out.
         SynapseHelper synapseHelper = spy(new SynapseHelper());
-        doReturn("dummy-filehandle-id").when(synapseHelper).uploadFromS3ToSynapseFileHandle(MOCK_TEMP_DIR,
-                TEST_PROJECT_ID, attachmentFieldDef, "dummy-attachment-id");
+        doReturn("dummy-filehandle-id").when(synapseHelper).uploadFromS3ToSynapseFileHandle(
+                TEST_PROJECT_ID, "dummy-attachment-id");
 
         // execute
         Metrics metrics = new Metrics();
