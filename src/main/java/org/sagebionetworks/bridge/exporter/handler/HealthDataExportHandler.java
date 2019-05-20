@@ -18,7 +18,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.joda.time.DateTime;
 import org.joda.time.format.DateTimeFormat;
 import org.joda.time.format.DateTimeFormatter;
-import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
 import org.sagebionetworks.client.exceptions.SynapseException;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
@@ -251,7 +250,9 @@ public class HealthDataExportHandler extends SynapseExportHandler {
     @Override
     protected Map<String, String> getTsvRowValueMap(ExportSubtask subtask) throws IOException, SchemaNotFoundException,
             SynapseException {
+        ExportWorkerManager manager = getManager();
         ExportTask task = subtask.getParentTask();
+        String synapseProjectId = manager.getSynapseProjectIdForStudyAndTask(getStudyId(), task);
         Map<String, String> rowValueMap = new HashMap<>();
 
         // metadata columns
@@ -265,8 +266,7 @@ public class HealthDataExportHandler extends SynapseExportHandler {
                         userMetadataNode);
 
                 // Add to the row value map, but pre-pend the metadata prefix.
-                metadataFieldMap.entrySet().stream().forEach(metadataField -> rowValueMap
-                        .put(METADATA_FIELD_NAME_PREFIX + metadataField.getKey(), metadataField.getValue()));
+                metadataFieldMap.forEach((key, value) -> rowValueMap.put(METADATA_FIELD_NAME_PREFIX + key, value));
             }
         }
 
@@ -280,8 +280,8 @@ public class HealthDataExportHandler extends SynapseExportHandler {
         // Upload raw data. Attachment ID includes record ID, so we can use it verbatim.
         String rawDataAttachmentId = subtask.getOriginalRecord().getString(DDB_KEY_RAW_DATA_ATTACHMENT_ID);
         if (StringUtils.isNotBlank(rawDataAttachmentId)) {
-            String fileHandleId = getManager().getSynapseHelper().uploadFromS3ToSynapseFileHandle(task.getTmpDir(),
-                    rawDataAttachmentId, rawDataAttachmentId);
+            String fileHandleId = manager.getSynapseHelper().uploadFromS3ToSynapseFileHandle(synapseProjectId,
+                    rawDataAttachmentId);
             rowValueMap.put(COLUMN_NAME_RAW_DATA, fileHandleId);
         }
 
@@ -348,7 +348,7 @@ public class HealthDataExportHandler extends SynapseExportHandler {
      * post process tsv to call update records' exporter status as SUCCEEDED
      */
     @Override
-    protected void postProcessTsv(TsvInfo tsvInfo) throws BridgeExporterException {
+    protected void postProcessTsv(TsvInfo tsvInfo) {
         List<String> recordIds = tsvInfo.getRecordIds();
 
         getManager().getBridgeHelper().updateRecordExporterStatus(recordIds, SynapseExporterStatus.SUCCEEDED);

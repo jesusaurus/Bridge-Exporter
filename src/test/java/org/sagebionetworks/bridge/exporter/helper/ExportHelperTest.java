@@ -1,5 +1,6 @@
 package org.sagebionetworks.bridge.exporter.helper;
 
+import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -11,6 +12,7 @@ import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
 import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.google.common.base.Charsets;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeUtils;
@@ -27,6 +29,9 @@ public class ExportHelperTest {
     private static final String DUMMY_ATTACHMENT_BUCKET = "dummy-attachment-bucket";
     private static final String DUMMY_RECORD_ID = "dummy-record-id";
     private static final String DUMMY_ATTACHMENT_CONTENT = "dummy attachment content";
+
+    private static final byte[] MOCK_MD5 = { 29, -23, 101, -93, -27, -88, -82, 87, 126 };
+    private static final String MOCK_MD5_BASE64_ENCODED = "Hello+World+";
 
     private static final String UPLOAD_END_DATE_TIME = "2016-05-09T23:59:59.999-0700";
 
@@ -49,12 +54,16 @@ public class ExportHelperTest {
         when(mockConfig.get(BridgeExporterUtil.CONFIG_KEY_ATTACHMENT_S3_BUCKET)).thenReturn(DUMMY_ATTACHMENT_BUCKET);
 
         // set up export helper with mocks
+        DigestUtils mockMd5DigestUtils = mock(DigestUtils.class);
+        when(mockMd5DigestUtils.digest(any(byte[].class))).thenReturn(MOCK_MD5);
+
         Table mockAttachmentsTable = mock(Table.class);
         S3Helper mockS3Helper = mock(S3Helper.class);
 
         ExportHelper helper = new ExportHelper();
         helper.setConfig(mockConfig);
         helper.setDdbAttachmentTable(mockAttachmentsTable);
+        helper.setMd5DigestUtils(mockMd5DigestUtils);
         helper.setS3Helper(mockS3Helper);
 
         // execute
@@ -80,6 +89,9 @@ public class ExportHelperTest {
 
         String attachmentText = new String(attachmentBytesCaptor.getValue(), Charsets.UTF_8);
         assertEquals(attachmentText, DUMMY_ATTACHMENT_CONTENT);
-        assertEquals(ObjectMetadata.AES_256_SERVER_SIDE_ENCRYPTION, metadataCaptor.getValue().getSSEAlgorithm());
+
+        ObjectMetadata metadata = metadataCaptor.getValue();
+        assertEquals(metadata.getUserMetaDataOf(BridgeExporterUtil.KEY_CUSTOM_CONTENT_MD5), MOCK_MD5_BASE64_ENCODED);
+        assertEquals(metadata.getSSEAlgorithm(), ObjectMetadata.AES_256_SERVER_SIDE_ENCRYPTION);
     }
 }

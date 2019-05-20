@@ -36,7 +36,9 @@ public class BridgeExporterUtil {
     public static final String CONFIG_KEY_TIME_ZONE_NAME = "time.zone.name";
     public static final String CONFIG_KEY_RECORD_ID_OVERRIDE_BUCKET = "record.id.override.bucket";
     public static final String CONFIG_KEY_SQS_QUEUE_URL = "exporter.request.sqs.queue.url";
-    
+
+    public static final String KEY_CUSTOM_CONTENT_MD5 = "Custom-Content-MD5";
+
     public static final Joiner PIPE_JOINER = Joiner.on("|");
 
     private static final ImmutableSetMultimap<UploadSchemaKey, String> SCHEMA_FIELDS_TO_CONVERT;

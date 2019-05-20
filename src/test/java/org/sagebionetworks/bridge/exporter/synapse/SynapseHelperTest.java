@@ -26,6 +26,10 @@ import org.sagebionetworks.repo.model.AccessControlList;
 import org.sagebionetworks.repo.model.ResourceAccess;
 import org.sagebionetworks.repo.model.file.FileHandle;
 import org.sagebionetworks.repo.model.file.S3FileHandle;
+import org.sagebionetworks.repo.model.file.UploadDestinationLocation;
+import org.sagebionetworks.repo.model.project.ProjectSetting;
+import org.sagebionetworks.repo.model.project.ProjectSettingsType;
+import org.sagebionetworks.repo.model.project.StorageLocationSetting;
 import org.sagebionetworks.repo.model.status.StackStatus;
 import org.sagebionetworks.repo.model.status.StatusEnum;
 import org.sagebionetworks.repo.model.table.ColumnModel;
@@ -49,6 +53,7 @@ public class SynapseHelperTest {
     private static final long BRIDGE_STAFF_TEAM_ID = 2468L;
     private static final long DATA_ACCESS_TEAM_ID = 1234L;
     private static final long PRINCIPAL_ID = 5678L;
+    private static final String PROJECT_ID = "syn1234";
 
     @DataProvider
     public Object[][] maxLengthTestDataProvider() {
@@ -278,6 +283,88 @@ public class SynapseHelperTest {
     }
 
     @Test
+    public void createS3FileHandleWithRetry() throws Exception {
+        // Mock Synapse Client
+        SynapseClient mockClient = mock(SynapseClient.class);
+        S3FileHandle svcInput = new S3FileHandle();
+        S3FileHandle svcOutput = new S3FileHandle();
+        when(mockClient.createExternalS3FileHandle(same(svcInput))).thenReturn(svcOutput);
+
+        // Set up Helper.
+        SynapseHelper helper = new SynapseHelper();
+        helper.setSynapseClient(mockClient);
+
+        // Execute and validate.
+        S3FileHandle retVal = helper.createS3FileHandleWithRetry(svcInput);
+        assertSame(retVal, svcOutput);
+    }
+
+    @Test
+    public void createProjectSettingWithRetry() throws Exception {
+        // Mock Synapse Client
+        SynapseClient mockClient = mock(SynapseClient.class);
+        ProjectSetting svcInput = mock(ProjectSetting.class);
+        ProjectSetting svcOutput = mock(ProjectSetting.class);
+        when(mockClient.createProjectSetting(same(svcInput))).thenReturn(svcOutput);
+
+        // Set up Helper.
+        SynapseHelper helper = new SynapseHelper();
+        helper.setSynapseClient(mockClient);
+
+        // Execute and validate.
+        ProjectSetting retVal = helper.createProjectSettingWithRetry(svcInput);
+        assertSame(retVal, svcOutput);
+    }
+
+    @Test
+    public void getProjectSettingWithRetry() throws Exception {
+        // Mock Synapse Client
+        SynapseClient mockClient = mock(SynapseClient.class);
+        ProjectSetting svcOutput = mock(ProjectSetting.class);
+        when(mockClient.getProjectSetting(PROJECT_ID, ProjectSettingsType.upload)).thenReturn(svcOutput);
+
+        // Set up Helper.
+        SynapseHelper helper = new SynapseHelper();
+        helper.setSynapseClient(mockClient);
+
+        // Execute and validate.
+        ProjectSetting retVal = helper.getProjectSettingWithRetry(PROJECT_ID, ProjectSettingsType.upload);
+        assertSame(retVal, svcOutput);
+    }
+
+    @Test
+    public void updateProjectSettingWithRetry() throws Exception {
+        // Mock Synapse Client
+        SynapseClient mockClient = mock(SynapseClient.class);
+
+        // Set up Helper.
+        SynapseHelper helper = new SynapseHelper();
+        helper.setSynapseClient(mockClient);
+
+        // Execute and validate.
+        ProjectSetting helperInput = mock(ProjectSetting.class);
+        helper.updateProjectSettingWithRetry(helperInput);
+        verify(mockClient).updateProjectSetting(same(helperInput));
+    }
+
+    @Test
+    public void createStorageLocationSettingWithRetry() throws Exception {
+        // Mock Synapse Client
+        SynapseClient mockClient = mock(SynapseClient.class);
+        StorageLocationSetting svcInput = mock(StorageLocationSetting.class);
+        StorageLocationSetting svcOutput = mock(StorageLocationSetting.class);
+        when(mockClient.createStorageLocationSetting(same(svcInput))).thenReturn(svcOutput);
+
+        // Set up Helper.
+        SynapseHelper helper = new SynapseHelper();
+        helper.setSynapseClient(mockClient);
+
+        // Execute and validate.
+        StorageLocationSetting retVal = helper.createStorageLocationSettingWithRetry(svcInput);
+        assertSame(retVal, svcOutput);
+    }
+
+    @Test
     public void createTable() throws Exception {
         // mock Synapse Client - Similarly, return a new output table
         SynapseClient mockSynapseClient = mock(SynapseClient.class);
@@ -503,6 +590,22 @@ public class SynapseHelperTest {
         // execute and validate
         TableEntity retVal = synapseHelper.updateTableWithRetry(inputTable);
         assertSame(retVal, outputTable);
+    }
+
+    @Test
+    public void getUploadDestinationLocationsWithRetry() throws Exception {
+        // Mock Synapse Client
+        SynapseClient mockClient = mock(SynapseClient.class);
+        UploadDestinationLocation[] svcOutput = new UploadDestinationLocation[0];
+        when(mockClient.getUploadDestinationLocations(PROJECT_ID)).thenReturn(svcOutput);
+
+        // Set up Helper.
+        SynapseHelper helper = new SynapseHelper();
+        helper.setSynapseClient(mockClient);
+
+        // Execute and validate.
+        UploadDestinationLocation[] retVal = helper.getUploadDestinationLocationsWithRetry(PROJECT_ID);
+        assertSame(retVal, svcOutput);
     }
 
     @Test

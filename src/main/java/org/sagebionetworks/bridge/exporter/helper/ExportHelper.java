@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.UUID;
 
+import javax.annotation.Resource;
+
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.amazonaws.services.dynamodbv2.document.Table;
 import com.amazonaws.services.s3.model.ObjectMetadata;
@@ -11,6 +13,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Charsets;
 import com.google.common.collect.ImmutableMap;
+import org.apache.commons.codec.binary.Base64;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.lang.StringUtils;
 import org.sagebionetworks.repo.model.table.ColumnType;
 import org.slf4j.Logger;
@@ -55,6 +59,7 @@ public class ExportHelper {
 
     // Spring helpers
     private Table ddbAttachmentTable;
+    private DigestUtils md5DigestUtils;
     private S3Helper s3Helper;
 
     /** Config, used to get the S3 attachments bucket. */
@@ -67,6 +72,12 @@ public class ExportHelper {
     @Autowired
     public final void setDdbAttachmentTable(Table ddbAttachmentTable) {
         this.ddbAttachmentTable = ddbAttachmentTable;
+    }
+
+    /** Used to calculate the MD5 hash, used to submit S3 file metadata. */
+    @Resource(name = "md5DigestUtils")
+    public final void setMd5DigestUtils(DigestUtils md5DigestUtils) {
+        this.md5DigestUtils = md5DigestUtils;
     }
 
     /** S3 helper, for uploading and downloading attachments. */
@@ -213,11 +224,18 @@ public class ExportHelper {
         attachment.withString("recordId", recordId);
         ddbAttachmentTable.putItem(attachment);
 
+        // Calculate MD5 (base64-encoded).
+        byte[] bytes = text.getBytes(Charsets.UTF_8);
+        byte[] md5 = md5DigestUtils.digest(bytes);
+        String md5Base64Encoded = Base64.encodeBase64String(md5);
+
+        // S3 Metadata must include encryption and MD5. Note that for some reason setContentMD5() doesn't work, so we
+        // have to use addUserMetadata().
         ObjectMetadata metadata = new ObjectMetadata();
+        metadata.addUserMetadata(BridgeExporterUtil.KEY_CUSTOM_CONTENT_MD5, md5Base64Encoded);
         metadata.setSSEAlgorithm(ObjectMetadata.AES_256_SERVER_SIDE_ENCRYPTION);
-        
-        // upload to S3
-        s3Helper.writeBytesToS3(attachmentBucket, attachmentId, text.getBytes(Charsets.UTF_8), metadata);
+        s3Helper.writeBytesToS3(attachmentBucket, attachmentId, bytes, metadata);
+
         return attachmentId;
     }
 }

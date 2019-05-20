@@ -303,8 +303,8 @@ public class HealthDataExportHandlerTest {
                 .thenCallRealMethod();
 
         // Mock uploadFromS3ToSynapseFileHandle() for raw data attachment.
-        when(mockSynapseHelper.uploadFromS3ToSynapseFileHandle(any(), eq(RAW_DATA_ATTACHMENT_ID),
-                eq(RAW_DATA_ATTACHMENT_ID))).thenReturn(RAW_DATA_FILEHANDLE_ID);
+        when(mockSynapseHelper.uploadFromS3ToSynapseFileHandle(SynapseExportHandlerTest.TEST_SYNAPSE_PROJECT_ID,
+                RAW_DATA_ATTACHMENT_ID)).thenReturn(RAW_DATA_FILEHANDLE_ID);
 
         // mock upload the TSV and capture the upload
         tsvBytes = null;
@@ -396,7 +396,7 @@ public class HealthDataExportHandlerTest {
             List<String> tsvLineList = TestUtil.bytesToLines(tsvBytes);
             assertEquals(tsvLineList.size(), 3);
             SynapseExportHandlerTest.validateTsvHeaders(tsvLineList.get(0), BridgeHelperTest.TEST_FIELD_NAME,
-                    HealthDataExportHandler.COLUMN_NAME_RAW_DATA);//todo
+                    HealthDataExportHandler.COLUMN_NAME_RAW_DATA);
             SynapseExportHandlerTest.validateTsvRow(tsvLineList.get(1), FIELD_VALUE, RAW_DATA_FILEHANDLE_ID);
             SynapseExportHandlerTest.validateTsvRow(tsvLineList.get(2), FIELD_VALUE, RAW_DATA_FILEHANDLE_ID);
         }
@@ -405,8 +405,8 @@ public class HealthDataExportHandlerTest {
         assertEquals(numGetSchemaCalls, 6);
 
         // Verify calls to upload raw data.
-        verify(mockSynapseHelper, atLeastOnce()).uploadFromS3ToSynapseFileHandle(any(), eq(RAW_DATA_ATTACHMENT_ID),
-                eq(RAW_DATA_ATTACHMENT_ID));
+        verify(mockSynapseHelper, atLeastOnce()).uploadFromS3ToSynapseFileHandle(
+                SynapseExportHandlerTest.TEST_SYNAPSE_PROJECT_ID, RAW_DATA_ATTACHMENT_ID);
     }
 
     // Similarly, this test primarily tests upload metadata. Most of the other stuff is tested in other tests.
@@ -545,6 +545,6 @@ public class HealthDataExportHandlerTest {
                 String.valueOf(whenMillis), "+0900", "37", "metadata-bar", "foo-value", "baz-value", null);
 
         // This test doesn't upload any raw data.
-        verify(mockSynapseHelper, never()).uploadFromS3ToSynapseFileHandle(any(), any(), any());
+        verify(mockSynapseHelper, never()).uploadFromS3ToSynapseFileHandle(any(), any());
     }
 }

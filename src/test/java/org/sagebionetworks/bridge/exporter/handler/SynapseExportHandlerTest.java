@@ -410,11 +410,8 @@ public class SynapseExportHandlerTest {
         when(mockSynapseHelper.serializeToSynapseType(any(), any(), any(), any(), any(), any(), any()))
                 .thenCallRealMethod();
 
-        UploadFieldDefinition freeformAttachmentFieldDef = new UploadFieldDefinition().name(FREEFORM_FIELD_NAME)
-                .type(UploadFieldType.ATTACHMENT_V2);
-        when(mockSynapseHelper.uploadFromS3ToSynapseFileHandle(task.getTmpDir(), TEST_SYNAPSE_PROJECT_ID,
-                freeformAttachmentFieldDef, DUMMY_ATTACHMENT_ID)).thenReturn(
-                DUMMY_FILEHANDLE_ID);
+        when(mockSynapseHelper.uploadFromS3ToSynapseFileHandle(TEST_SYNAPSE_PROJECT_ID, DUMMY_ATTACHMENT_ID))
+                .thenReturn(DUMMY_FILEHANDLE_ID);
 
         // Similarly for downloadLargeTextAttachment()
         when(mockSynapseHelper.downloadLargeTextAttachment("my-large-text-attachment-id")).thenReturn(

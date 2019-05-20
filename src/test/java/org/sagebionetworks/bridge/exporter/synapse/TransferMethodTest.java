@@ -6,7 +6,7 @@ import com.google.common.collect.ImmutableMap;
 import org.sagebionetworks.repo.model.table.ColumnType;
 import org.testng.annotations.Test;
 
-import static org.junit.Assert.assertNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertEquals;
 
 import java.util.LinkedHashMap;
