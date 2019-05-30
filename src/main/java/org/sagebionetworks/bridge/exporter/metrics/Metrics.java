@@ -17,7 +17,7 @@ public class Metrics {
      * map both use a SortedMultiset, this allows you to iterate the keys (and therefore counters) in sorted order, for
      * ease of display.
      */
-    public SortedMultiset<String> getCounterMap() {
+    public synchronized SortedMultiset<String> getCounterMap() {
         return ImmutableSortedMultiset.copyOfSorted(counterMap);
     }
 
@@ -28,7 +28,7 @@ public class Metrics {
      *         name of the counter to increment
      * @return value of the counter, after increment
      */
-    public int incrementCounter(String name) {
+    public synchronized int incrementCounter(String name) {
         counterMap.add(name);
         return counterMap.count(name);
     }
@@ -38,7 +38,7 @@ public class Metrics {
      * will be in sorted order. However, there is no Guava equivalent for ImmutableTreeMultimap, so the returned copy
      * will be mutable. The returned copy will be a copy, and modifications to this copy will not affect the original.
      */
-    public SortedSetMultimap<String, String> getKeyValuesMap() {
+    public synchronized SortedSetMultimap<String, String> getKeyValuesMap() {
         return TreeMultimap.create(keyValuesMap);
     }
 
@@ -58,7 +58,7 @@ public class Metrics {
      *         value to be associated with the key
      * @return number of unique keys associated with the name, after adding the new value
      */
-    public int addKeyValuePair(String name, String value) {
+    public synchronized int addKeyValuePair(String name, String value) {
         keyValuesMap.put(name, value);
         return keyValuesMap.get(name).size();
     }
@@ -71,7 +71,7 @@ public class Metrics {
     /**
      * Returns a copy of the set-counter map. Similar to {@link #getKeyValuesMap}, this is backed by a TreeMultimap.
      */
-    public SortedSetMultimap<String, String> getSetCounterMap() {
+    public synchronized SortedSetMultimap<String, String> getSetCounterMap() {
         return TreeMultimap.create(setCounterMap);
     }
 
@@ -85,7 +85,7 @@ public class Metrics {
      *         value to add to the set-counter
      * @return number of unique values in the set-counter, after incrementing with the new value
      */
-    public int incrementSetCounter(String name, String value) {
+    public synchronized int incrementSetCounter(String name, String value) {
         setCounterMap.put(name, value);
         return setCounterMap.get(name).size();
     }

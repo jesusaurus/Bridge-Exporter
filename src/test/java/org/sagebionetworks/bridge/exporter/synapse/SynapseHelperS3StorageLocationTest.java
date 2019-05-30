@@ -191,7 +191,8 @@ public class SynapseHelperS3StorageLocationTest {
         assertEquals(createdProjectSetting.getSettingsType(), ProjectSettingsType.upload);
 
         List<Long> locationIdList = createdProjectSetting.getLocations();
-        assertEquals(locationIdList.size(), 1);
-        assertEquals(locationIdList.get(0).longValue(), STORAGE_LOCATION_ID);
+        assertEquals(locationIdList.size(), 2);
+        assertEquals(locationIdList.get(0).longValue(), SynapseHelper.DEFAULT_STORAGE_LOCATION_ID);
+        assertEquals(locationIdList.get(1).longValue(), STORAGE_LOCATION_ID);
     }
 }

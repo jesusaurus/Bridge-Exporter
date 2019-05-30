@@ -19,6 +19,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSetMultimap;
 import com.google.common.collect.SetMultimap;
 import com.google.common.util.concurrent.RateLimiter;
+import com.jcabi.aspects.Cacheable;
 import com.jcabi.aspects.RetryOnFailure;
 import org.apache.commons.lang3.StringUtils;
 import org.sagebionetworks.client.SynapseClient;
@@ -70,6 +71,7 @@ public class SynapseHelper {
     private static final Logger LOG = LoggerFactory.getLogger(SynapseHelper.class);
 
     private static final long APPEND_TIMEOUT_MILLISECONDS = 30 * 1000;
+    static final long DEFAULT_STORAGE_LOCATION_ID = 1;
 
     // Config keys. Package-scoped to allow unit tests to mock.
     static final String CONFIG_KEY_SYNAPSE_ASYNC_INTERVAL_MILLIS = "synapse.async.interval.millis";
@@ -310,6 +312,16 @@ public class SynapseHelper {
     }
 
     /**
+     * Cache wrapper for getting the S3 storage location for a project. This is a separate wrapper so that we don't
+     * have to deal with weird interactions between the cache wrapper and synchronized, or interactions between the
+     * cache wrapper and unit tests.
+     */
+    @Cacheable(lifetime = 5, unit = TimeUnit.MINUTES)
+    public long ensureS3StorageLocationInProjectCached(String projectId) throws SynapseException {
+        return ensureS3StorageLocationInProject(projectId);
+    }
+
+    /**
      * <p>
      * Ensures that the storage location setting exists in the project, and if not, creates it. Returns the S3 storage
      * location ID.
@@ -343,8 +355,8 @@ public class SynapseHelper {
     Long getS3StorageLocationIdForProject(String projectId) throws SynapseException {
         UploadDestinationLocation[] locationArray = getUploadDestinationLocationsWithRetry(projectId);
         for (UploadDestinationLocation location : locationArray) {
-            // Note that the default storage location appears to be 1.
-            if (location.getUploadType() == UploadType.S3 && location.getStorageLocationId() != 1) {
+            if (location.getUploadType() == UploadType.S3 &&
+                    location.getStorageLocationId() != DEFAULT_STORAGE_LOCATION_ID) {
                 return location.getStorageLocationId();
             }
         }
@@ -382,9 +394,11 @@ public class SynapseHelper {
             projectSetting.getLocations().add(storageLocationId);
             updateProjectSettingWithRetry(projectSetting);
         } else {
-            // Project setting does not exist. Create one.
+            // Project setting does not exist. Create one. Ensure that we include both the default storage location
+            // (Synapse) and our S3 bucket so that users can still upload files just fine.
             UploadDestinationListSetting uploadDestinationListSetting = new UploadDestinationListSetting();
-            uploadDestinationListSetting.setLocations(ImmutableList.of(storageLocationId));
+            uploadDestinationListSetting.setLocations(ImmutableList.of(DEFAULT_STORAGE_LOCATION_ID,
+                    storageLocationId));
             uploadDestinationListSetting.setProjectId(projectId);
             uploadDestinationListSetting.setSettingsType(ProjectSettingsType.upload);
             createProjectSettingWithRetry(uploadDestinationListSetting);
@@ -524,7 +538,7 @@ public class SynapseHelper {
      */
     public String uploadFromS3ToSynapseFileHandle(String projectId, String attachmentId) throws SynapseException {
         // Ensure that our S3 storage location exists.
-        long storageLocationId = ensureS3StorageLocationInProject(projectId);
+        long storageLocationId = ensureS3StorageLocationInProjectCached(projectId);
 
         // Create a Synapse S3 file handle from the S3 object metadata.
         ObjectMetadata s3ObjectMetadata = s3Helper.getObjectMetadata(attachmentBucket, attachmentId);
