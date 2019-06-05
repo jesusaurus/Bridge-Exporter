@@ -137,6 +137,14 @@ public class SynapseExportHandlerNewTableTest {
             return 1;
         });
 
+        // mock serializeToSynapseType() - We actually call through to the real method, but we mock out the underlying
+        // uploadFromS3ToSynapseFileHandle() to avoid hitting real back-ends.
+        when(mockSynapseHelper.serializeToSynapseType(any(), any(), any(), any(), any(), any(), any()))
+                .thenCallRealMethod();
+        when(mockSynapseHelper.uploadFromS3ToSynapseFileHandle(SynapseExportHandlerTest.TEST_SYNAPSE_PROJECT_ID,
+                SynapseExportHandlerTest.RAW_DATA_ATTACHMENT_ID))
+                .thenReturn(SynapseExportHandlerTest.RAW_DATA_FILEHANDLE_ID);
+
         // spy StudyInfo getters
         // These calls through to a bunch of stuff (which we test in ExportWorkerManagerTest), so to simplify our test,
         // we just use a spy here.
@@ -154,7 +162,7 @@ public class SynapseExportHandlerNewTableTest {
                         eq(handler.getDdbTableKeyValue()), anyString());
     }
 
-    private void validateTableCreation(SynapseExportHandler handler) throws Exception {
+    private void validateTableCreation(SynapseExportHandler handler) {
         // Don't bother validating metrics or line counts or even file cleanup. This is all tested in the normal case.
         // Just worry about Synapse table creation.
 
@@ -226,7 +234,7 @@ public class SynapseExportHandlerNewTableTest {
     }
 
     @Test
-    public void healthDataExportHandlerTest() throws Exception {
+    public void schemaBasedExportHandlerTest() throws Exception {
         // Freeform text to attachments is already tested in SynapseExportHandlerTest. Just test simple string and int
         // fields.
         UploadSchema testSchema = BridgeHelperTest.simpleSchemaBuilder().fieldDefinitions(ImmutableList.of(
@@ -236,14 +244,9 @@ public class SynapseExportHandlerNewTableTest {
 
         // Set up handler and test. setSchema() needs to be called before setup, since a lot of the stuff in the
         // handler depends on it, even while we're mocking stuff.
-        HealthDataExportHandler handler = new HealthDataExportHandler();
+        SchemaBasedExportHandler handler = new SchemaBasedExportHandler();
         handler.setSchemaKey(testSchemaKey);
         setupWithSchema(handler, testSchemaKey, testSchema);
-
-        // mock serializeToSynapseType() - We actually call through to the real method. Don't need to mock
-        // uploadFromS3ToSynapseFileHandle() because we don't have file handles this time.
-        when(mockSynapseHelper.serializeToSynapseType(any(), any(), any(), any(), any(), any(), any()))
-                .thenCallRealMethod();
 
         // make subtask
         String recordJsonText = "{\n" +
@@ -261,7 +264,31 @@ public class SynapseExportHandlerNewTableTest {
         assertEquals(tsvLineList.size(), 2);
         SynapseExportHandlerTest.validateTsvHeaders(tsvLineList.get(0), "foo", "bar",
                 HealthDataExportHandler.COLUMN_NAME_RAW_DATA);
-        SynapseExportHandlerTest.validateTsvRow(tsvLineList.get(1), "This is a string.", "42", null);
+        SynapseExportHandlerTest.validateTsvRow(tsvLineList.get(1), "This is a string.", "42",
+                SynapseExportHandlerTest.RAW_DATA_FILEHANDLE_ID);
+
+        validateTableCreation(handler);
+    }
+
+    @Test
+    public void schemalessExportHandlerTest() throws Exception {
+        // Set up handler and test.
+        SchemalessExportHandler handler = new SchemalessExportHandler();
+        setup(handler);
+
+        // make subtask
+        String recordJsonText = "{\"dummy-key\":\"dummy-value\"}";
+        ExportSubtask subtask = SynapseExportHandlerTest.makeSubtaskWithSchema(task, null, recordJsonText);
+
+        // execute
+        handler.handle(subtask);
+        handler.uploadToSynapseForTask(task);
+
+        // validate tsv file
+        List<String> tsvLineList = TestUtil.bytesToLines(tsvBytes);
+        assertEquals(tsvLineList.size(), 2);
+        SynapseExportHandlerTest.validateTsvHeaders(tsvLineList.get(0), HealthDataExportHandler.COLUMN_NAME_RAW_DATA);
+        SynapseExportHandlerTest.validateTsvRow(tsvLineList.get(1), SynapseExportHandlerTest.RAW_DATA_FILEHANDLE_ID);
 
         validateTableCreation(handler);
     }

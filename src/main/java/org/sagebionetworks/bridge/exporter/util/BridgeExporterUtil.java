@@ -5,7 +5,6 @@ import com.amazonaws.services.dynamodbv2.document.Item;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSetMultimap;
 import org.jsoup.Jsoup;
 import org.jsoup.safety.Whitelist;
 import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
@@ -23,7 +22,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /** Various static utility methods that don't neatly fit anywhere else. */
 public class BridgeExporterUtil {
@@ -36,28 +34,10 @@ public class BridgeExporterUtil {
     public static final String CONFIG_KEY_TIME_ZONE_NAME = "time.zone.name";
     public static final String CONFIG_KEY_RECORD_ID_OVERRIDE_BUCKET = "record.id.override.bucket";
     public static final String CONFIG_KEY_SQS_QUEUE_URL = "exporter.request.sqs.queue.url";
-
+    public static final String DEFAULT_TABLE_NAME = "Default Health Data Record Table";
     public static final String KEY_CUSTOM_CONTENT_MD5 = "Custom-Content-MD5";
 
     public static final Joiner PIPE_JOINER = Joiner.on("|");
-
-    private static final ImmutableSetMultimap<UploadSchemaKey, String> SCHEMA_FIELDS_TO_CONVERT;
-    static {
-        ImmutableSetMultimap.Builder<UploadSchemaKey, String> schemaFieldMapBuilder = ImmutableSetMultimap.builder();
-
-        UploadSchemaKey bcsDailyJournalSchema = new UploadSchemaKey.Builder().withStudyId("breastcancer")
-                .withSchemaId("BreastCancer-DailyJournal").withRevision(1).build();
-        schemaFieldMapBuilder.putAll(bcsDailyJournalSchema, "content_data.APHMoodLogNoteText",
-                "DailyJournalStep103_data.content");
-
-        UploadSchemaKey bcsExerciseSurveyJournal = new UploadSchemaKey.Builder().withStudyId("breastcancer")
-                .withSchemaId("BreastCancer-ExerciseSurvey").withRevision(1).build();
-        schemaFieldMapBuilder.putAll(bcsExerciseSurveyJournal, "exercisesurvey101_data.result",
-                "exercisesurvey102_data.result", "exercisesurvey103_data.result", "exercisesurvey104_data.result",
-                "exercisesurvey105_data.result", "exercisesurvey106_data.result");
-
-        SCHEMA_FIELDS_TO_CONVERT = schemaFieldMapBuilder.build();
-    }
 
     /**
      * Helper method to get a field definition map from a schema, keyed by field name
@@ -82,6 +62,11 @@ public class BridgeExporterUtil {
      * @return the schema key associated with that record
      */
     public static UploadSchemaKey getSchemaKeyForRecord(Item record) {
+        if (!record.hasAttribute("schemaId") || !record.hasAttribute("schemaRevision")) {
+            // This is a schemaless record.
+            return null;
+        }
+
         String studyId = record.getString("studyId");
         String schemaId = record.getString("schemaId");
         int schemaRev = record.getInt("schemaRevision");
@@ -192,23 +177,6 @@ public class BridgeExporterUtil {
         }
 
         return in;
-    }
-
-    /**
-     * When we initially designed these schemas, we didn't realize Synapse had a character limit on strings.
-     * These strings may exceed that character limit, so we need this special hack to convert these strings to
-     * attachments. This code applies only to legacy schemas. New schemas need to declare ATTACHMENT_BLOB,
-     * otherwise the strings get automatically truncated.
-     *
-     * @param schemaKey
-     *         schema key to check if we should convert
-     * @param fieldName
-     *         field name to check if we should convert
-     * @return true if this should be converted to an attachment, false otherwise
-     */
-    public static boolean shouldConvertFreeformTextToAttachment(UploadSchemaKey schemaKey, String fieldName) {
-        Set<String> fieldsToConvert = SCHEMA_FIELDS_TO_CONVERT.get(schemaKey);
-        return fieldsToConvert != null && fieldsToConvert.contains(fieldName);
     }
 
     /**

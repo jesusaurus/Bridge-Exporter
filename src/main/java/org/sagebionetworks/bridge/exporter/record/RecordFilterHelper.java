@@ -66,7 +66,7 @@ public class RecordFilterHelper {
         boolean excludeByTable = false;
         Set<UploadSchemaKey> tableWhitelist = request.getTableWhitelist();
         if (tableWhitelist != null) {
-            excludeByTable = shouldExcludeRecordByTable(metrics, tableWhitelist,
+            excludeByTable = shouldExcludeRecordByTable(metrics, tableWhitelist, studyId,
                     BridgeExporterUtil.getSchemaKeyForRecord(record));
         }
 
@@ -139,10 +139,15 @@ public class RecordFilterHelper {
     }
 
     // Helper method that handles the table filter.
-    private boolean shouldExcludeRecordByTable(Metrics metrics, Set<UploadSchemaKey> tableFilterSet,
+    private boolean shouldExcludeRecordByTable(Metrics metrics, Set<UploadSchemaKey> tableFilterSet, String studyId,
             UploadSchemaKey schemaKey) {
-        // tableFilterSet is the set of tables that we accept
-        if (tableFilterSet.contains(schemaKey)) {
+        if (schemaKey == null) {
+            // The table whitelist specifies the tables that we allow through. A schemaless record, by definition,
+            // would not be in those tables. So exclude.
+            metrics.incrementCounter("excluded[" + studyId + "-default]");
+            return true;
+        } else if (tableFilterSet.contains(schemaKey)) {
+            // tableFilterSet is the set of tables that we accept
             metrics.incrementCounter("accepted[" + schemaKey + "]");
             return false;
         } else {

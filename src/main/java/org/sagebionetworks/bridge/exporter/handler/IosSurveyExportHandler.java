@@ -63,10 +63,11 @@ public class IosSurveyExportHandler extends ExportHandler {
         }
 
         // what schema should we forward this to?
+        String studyId = getStudyId();
         @SuppressWarnings("UnnecessaryLocalVariable")
         String schemaId = item;
         int schemaRev = 1;
-        UploadSchemaKey surveySchemaKey = new UploadSchemaKey.Builder().withStudyId(getStudyId())
+        UploadSchemaKey surveySchemaKey = new UploadSchemaKey.Builder().withStudyId(studyId)
                 .withSchemaId(schemaId).withRevision(schemaRev).build();
 
         // get schema and field type map, so we can process attachments
@@ -77,7 +78,8 @@ public class IosSurveyExportHandler extends ExportHandler {
                 oldDataJson, surveySchema);
 
         ExportSubtask convertedSubtask = new ExportSubtask.Builder().withOriginalRecord(record)
-                .withParentTask(parentTask).withRecordData(convertedSurveyNode).withSchemaKey(surveySchemaKey).build();
-        manager.addHealthDataSubtask(parentTask, getStudyId(), surveySchemaKey, convertedSubtask);
+                .withParentTask(parentTask).withRecordData(convertedSurveyNode).withSchemaKey(surveySchemaKey)
+                .withStudyId(studyId).build();
+        manager.addHealthDataSubtask(parentTask, studyId, surveySchemaKey, convertedSubtask);
     }
 }

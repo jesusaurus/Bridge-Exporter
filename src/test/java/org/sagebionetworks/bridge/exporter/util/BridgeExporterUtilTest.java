@@ -1,9 +1,8 @@
 package org.sagebionetworks.bridge.exporter.util;
 
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
-import static org.testng.Assert.assertTrue;
 
 import java.util.HashMap;
 import java.util.List;
@@ -50,7 +49,27 @@ public class BridgeExporterUtilTest {
         Item recordItem = new Item().withString("studyId", "test-study").withString("schemaId", "test-schema")
                 .withInt("schemaRevision", 13);
         UploadSchemaKey schemaKey = BridgeExporterUtil.getSchemaKeyForRecord(recordItem);
+        assertNotNull(schemaKey);
         assertEquals(schemaKey.toString(), "test-study-test-schema-v13");
+    }
+
+    @Test
+    public void getSchemaKeyForRecord_NoSchemaId() {
+        // mock DDB Health Record
+        Item recordItem = new Item().withString("studyId", "test-study")
+                .withInt("schemaRevision", 13);
+        UploadSchemaKey schemaKey = BridgeExporterUtil.getSchemaKeyForRecord(recordItem);
+        assertNull(schemaKey);
+    }
+
+    // For branch coverage, test missing schema ID and missing schema rev separately.
+    @Test
+    public void getSchemaKeyForRecord_NoSchemaRev() {
+        // mock DDB Health Record
+        Item recordItem = new Item().withString("studyId", "test-study")
+                .withString("schemaId", "test-schema");
+        UploadSchemaKey schemaKey = BridgeExporterUtil.getSchemaKeyForRecord(recordItem);
+        assertNull(schemaKey);
     }
 
     @Test
@@ -161,40 +180,6 @@ public class BridgeExporterUtilTest {
     public void sanitizeString(String in, Integer maxLength, String expected) {
         assertEquals(BridgeExporterUtil.sanitizeString(in, "key", maxLength, "dummy-record",
                 "dummy-study"), expected);
-    }
-
-    @Test
-    public void shouldConvertFreeformTextToAttachment() {
-        // This is a hack, but we still need to test it.
-        UploadSchemaKey bcsDailyJournalSchema = new UploadSchemaKey.Builder().withStudyId("breastcancer")
-                .withSchemaId("BreastCancer-DailyJournal").withRevision(1).build();
-        assertTrue(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(bcsDailyJournalSchema,
-                "content_data.APHMoodLogNoteText"));
-        assertTrue(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(bcsDailyJournalSchema,
-                "DailyJournalStep103_data.content"));
-        assertFalse(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(bcsDailyJournalSchema,
-                "something-else"));
-
-        UploadSchemaKey bcsExerciseSurveyJournal = new UploadSchemaKey.Builder().withStudyId("breastcancer")
-                .withSchemaId("BreastCancer-ExerciseSurvey").withRevision(1).build();
-        assertTrue(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(bcsExerciseSurveyJournal,
-                "exercisesurvey101_data.result"));
-        assertTrue(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(bcsExerciseSurveyJournal,
-                "exercisesurvey102_data.result"));
-        assertTrue(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(bcsExerciseSurveyJournal,
-                "exercisesurvey103_data.result"));
-        assertTrue(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(bcsExerciseSurveyJournal,
-                "exercisesurvey104_data.result"));
-        assertTrue(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(bcsExerciseSurveyJournal,
-                "exercisesurvey105_data.result"));
-        assertTrue(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(bcsExerciseSurveyJournal,
-                "exercisesurvey106_data.result"));
-        assertFalse(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(bcsExerciseSurveyJournal,
-                "something-else"));
-
-        UploadSchemaKey other = new UploadSchemaKey.Builder().withStudyId("other-study").withSchemaId("other-schema")
-                .withRevision(1).build();
-        assertFalse(BridgeExporterUtil.shouldConvertFreeformTextToAttachment(other, "other"));
     }
 
     @Test
@@ -348,7 +333,7 @@ public class BridgeExporterUtilTest {
     }
     
     @Test
-    public void serializeSubstudyMemberships() throws Exception {
+    public void serializeSubstudyMemberships() {
         Map<String,String> map = new HashMap<>();
         map.put("subA", "<none>"); // so DDB serialization doesn't drop the entry, use "<none>" as missing key
         map.put("subB", "extB");

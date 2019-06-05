@@ -240,6 +240,26 @@ public class RecordFilterHelperTest {
         assertEquals(counterMap.count("excluded[test-study-test-schema-v5]"), 1);
     }
 
+    @Test
+    public void tableFilterExcludesSchemaless() {
+        // Set up inputs.
+        Metrics metrics = new Metrics();
+        UploadSchemaKey acceptedSchemaKey = new UploadSchemaKey.Builder().withStudyId(TEST_STUDY)
+                .withSchemaId("test-schema").withRevision(3).build();
+        BridgeExporterRequest request = makeRequestBuilder().withTableWhitelist(ImmutableSet.of(acceptedSchemaKey))
+                .build();
+
+        // Schemaless record.
+        Item record = makeRecord(SharingScope.ALL_QUALIFIED_RESEARCHERS, TEST_STUDY);
+
+        // Execute and validate
+        RecordFilterHelper helper = makeRecordFilterHelper(SharingScope.ALL_QUALIFIED_RESEARCHERS);
+        assertTrue(helper.shouldExcludeRecord(metrics, request, record));
+
+        Multiset<String> counterMap = metrics.getCounterMap();
+        assertEquals(counterMap.count("excluded[test-study-default]"), 1);
+    }
+
     private static Item makeRecord(SharingScope recordSharingScope, String studyId) {
         Item record = new Item().with("healthCode", DUMMY_HEALTH_CODE);
 

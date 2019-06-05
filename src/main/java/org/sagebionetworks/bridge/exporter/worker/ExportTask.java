@@ -8,6 +8,8 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
 
+import com.google.common.collect.HashBasedTable;
+import com.google.common.collect.Table;
 import org.joda.time.LocalDate;
 
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
@@ -116,21 +118,11 @@ public class ExportTask {
 
     // TASK STATE MANAGEMENT
 
-    private final Map<String, TsvInfo> appVersionTsvInfoByStudy = new HashMap<>();
     private final Map<UploadSchemaKey, TsvInfo> healthDataTsvInfoBySchema = new HashMap<>();
     private final Set<String> studyIdSet = new HashSet<>();
     private final Queue<ExportSubtaskFuture> subtaskFutureQueue = new LinkedList<>();
     private boolean success = false;
-
-    /** Gets the appVersion table TSV info for the specified study. */
-    public TsvInfo getAppVersionTsvInfoForStudy(String studyId) {
-        return appVersionTsvInfoByStudy.get(studyId);
-    }
-
-    /** Sets the appVersion table TSV info for the specified study into the task. */
-    public void setAppVersionTsvInfoForStudy(String studyId, TsvInfo tsvInfo) {
-        appVersionTsvInfoByStudy.put(studyId, tsvInfo);
-    }
+    private final Table<String, MetaTableType, TsvInfo> tsvInfoByStudyAndType = HashBasedTable.create();
 
     /** Gets the health data table TSV info for the specified schema. */
     public TsvInfo getHealthDataTsvInfoForSchema(UploadSchemaKey schemaKey) {
@@ -170,5 +162,15 @@ public class ExportTask {
     /** Sets the success status on the task. */
     public void setSuccess(boolean success) {
         this.success = success;
+    }
+
+    /** Gets the TSV info for the specified study and meta-table type. */
+    public TsvInfo getTsvInfoForStudyAndType(String studyId, MetaTableType type) {
+        return tsvInfoByStudyAndType.get(studyId, type);
+    }
+
+    /** Sets the TSV info for the specified study and meta-table type into the task. */
+    public void setTsvInfoForStudyAndType(String studyId, MetaTableType type, TsvInfo tsvInfo) {
+        tsvInfoByStudyAndType.put(studyId, type, tsvInfo);
     }
 }

@@ -57,7 +57,7 @@ public class IosSurveyExportHandlerTest {
     IosSurveyExportHandler handler;
 
     @BeforeMethod
-    public void setup() throws Exception {
+    public void setup() {
         // set up manager
         ExportWorkerManager manager = spy(new ExportWorkerManager());
         manager.setBridgeHelper(mock(BridgeHelper.class));
@@ -74,7 +74,7 @@ public class IosSurveyExportHandlerTest {
 
         // set up subtask (minus record JSON)
         subtaskBuilder = new ExportSubtask.Builder().withOriginalRecord(DUMMY_RECORD).withParentTask(task)
-                .withSchemaKey(SCHEMA_KEY_PLACEHOLDER);
+                .withSchemaKey(SCHEMA_KEY_PLACEHOLDER).withStudyId(TEST_STUDY_ID);
     }
 
     @DataProvider(name = "errorCaseJsonProvider")
@@ -156,6 +156,7 @@ public class IosSurveyExportHandlerTest {
         assertSame(convertedSubtask.getParentTask(), task);
         assertSame(convertedSubtask.getRecordData(), convertedSurveyNode);
         assertEquals(convertedSubtask.getSchemaKey(), SCHEMA_KEY_REAL);
+        assertEquals(convertedSubtask.getStudyId(), TEST_STUDY_ID);
 
         // verify metrics
         Multiset<String> counterMap = subtask.getParentTask().getMetrics().getCounterMap();

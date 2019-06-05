@@ -36,8 +36,9 @@ import org.sagebionetworks.bridge.exporter.dynamo.StudyInfo;
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterNonRetryableException;
 import org.sagebionetworks.bridge.exporter.handler.AppVersionExportHandler;
-import org.sagebionetworks.bridge.exporter.handler.HealthDataExportHandler;
 import org.sagebionetworks.bridge.exporter.handler.IosSurveyExportHandler;
+import org.sagebionetworks.bridge.exporter.handler.SchemaBasedExportHandler;
+import org.sagebionetworks.bridge.exporter.handler.SchemalessExportHandler;
 import org.sagebionetworks.bridge.exporter.helper.BridgeHelper;
 import org.sagebionetworks.bridge.exporter.helper.BridgeHelperTest;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
@@ -285,7 +286,7 @@ public class ExportWorkerManagerTest {
     }
 
     @Test
-    public void addHealthDataSubtask() throws Exception {
+    public void addSchemaBasedHealthDataSubtask() throws Exception {
         // mock executor
         ArgumentCaptor<ExportWorker> workerCaptor = ArgumentCaptor.forClass(ExportWorker.class);
         ExecutorService mockExecutor = mock(ExecutorService.class);
@@ -330,7 +331,7 @@ public class ExportWorkerManagerTest {
         assertSame(workerList.get(0).getSubtask().getParentTask(), mockTask);
         assertSame(workerList.get(0).getSubtask().getOriginalRecord(), record1);
 
-        HealthDataExportHandler healthDataHandler = (HealthDataExportHandler) workerList.get(1).getHandler();
+        SchemaBasedExportHandler healthDataHandler = (SchemaBasedExportHandler) workerList.get(1).getHandler();
         assertSame(workerList.get(1).getSubtask().getParentTask(), mockTask);
         assertSame(workerList.get(1).getSubtask().getOriginalRecord(), record1);
 
@@ -355,6 +356,67 @@ public class ExportWorkerManagerTest {
 
         // verify only one call to DDB
         verify(mockBridgeHelper, times(1)).getSchema(any(), any());
+    }
+
+    @Test
+    public void addSchemalessHealthDataSubtask() throws Exception {
+        // Mock executor.
+        ArgumentCaptor<ExportWorker> workerCaptor = ArgumentCaptor.forClass(ExportWorker.class);
+        ExecutorService mockExecutor = mock(ExecutorService.class);
+        when(mockExecutor.submit(workerCaptor.capture())).thenAnswer(invocation -> mock(Future.class));
+
+        // Mock task. We only need metrics.
+        ExportTask mockTask = mock(ExportTask.class);
+        when(mockTask.getMetrics()).thenReturn(new Metrics());
+
+        // set up worker manager
+        ExportWorkerManager manager = new ExportWorkerManager();
+        manager.setExecutor(mockExecutor);
+
+        // Execute twice. Second time will hit the cache for the app version and health data handlers.
+        Item record1 = new Item().withString("studyId", TEST_STUDY_ID)
+                .withString("data", DUMMY_JSON_TEXT);
+        manager.addSubtaskForRecord(mockTask, record1);
+        Item record2 = new Item().withString("studyId", TEST_STUDY_ID)
+                .withString("data", DUMMY_JSON_TEXT);
+        manager.addSubtaskForRecord(mockTask, record2);
+
+        // Validate subtasks submitted to executor (4, 2 for app version, 2 for health data).
+        verify(mockExecutor, times(4)).submit(any(ExportWorker.class));
+
+        List<ExportWorker> workerList = workerCaptor.getAllValues();
+        assertEquals(workerList.size(), 4);
+
+        // We assume the order is record1 app version, record1 health data, record2 app version, record2 health data.
+        // The relative order of app version and health data is probably too tightly coupled to the implementation.
+        // However, it's much easier to test if we assume they're in that order.
+
+        // Again, we only need to validate a few important fields in the subtasks.
+        AppVersionExportHandler appVersionHandler = (AppVersionExportHandler) workerList.get(0).getHandler();
+        assertSame(workerList.get(0).getSubtask().getParentTask(), mockTask);
+        assertSame(workerList.get(0).getSubtask().getOriginalRecord(), record1);
+
+        SchemalessExportHandler healthDataHandler = (SchemalessExportHandler) workerList.get(1).getHandler();
+        assertSame(workerList.get(1).getSubtask().getParentTask(), mockTask);
+        assertSame(workerList.get(1).getSubtask().getOriginalRecord(), record1);
+
+        assertSame(workerList.get(2).getHandler(), appVersionHandler);
+        assertSame(workerList.get(2).getSubtask().getParentTask(), mockTask);
+        assertSame(workerList.get(2).getSubtask().getOriginalRecord(), record2);
+
+        assertSame(workerList.get(3).getHandler(), healthDataHandler);
+        assertSame(workerList.get(3).getSubtask().getParentTask(), mockTask);
+        assertSame(workerList.get(3).getSubtask().getOriginalRecord(), record2);
+
+        // Validate handlers.
+        assertSame(appVersionHandler.getManager(), manager);
+        assertEquals(appVersionHandler.getStudyId(), TEST_STUDY_ID);
+
+        assertSame(healthDataHandler.getManager(), manager);
+        assertEquals(healthDataHandler.getStudyId(), TEST_STUDY_ID);
+
+        // Verify task queue.
+        verify(mockTask, times(4)).addSubtaskFuture(any());
     }
 
     @DataProvider(name = "isSynapseDownProvider")

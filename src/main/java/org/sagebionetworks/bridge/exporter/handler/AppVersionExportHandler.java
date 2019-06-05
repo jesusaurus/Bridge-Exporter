@@ -11,8 +11,10 @@ import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 
 import org.sagebionetworks.bridge.exporter.synapse.SynapseHelper;
+import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
 import org.sagebionetworks.bridge.exporter.worker.ExportSubtask;
 import org.sagebionetworks.bridge.exporter.worker.ExportTask;
+import org.sagebionetworks.bridge.exporter.worker.MetaTableType;
 import org.sagebionetworks.bridge.exporter.worker.TsvInfo;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
@@ -61,12 +63,12 @@ public class AppVersionExportHandler extends SynapseExportHandler {
 
     @Override
     protected TsvInfo getTsvInfoForTask(ExportTask task) {
-        return task.getAppVersionTsvInfoForStudy(getStudyId());
+        return task.getTsvInfoForStudyAndType(getStudyId(), MetaTableType.APP_VERSION);
     }
 
     @Override
     protected void setTsvInfoForTask(ExportTask task, TsvInfo tsvInfo) {
-        task.setAppVersionTsvInfoForStudy(getStudyId(), tsvInfo);
+        task.setTsvInfoForStudyAndType(getStudyId(), MetaTableType.APP_VERSION, tsvInfo);
     }
 
     @Override
@@ -84,7 +86,9 @@ public class AppVersionExportHandler extends SynapseExportHandler {
         // check isStudyIdExcludedInExport to see how we should format the originalTable value
         UploadSchemaKey schemaKey = subtask.getSchemaKey();
         String originalTable;
-        if (getManager().isStudyIdExcludedInExportForStudy(schemaKey.getStudyId())) {
+        if (schemaKey == null) {
+            originalTable = BridgeExporterUtil.DEFAULT_TABLE_NAME;
+        } else if (getManager().isStudyIdExcludedInExportForStudy(schemaKey.getStudyId())) {
             originalTable = schemaKey.getSchemaId() + "-v" + schemaKey.getRevision();
         } else {
             originalTable = schemaKey.toString();

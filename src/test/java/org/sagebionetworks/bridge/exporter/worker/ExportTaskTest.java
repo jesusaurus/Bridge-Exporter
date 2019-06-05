@@ -69,19 +69,29 @@ public class ExportTaskTest {
     }
 
     @Test
-    public void appVersionTsvs() {
+    public void metaTableTsvs() {
         ExportTask task = createTask();
 
         // set values
-        TsvInfo fooTsvInfo = createTsvInfo();
-        task.setAppVersionTsvInfoForStudy("foo-study", fooTsvInfo);
+        TsvInfo fooAppVersionTsvInfo = createTsvInfo();
+        TsvInfo fooDefaultTsvInfo = createTsvInfo();
+        TsvInfo barAppVersionTsvInfo = createTsvInfo();
+        TsvInfo barDefaultTsvInfo = createTsvInfo();
 
-        TsvInfo barTsvInfo = createTsvInfo();
-        task.setAppVersionTsvInfoForStudy("bar-study", barTsvInfo);
+        task.setTsvInfoForStudyAndType("foo-study", MetaTableType.APP_VERSION, fooAppVersionTsvInfo);
+        task.setTsvInfoForStudyAndType("foo-study", MetaTableType.DEFAULT, fooDefaultTsvInfo);
+        task.setTsvInfoForStudyAndType("bar-study", MetaTableType.APP_VERSION, barAppVersionTsvInfo);
+        task.setTsvInfoForStudyAndType("bar-study", MetaTableType.DEFAULT, barDefaultTsvInfo);
 
         // get values back and validate
-        assertSame(task.getAppVersionTsvInfoForStudy("foo-study"), fooTsvInfo);
-        assertSame(task.getAppVersionTsvInfoForStudy("bar-study"), barTsvInfo);
+        assertSame(task.getTsvInfoForStudyAndType("foo-study", MetaTableType.APP_VERSION),
+                fooAppVersionTsvInfo);
+        assertSame(task.getTsvInfoForStudyAndType("foo-study", MetaTableType.DEFAULT),
+                fooDefaultTsvInfo);
+        assertSame(task.getTsvInfoForStudyAndType("bar-study", MetaTableType.APP_VERSION),
+                barAppVersionTsvInfo);
+        assertSame(task.getTsvInfoForStudyAndType("bar-study", MetaTableType.DEFAULT),
+                barDefaultTsvInfo);
     }
 
     @Test
