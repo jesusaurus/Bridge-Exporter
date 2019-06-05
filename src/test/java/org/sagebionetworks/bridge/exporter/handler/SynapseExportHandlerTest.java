@@ -41,7 +41,6 @@ import org.testng.annotations.Test;
 import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.exporter.helper.BridgeHelper;
 import org.sagebionetworks.bridge.exporter.helper.BridgeHelperTest;
-import org.sagebionetworks.bridge.exporter.helper.ExportHelper;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
 import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
@@ -94,23 +93,19 @@ public class SynapseExportHandlerTest {
     public static final BridgeExporterRequest DUMMY_REQUEST = new BridgeExporterRequest.Builder()
             .withEndDateTime(DUMMY_REQUEST_DATE_TIME).withUseLastExportTime(true).build();
 
-    // Constants to make a schema. In most tests, schema doesn't matter. However, in one particular test, namely the
-    // test for our old hack to convert freeform text to attachments, we key off specific studies and schemas. This
-    // isn't ideal for a test, but we need to test it.
-    public static final String TEST_STUDY_ID = "breastcancer";
-    public static final String TEST_SCHEMA_ID = "BreastCancer-DailyJournal";
+    // Constants to make a schema.
+    public static final String TEST_STUDY_ID = "my-study";
+    public static final String TEST_SCHEMA_ID = "my-schema";
     public static final int TEST_SCHEMA_REV = 1;
     public static final UploadSchemaKey DUMMY_SCHEMA_KEY = new UploadSchemaKey.Builder().withStudyId(TEST_STUDY_ID)
             .withSchemaId(TEST_SCHEMA_ID).withRevision(TEST_SCHEMA_REV).build();
 
     // Misc test constants. Some are shared with other tests.
-    private static final String DUMMY_ATTACHMENT_ID = "dummy-attachment-id";
     public static final String DUMMY_DDB_PREFIX = "unittest-exporter-";
     private static final String DUMMY_EXTERNAL_ID = "unsanitized external id";
-    private static final String DUMMY_FILEHANDLE_ID = "dummy-filehandle-id";
-    private static final String DUMMY_FREEFORM_TEXT_CONTENT = "dummy freeform text content";
     public static final Study DUMMY_STUDY = new Study().identifier(TEST_STUDY_ID).uploadMetadataFieldDefinitions(null);
-    private static final String FREEFORM_FIELD_NAME = "DailyJournalStep103_data.content";
+    public static final String RAW_DATA_ATTACHMENT_ID = "my-raw.zip";
+    public static final String RAW_DATA_FILEHANDLE_ID = "my-raw-data-filehandle";
     public static final long TEST_SYNAPSE_DATA_ACCESS_TEAM_ID = 1337;
     public static final int TEST_SYNAPSE_PRINCIPAL_ID = 123456;
     public static final String TEST_SYNAPSE_PROJECT_ID = "test-synapse-project-id";
@@ -181,6 +176,13 @@ public class SynapseExportHandlerTest {
         columnModelList.addAll(MOCK_COLUMN_LIST);
         columnModelList.addAll(handler.getSynapseTableColumnList(task));
         when(mockSynapseHelper.getColumnModelsForTableWithRetry(TEST_SYNAPSE_TABLE_ID)).thenReturn(columnModelList);
+
+        // mock serializeToSynapseType() - We actually call through to the real method, but we mock out the underlying
+        // uploadFromS3ToSynapseFileHandle() to avoid hitting real back-ends.
+        when(mockSynapseHelper.serializeToSynapseType(any(), any(), any(), any(), any(), any(), any()))
+                .thenCallRealMethod();
+        when(mockSynapseHelper.uploadFromS3ToSynapseFileHandle(TEST_SYNAPSE_PROJECT_ID, RAW_DATA_ATTACHMENT_ID))
+                .thenReturn(RAW_DATA_FILEHANDLE_ID);
 
         // spy StudyInfo getters
         // These calls through to a bunch of stuff (which we test in ExportWorkerManagerTest), so to simplify our test,
@@ -315,23 +317,25 @@ public class SynapseExportHandlerTest {
     public void appVersionExportHandlerTest() throws Exception {
         SynapseExportHandler handler = new AppVersionExportHandler();
         setup(handler);
-        mockSynapseHelperUploadTsv(1);
+        mockSynapseHelperUploadTsv(2);
 
         // execute
         handler.handle(makeSubtask(task, "{}"));
+        handler.handle(makeSubtaskWithSchema(task, null, "{}"));
         handler.uploadToSynapseForTask(task);
 
         // validate tsv file
         List<String> tsvLineList = TestUtil.bytesToLines(tsvBytes);
-        assertEquals(tsvLineList.size(), 2);
+        assertEquals(tsvLineList.size(), 3);
         validateTsvHeaders(tsvLineList.get(0), "originalTable");
         validateTsvRow(tsvLineList.get(1), DUMMY_SCHEMA_KEY.toString());
+        validateTsvRow(tsvLineList.get(2), BridgeExporterUtil.DEFAULT_TABLE_NAME);
 
         // validate metrics
         Metrics metrics = task.getMetrics();
 
         Multiset<String> counterMap = metrics.getCounterMap();
-        assertEquals(counterMap.count(handler.getDdbTableKeyValue() + ".lineCount"), 1);
+        assertEquals(counterMap.count(handler.getDdbTableKeyValue() + ".lineCount"), 2);
         assertEquals(counterMap.count(handler.getDdbTableKeyValue() + ".errorCount"), 0);
 
         SetMultimap<String, String> keyValuesMap = metrics.getKeyValuesMap();
@@ -340,7 +344,7 @@ public class SynapseExportHandlerTest {
 
         // validate tsvInfo
         TsvInfo tsvInfo = handler.getTsvInfoForTask(task);
-        assertEquals(tsvInfo.getLineCount(), 1);
+        assertEquals(tsvInfo.getLineCount(), 2);
 
         postValidation();
     }
@@ -368,13 +372,11 @@ public class SynapseExportHandlerTest {
     }
 
     @Test
-    public void healthDataExportHandlerTest() throws Exception {
+    public void schemaBasedExportHandlerTest() throws Exception {
         // We don't need to exhaustively test all column types, as a lot of it is baked into
         // SynapseHelper.BRIDGE_TYPE_TO_SYNAPSE_TYPE. We just need to test multi_choice, timestamp,
         // int (non-string), short string, long string (large text aka blob), freeform text -> attachment,
         // large text attachments
-        // Since we want to test that our hack works, we'll need to use the breastcancer-BreastCancer-DailyJournal-v1
-        // schema, field DailyJournalStep103_data.content
         UploadSchema testSchema = BridgeHelperTest.simpleSchemaBuilder().studyId(TEST_STUDY_ID)
                 .schemaId(TEST_SCHEMA_ID).revision((long) TEST_SCHEMA_REV).fieldDefinitions(ImmutableList.of(
                         new UploadFieldDefinition().name("foo").type(UploadFieldType.STRING).maxLength(20),
@@ -388,32 +390,17 @@ public class SynapseExportHandlerTest {
                         new UploadFieldDefinition().name("delicious").type(UploadFieldType.MULTI_CHOICE)
                                 .multiChoiceAnswerList(ImmutableList.of("Yes", "No")).allowOtherChoices(true),
                         new UploadFieldDefinition().name("my-large-text-attachment")
-                                .type(UploadFieldType.LARGE_TEXT_ATTACHMENT),
-                        new UploadFieldDefinition().name(FREEFORM_FIELD_NAME).type(UploadFieldType.STRING)));
+                                .type(UploadFieldType.LARGE_TEXT_ATTACHMENT)));
         UploadSchemaKey testSchemaKey = BridgeExporterUtil.getSchemaKeyFromSchema(testSchema);
 
         // Set up handler and test. setSchema() needs to be called before setup, since a lot of the stuff in the
         // handler depends on it, even while we're mocking stuff.
-        HealthDataExportHandler handler = new HealthDataExportHandler();
+        SchemaBasedExportHandler handler = new SchemaBasedExportHandler();
         handler.setSchemaKey(testSchemaKey);
         setupWithSchema(handler, testSchemaKey, testSchema);
         mockSynapseHelperUploadTsv(1);
 
-        // mock export helper
-        ExportHelper mockExportHelper = mock(ExportHelper.class);
-        when(mockExportHelper.uploadFreeformTextAsAttachment(DUMMY_RECORD_ID, DUMMY_FREEFORM_TEXT_CONTENT))
-                .thenReturn(DUMMY_ATTACHMENT_ID);
-        handler.getManager().setExportHelper(mockExportHelper);
-
-        // mock serializeToSynapseType() - We actually call through to the real method, but we mock out the underlying
-        // uploadFromS3ToSynapseFileHandle() to avoid hitting real back-ends.
-        when(mockSynapseHelper.serializeToSynapseType(any(), any(), any(), any(), any(), any(), any()))
-                .thenCallRealMethod();
-
-        when(mockSynapseHelper.uploadFromS3ToSynapseFileHandle(TEST_SYNAPSE_PROJECT_ID, DUMMY_ATTACHMENT_ID))
-                .thenReturn(DUMMY_FILEHANDLE_ID);
-
-        // Similarly for downloadLargeTextAttachment()
+        // Mock downloadLargeTextAttachment()
         when(mockSynapseHelper.downloadLargeTextAttachment("my-large-text-attachment-id")).thenReturn(
                 "This is my large text attachment");
 
@@ -428,8 +415,7 @@ public class SynapseExportHandlerTest {
                 "   \"submitTime\":\"" + submitTimeStr + "\",\n" +
                 "   \"sports\":[\"fencing\", \"running\"],\n" +
                 "   \"delicious\":[\"Yes\", \"No\", \"Maybe\"],\n" +
-                "   \"my-large-text-attachment\":\"my-large-text-attachment-id\",\n" +
-                "   \"" + FREEFORM_FIELD_NAME + "\":\"" + DUMMY_FREEFORM_TEXT_CONTENT + "\"\n" +
+                "   \"my-large-text-attachment\":\"my-large-text-attachment-id\"\n" +
                 "}";
         ExportSubtask subtask = makeSubtask(task, recordJsonText);
 
@@ -442,11 +428,56 @@ public class SynapseExportHandlerTest {
         assertEquals(tsvLineList.size(), 2);
         validateTsvHeaders(tsvLineList.get(0), "foo", "foooo", "unbounded-foo", "bar", "submitTime",
                 "submitTime.timezone", "sports.fencing", "sports.football", "sports.running", "sports.swimming",
-                "delicious.Yes", "delicious.No", "delicious.other", "my-large-text-attachment", FREEFORM_FIELD_NAME,
+                "delicious.Yes", "delicious.No", "delicious.other", "my-large-text-attachment",
                 HealthDataExportHandler.COLUMN_NAME_RAW_DATA);
         validateTsvRow(tsvLineList.get(1), "This is a string.", "Example (not) long string",
                 "Potentially unbounded string", "42", String.valueOf(submitTimeMillis), "+0900", "true", "false",
-                "true", "false", "true", "true", "Maybe", "This is my large text attachment", DUMMY_FILEHANDLE_ID, null);
+                "true", "false", "true", "true", "Maybe", "This is my large text attachment", RAW_DATA_FILEHANDLE_ID);
+
+        // validate metrics
+        Multiset<String> counterMap = task.getMetrics().getCounterMap();
+        assertEquals(counterMap.count(handler.getDdbTableKeyValue() + ".lineCount"), 1);
+        assertEquals(counterMap.count(handler.getDdbTableKeyValue() + ".errorCount"), 0);
+
+        // validate tsvInfo
+        TsvInfo tsvInfo = handler.getTsvInfoForTask(task);
+        assertEquals(tsvInfo.getLineCount(), 1);
+        assertNotNull(tsvInfo.getRecordIds());
+        List<String> recordIds = tsvInfo.getRecordIds();
+        assertEquals(recordIds.size(), 1);
+        for (String recordId : recordIds) {
+            assertEquals(recordId, DUMMY_RECORD_ID);
+        }
+
+        verify(handler.getManager().getBridgeHelper()).updateRecordExporterStatus(any(), any());
+
+        postValidation();
+    }
+
+    @Test
+    public void schemalessExportHandlerTest() throws Exception {
+        // Set up handler and test.
+        SchemalessExportHandler handler = new SchemalessExportHandler();
+        setup(handler);
+        mockSynapseHelperUploadTsv(1);
+
+        // Mock downloadLargeTextAttachment()
+        when(mockSynapseHelper.downloadLargeTextAttachment("my-large-text-attachment-id")).thenReturn(
+                "This is my large text attachment");
+
+        // make subtasks
+        String recordJsonText = "{\"dummy-key\":\"dummy-value\"}";
+        ExportSubtask subtask = SynapseExportHandlerTest.makeSubtaskWithSchema(task, null, recordJsonText);
+
+        // execute
+        handler.handle(subtask);
+        handler.uploadToSynapseForTask(task);
+
+        // validate tsv file
+        List<String> tsvLineList = TestUtil.bytesToLines(tsvBytes);
+        assertEquals(tsvLineList.size(), 2);
+        validateTsvHeaders(tsvLineList.get(0), HealthDataExportHandler.COLUMN_NAME_RAW_DATA);
+        validateTsvRow(tsvLineList.get(1), RAW_DATA_FILEHANDLE_ID);
 
         // validate metrics
         Multiset<String> counterMap = task.getMetrics().getCounterMap();
@@ -496,9 +527,14 @@ public class SynapseExportHandlerTest {
     }
 
     public static ExportSubtask makeSubtask(ExportTask parentTask, String recordJsonText) throws IOException {
+        return makeSubtaskWithSchema(parentTask, DUMMY_SCHEMA_KEY, recordJsonText);
+    }
+
+    public static ExportSubtask makeSubtaskWithSchema(ExportTask parentTask, UploadSchemaKey schemaKey,
+            String recordJsonText) throws IOException {
         JsonNode recordJsonNode = DefaultObjectMapper.INSTANCE.readTree(recordJsonText);
         return new ExportSubtask.Builder().withOriginalRecord(makeDdbRecord()).withParentTask(parentTask)
-                .withRecordData(recordJsonNode).withSchemaKey(DUMMY_SCHEMA_KEY).build();
+                .withRecordData(recordJsonNode).withSchemaKey(schemaKey).withStudyId(TEST_STUDY_ID).build();
     }
 
     public static Item makeDdbRecord() {
@@ -507,7 +543,8 @@ public class SynapseExportHandlerTest {
                 .withStringSet("userDataGroups", DUMMY_DATA_GROUPS)
                 .withString("userExternalId", "<p>unsanitized external id</p>")
                 .withMap("userSubstudyMemberships", ImmutableMap.of("subA", "extA", "subB", ""))
-                .withString("userSharingScope", DUMMY_USER_SHARING_SCOPE);
+                .withString("userSharingScope", DUMMY_USER_SHARING_SCOPE)
+                .withString(HealthDataExportHandler.DDB_KEY_RAW_DATA_ATTACHMENT_ID, RAW_DATA_ATTACHMENT_ID);
     }
 
     public static void validateTsvHeaders(String line, String... extraColumnNameVarargs) {

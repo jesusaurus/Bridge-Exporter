@@ -2,6 +2,7 @@ package org.sagebionetworks.bridge.exporter.worker;
 
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
 
 import java.io.File;
@@ -28,48 +29,70 @@ public class ExportSubtaskTest {
     private static final JsonNode DUMMY_RECORD_DATA = DefaultObjectMapper.INSTANCE.createObjectNode();
     private static final UploadSchemaKey DUMMY_SCHEMA_KEY = new UploadSchemaKey.Builder().withStudyId("test-study")
             .withSchemaId("test-schema").withRevision(17).build();
+    private static final String STUDY_ID = "my-study";
+
+    private static final String DUMMY_RECORD_ID = "dummy-record";
+    private static final Item ORIGINAL_RECORD = new Item().withString(ExportSubtask.KEY_RECORD_ID, DUMMY_RECORD_ID);
 
     @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp =
             "originalRecord must be non-null")
     public void nullOriginalRecord() {
-        new ExportSubtask.Builder().withParentTask(DUMMY_PARENT_TASK).withRecordData(DUMMY_RECORD_DATA)
-                .withSchemaKey(DUMMY_SCHEMA_KEY).build();
+        makeValidSubtaskBuilder().withOriginalRecord(null).build();
     }
 
     @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp =
             "parentTask must be non-null")
     public void nullParentTask() {
-        new ExportSubtask.Builder().withOriginalRecord(new Item()).withRecordData(DUMMY_RECORD_DATA)
-                .withSchemaKey(DUMMY_SCHEMA_KEY).build();
+        makeValidSubtaskBuilder().withParentTask(null).build();
     }
 
     @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp =
             "recordData must be non-null")
     public void nullRecordData() {
-        new ExportSubtask.Builder().withOriginalRecord(new Item()).withParentTask(DUMMY_PARENT_TASK)
-                .withSchemaKey(DUMMY_SCHEMA_KEY).build();
+        makeValidSubtaskBuilder().withRecordData(null).build();
     }
 
     @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp =
-            "schemaKey must be non-null")
-    public void nullSchemaKey() {
-        new ExportSubtask.Builder().withOriginalRecord(new Item()).withParentTask(DUMMY_PARENT_TASK)
-                .withRecordData(DUMMY_RECORD_DATA).build();
+            "studyId must be specified")
+    public void nullStudyId() {
+        makeValidSubtaskBuilder().withStudyId(null).build();
+    }
+
+    @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp =
+            "studyId must be specified")
+    public void emptyStudyId() {
+        makeValidSubtaskBuilder().withStudyId("").build();
+    }
+
+    @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp =
+            "studyId must be specified")
+    public void blankStudyId() {
+        makeValidSubtaskBuilder().withStudyId("   ").build();
     }
 
     @Test
     public void happyCase() {
         // build
-        Item originalRecord = new Item().withString(ExportSubtask.KEY_RECORD_ID, "dummy-id");
-        ExportSubtask subtask = new ExportSubtask.Builder().withOriginalRecord(originalRecord)
-                .withParentTask(DUMMY_PARENT_TASK).withRecordData(DUMMY_RECORD_DATA).withSchemaKey(DUMMY_SCHEMA_KEY)
-                .build();
+        ExportSubtask subtask = makeValidSubtaskBuilder().build();
 
         // validate
-        assertSame(subtask.getOriginalRecord(), originalRecord);
+        assertSame(subtask.getOriginalRecord(), ORIGINAL_RECORD);
         assertSame(subtask.getParentTask(), DUMMY_PARENT_TASK);
         assertSame(subtask.getRecordData(), DUMMY_RECORD_DATA);
-        assertEquals(subtask.getRecordId(), "dummy-id");
+        assertEquals(subtask.getRecordId(), DUMMY_RECORD_ID);
+        assertNull(subtask.getSchemaKey());
+        assertEquals(subtask.getStudyId(), STUDY_ID);
+    }
+
+    @Test
+    public void withSchemaKey() {
+        // Just validate schema key.
+        ExportSubtask subtask = makeValidSubtaskBuilder().withSchemaKey(DUMMY_SCHEMA_KEY).build();
         assertEquals(subtask.getSchemaKey(), DUMMY_SCHEMA_KEY);
+    }
+
+    private static ExportSubtask.Builder makeValidSubtaskBuilder() {
+        return new ExportSubtask.Builder().withOriginalRecord(ORIGINAL_RECORD).withParentTask(DUMMY_PARENT_TASK)
+                .withRecordData(DUMMY_RECORD_DATA).withStudyId(STUDY_ID);
     }
 }

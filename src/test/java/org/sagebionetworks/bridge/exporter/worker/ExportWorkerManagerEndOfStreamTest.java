@@ -43,8 +43,7 @@ import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterException;
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterTsvException;
 import org.sagebionetworks.bridge.exporter.exceptions.RestartBridgeExporterException;
-import org.sagebionetworks.bridge.exporter.handler.AppVersionExportHandler;
-import org.sagebionetworks.bridge.exporter.handler.HealthDataExportHandler;
+import org.sagebionetworks.bridge.exporter.handler.SchemaBasedExportHandler;
 import org.sagebionetworks.bridge.exporter.handler.SynapseExportHandler;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterRequest;
@@ -72,10 +71,10 @@ public class ExportWorkerManagerEndOfStreamTest {
     private static final String DUMMY_SQS_QUEUE_URL = "dummy-sqs-url";
 
     private ExportWorkerManager manager;
-    private List<AppVersionExportHandler> mockAppVersionHandlerList;
     private ExecutorService mockExecutor;
     private List<Future<?>> mockFutureList;
-    private List<HealthDataExportHandler> mockHealthDataHandlerList;
+    private List<SchemaBasedExportHandler> mockHealthDataHandlerList;
+    private List<SynapseExportHandler> mockMetaTableHandlerList;
     private SynapseStatusTableHelper mockSynapseStatusTableHelper;
     private S3Helper mockS3Helper;
     private SqsHelper mockSqsHelper;
@@ -93,9 +92,9 @@ public class ExportWorkerManagerEndOfStreamTest {
     @BeforeMethod
     public void setup() {
         // Reset future and handler lists.
-        mockAppVersionHandlerList = new ArrayList<>();
         mockFutureList = new ArrayList<>();
         mockHealthDataHandlerList = new ArrayList<>();
+        mockMetaTableHandlerList = new ArrayList<>();
 
         // Mock config - Set progress report interval to 2 to test branch coverage
         Config mockConfig = mock(Config.class);
@@ -143,7 +142,7 @@ public class ExportWorkerManagerEndOfStreamTest {
     private void mockSchemaIdExceptions(Map<String, Exception> schemaIdToException) throws Exception {
         // Similarly, spy createHealthDataHandler(). This injects failures into the upload TSV step.
         doAnswer(invocation -> {
-            HealthDataExportHandler mockHandler = mock(HealthDataExportHandler.class);
+            SchemaBasedExportHandler mockHandler = mock(SchemaBasedExportHandler.class);
 
             UploadSchemaKey schemaKey = invocation.getArgumentAt(1, UploadSchemaKey.class);
             Exception ex = schemaIdToException.get(schemaKey.getSchemaId());
@@ -157,10 +156,10 @@ public class ExportWorkerManagerEndOfStreamTest {
     }
 
     private void mockStudyIdExceptions(Map<String, Exception> studyIdToException) throws Exception {
-        // Similarly, spy createAppVersionHandler(). This injects failures into the upload TSV step of the appVersion
-        // table (keyed by study).
+        // Similarly, spy createHandlerForStudyAndType(). This injects failures into the upload TSV step of the
+        // both the appVersion table and the default (schemaless) table (keyed by study).
         doAnswer(invocation -> {
-            AppVersionExportHandler mockHandler = mock(AppVersionExportHandler.class);
+            SynapseExportHandler mockHandler = mock(SynapseExportHandler.class);
 
             String studyId = invocation.getArgumentAt(0, String.class);
             Exception ex = studyIdToException.get(studyId);
@@ -168,9 +167,9 @@ public class ExportWorkerManagerEndOfStreamTest {
                 doThrow(ex).when(mockHandler).uploadToSynapseForTask(any());
             }
 
-            mockAppVersionHandlerList.add(mockHandler);
+            mockMetaTableHandlerList.add(mockHandler);
             return mockHandler;
-        }).when(manager).createAppVersionHandler(any());
+        }).when(manager).createHandlerForStudyAndType(any(), any());
 
         // Similarly, mock SynapseStatusTableHelper to inject failures into the study status table.
         doAnswer(invocation -> {
@@ -263,8 +262,8 @@ public class ExportWorkerManagerEndOfStreamTest {
             verify(oneMockHandler).uploadToSynapseForTask(task);
         }
 
-        assertEquals(mockAppVersionHandlerList.size(), 6);
-        for (SynapseExportHandler oneMockHandler : mockAppVersionHandlerList) {
+        assertEquals(mockMetaTableHandlerList.size(), 6);
+        for (SynapseExportHandler oneMockHandler : mockMetaTableHandlerList) {
             verify(oneMockHandler).uploadToSynapseForTask(task);
         }
 
@@ -328,6 +327,49 @@ public class ExportWorkerManagerEndOfStreamTest {
         assertEquals(redriveTableERequest.getStudyWhitelist(), ImmutableSet.of("study-E"));
         assertEquals(redriveTableERequest.getTableWhitelist(), ImmutableSet.of(new UploadSchemaKey.Builder()
                 .withStudyId("study-E").withSchemaId("schema-E").withRevision(1).build()));
+    }
+
+    @Test
+    public void schemalessRecords() throws Exception {
+        // Simple test case.
+        Item record = new Item().withString("studyId", TEST_STUDY)
+                .withString("data", DUMMY_JSON_TEXT).withString("id", "my-record");
+
+        // Mock no exceptions - This is done to mock our dependencies.
+        mockRecordIdExceptions(ImmutableMap.of());
+        mockSchemaIdExceptions(ImmutableMap.of());
+        mockStudyIdExceptions(ImmutableMap.of());
+
+        // Create task. We'll want to use a real task here, since it tracks state that we need to test.
+        // Sharing Mode is mainly there to make sure we're copying over request params to our redrives.
+        BridgeExporterRequest request = new BridgeExporterRequest.Builder().withStartDateTime(START_DATE_TIME)
+                .withEndDateTime(END_DATE_TIME).withSharingMode(BridgeExporterSharingMode.PUBLIC_ONLY)
+                .withTag("test tag").withUseLastExportTime(false).build();
+        ExportTask task = new ExportTask.Builder().withExporterDate(LocalDate.parse("2015-12-09"))
+                .withMetrics(new Metrics()).withRequest(request).withTmpDir(mock(File.class)).build();
+
+        // Execute test.
+        manager.addSubtaskForRecord(task, record);
+        manager.endOfStream(task, START_DATES_BY_STUDY);
+
+        // Verify futures processed. (1 record, doubled for the appVersion handlers.)
+        assertEquals(mockFutureList.size(), 2);
+        for (Future<?> oneMockFuture : mockFutureList) {
+            verify(oneMockFuture).get();
+        }
+
+        // Verify handlers called to uploaded TSVs. No health data handlers, but 2 meta table handlers (schemaless and
+        // appVersion).
+        assertTrue(mockHealthDataHandlerList.isEmpty());
+
+        assertEquals(mockMetaTableHandlerList.size(), 2);
+        for (SynapseExportHandler oneMockHandler : mockMetaTableHandlerList) {
+            verify(oneMockHandler).uploadToSynapseForTask(task);
+        }
+
+        // no redrives
+        verify(mockS3Helper, never()).writeLinesToS3(any(), any(), any());
+        verify(mockSqsHelper, never()).sendMessageAsJson(any(), any(), any());
     }
 
     @Test
@@ -577,8 +619,8 @@ public class ExportWorkerManagerEndOfStreamTest {
         assertEquals(mockHealthDataHandlerList.size(), 1);
         verify(mockHealthDataHandlerList.get(0), never()).uploadToSynapseForTask(any());
 
-        assertEquals(mockAppVersionHandlerList.size(), 1);
-        verify(mockAppVersionHandlerList.get(0), never()).uploadToSynapseForTask(any());
+        assertEquals(mockMetaTableHandlerList.size(), 1);
+        verify(mockMetaTableHandlerList.get(0), never()).uploadToSynapseForTask(any());
 
         // status tables are never written
         verify(mockSynapseStatusTableHelper, never()).initTableAndWriteStatus(any(), any());
@@ -637,8 +679,8 @@ public class ExportWorkerManagerEndOfStreamTest {
         assertEquals(mockHealthDataHandlerList.size(), 2);
         verify(mockHealthDataHandlerList.get(0)).uploadToSynapseForTask(task);
 
-        assertEquals(mockAppVersionHandlerList.size(), 1);
-        verify(mockAppVersionHandlerList.get(0), never()).uploadToSynapseForTask(any());
+        assertEquals(mockMetaTableHandlerList.size(), 1);
+        verify(mockMetaTableHandlerList.get(0), never()).uploadToSynapseForTask(any());
 
         // status tables are never written
         verify(mockSynapseStatusTableHelper, never()).initTableAndWriteStatus(any(), any());

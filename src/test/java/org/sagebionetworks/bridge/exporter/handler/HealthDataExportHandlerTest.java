@@ -50,6 +50,8 @@ import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
 import org.sagebionetworks.bridge.rest.model.UploadFieldType;
 import org.sagebionetworks.bridge.rest.model.UploadSchema;
 
+// This was originally a test of HealthDataExportHandler before it got split into SchemaBased and Schemaless. Most of
+// these tests test core logic still in HealthDataExportHandler, so we'll keep this class as is.
 public class HealthDataExportHandlerTest {
     private static final List<ColumnModel> MOCK_COLUMN_LIST;
 
@@ -73,7 +75,7 @@ public class HealthDataExportHandlerTest {
             .allowOtherChoices(true).name(FIELD_NAME).type(UploadFieldType.MULTI_CHOICE)
             .multiChoiceAnswerList(ImmutableList.of("one", "two"));
 
-    private HealthDataExportHandler handler;
+    private SchemaBasedExportHandler handler;
     private BridgeHelper mockBridgeHelper;
     private InMemoryFileHelper mockFileHelper;
     private SynapseHelper mockSynapseHelper;
@@ -271,7 +273,7 @@ public class HealthDataExportHandlerTest {
     private void setupTest(int numRows, UploadSchema schema, Study study, List<ColumnModel> expectedColumnList)
             throws Exception {
         // Set up handler with the test schema
-        handler = new HealthDataExportHandler();
+        handler = new SchemaBasedExportHandler();
         handler.setSchemaKey(BridgeHelperTest.TEST_SCHEMA_KEY);
         handler.setStudyId(BridgeHelperTest.TEST_STUDY_ID);
 
@@ -378,7 +380,7 @@ public class HealthDataExportHandlerTest {
             ExportSubtask subtask = new ExportSubtask.Builder()
                     .withOriginalRecord(ddbRecord)
                     .withParentTask(task).withRecordData(recordJsonNode).withSchemaKey(BridgeHelperTest.TEST_SCHEMA_KEY)
-                    .build();
+                    .withStudyId(BridgeHelperTest.TEST_STUDY_ID).build();
 
             // execute record 1 - This should have 2 calls to getSchema(), one for TSV initialization, one for the
             // record.
@@ -529,7 +531,8 @@ public class HealthDataExportHandlerTest {
 
         // make subtask
         ExportSubtask subtask = new ExportSubtask.Builder().withOriginalRecord(ddbRecord).withParentTask(task)
-                .withRecordData(recordNode).withSchemaKey(BridgeHelperTest.TEST_SCHEMA_KEY).build();
+                .withRecordData(recordNode).withSchemaKey(BridgeHelperTest.TEST_SCHEMA_KEY)
+                .withStudyId(BridgeHelperTest.TEST_STUDY_ID).build();
 
         // execute and validate
         handler.handle(subtask);
@@ -542,9 +545,11 @@ public class HealthDataExportHandlerTest {
                 "metadata.when.timezone", "metadata.foo", "metadata.bar", "record.foo", "record.baz",
                 HealthDataExportHandler.COLUMN_NAME_RAW_DATA);
         SynapseExportHandlerTest.validateTsvRow(tsvLineList.get(1), "false", "false", "true", "None of the above",
-                String.valueOf(whenMillis), "+0900", "37", "metadata-bar", "foo-value", "baz-value", null);
+                String.valueOf(whenMillis), "+0900", "37", "metadata-bar", "foo-value", "baz-value",
+                SynapseExportHandlerTest.RAW_DATA_FILEHANDLE_ID);
 
-        // This test doesn't upload any raw data.
-        verify(mockSynapseHelper, never()).uploadFromS3ToSynapseFileHandle(any(), any());
+        // Verify calls to upload raw data.
+        verify(mockSynapseHelper, atLeastOnce()).uploadFromS3ToSynapseFileHandle(
+                SynapseExportHandlerTest.TEST_SYNAPSE_PROJECT_ID, RAW_DATA_ATTACHMENT_ID);
     }
 }

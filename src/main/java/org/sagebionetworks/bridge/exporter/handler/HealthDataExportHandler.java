@@ -10,7 +10,6 @@ import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.TextNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
 import com.jcabi.aspects.Cacheable;
@@ -37,11 +36,9 @@ import org.sagebionetworks.bridge.rest.model.Study;
 import org.sagebionetworks.bridge.rest.model.SynapseExporterStatus;
 import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
 import org.sagebionetworks.bridge.rest.model.UploadFieldType;
-import org.sagebionetworks.bridge.rest.model.UploadSchema;
-import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
 /** Synapse export worker for health data tables. */
-public class HealthDataExportHandler extends SynapseExportHandler {
+public abstract class HealthDataExportHandler extends SynapseExportHandler {
     private static final Logger LOG = LoggerFactory.getLogger(HealthDataExportHandler.class);
 
     static final String COLUMN_NAME_RAW_DATA = "rawData";
@@ -59,41 +56,6 @@ public class HealthDataExportHandler extends SynapseExportHandler {
         RAW_DATA_COLUMN = new ColumnModel();
         RAW_DATA_COLUMN.setName(COLUMN_NAME_RAW_DATA);
         RAW_DATA_COLUMN.setColumnType(ColumnType.FILEHANDLEID);
-    }
-
-    private UploadSchemaKey schemaKey;
-
-    /**
-     * Schema that this handler represents. This is used for determining the table keys in DDB as well as determining
-     * the Synapse table columns and corresponding TSV columns.
-     */
-    public UploadSchemaKey getSchemaKey() {
-        return schemaKey;
-    }
-
-    /** @see #getSchemaKey */
-    public final void setSchemaKey(UploadSchemaKey schemaKey) {
-        this.schemaKey = schemaKey;
-    }
-
-    @Override
-    protected String getDdbTableName() {
-        return "SynapseTables";
-    }
-
-    @Override
-    protected String getDdbTableKeyName() {
-        return "schemaKey";
-    }
-
-    @Override
-    protected String getDdbTableKeyValue() {
-        return schemaKey.toString();
-    }
-
-    @Override
-    protected String getSynapseTableName() {
-        return schemaKey.getSchemaId() + "-v" + schemaKey.getRevision();
     }
 
     @Override
@@ -159,20 +121,14 @@ public class HealthDataExportHandler extends SynapseExportHandler {
                 // Special logic for strings.
                 ColumnType synapseType = SynapseHelper.BRIDGE_TYPE_TO_SYNAPSE_TYPE.get(bridgeType);
                 if (synapseType == ColumnType.STRING) {
-                    if (BridgeExporterUtil.shouldConvertFreeformTextToAttachment(schemaKey, oneFieldName)) {
-                        // hack to cover legacy schemas pre-1k char limit on strings. See comments on
-                        // shouldConvertFreeformTextToAttachment() for more details.
-                        oneColumn.setColumnType(ColumnType.FILEHANDLEID);
+                    // Could be String or LargeText, depending on max length.
+                    Boolean isUnboundedText = oneFieldDef.getUnboundedText();
+                    int maxLength = SynapseHelper.getMaxLengthForFieldDef(oneFieldDef);
+                    if ((isUnboundedText != null && isUnboundedText) || maxLength > 1000) {
+                        oneColumn.setColumnType(ColumnType.LARGETEXT);
                     } else {
-                        // Could be String or LargeText, depending on max length.
-                        Boolean isUnboundedText = oneFieldDef.getUnboundedText();
-                        int maxLength = SynapseHelper.getMaxLengthForFieldDef(oneFieldDef);
-                        if ((isUnboundedText != null && isUnboundedText) || maxLength > 1000) {
-                            oneColumn.setColumnType(ColumnType.LARGETEXT);
-                        } else {
-                            oneColumn.setColumnType(ColumnType.STRING);
-                            oneColumn.setMaximumSize((long) maxLength);
-                        }
+                        oneColumn.setColumnType(ColumnType.STRING);
+                        oneColumn.setMaximumSize((long) maxLength);
                     }
                 } else {
                     oneColumn.setColumnType(synapseType);
@@ -189,6 +145,8 @@ public class HealthDataExportHandler extends SynapseExportHandler {
     }
 
     // Helper method that merges the field def list from the study upload metadata and the schema.
+    // Never returns null.
+    @SuppressWarnings("ConstantConditions")
     private static List<UploadFieldDefinition> mergeFieldDefLists(
             List<UploadFieldDefinition> studyUploadMetadataFieldDefList,
             List<UploadFieldDefinition> schemaFieldDefList) {
@@ -235,16 +193,6 @@ public class HealthDataExportHandler extends SynapseExportHandler {
         copy.setMultiChoiceAnswerList(other.getMultiChoiceAnswerList());
         copy.setUnboundedText(other.getUnboundedText());
         return copy;
-    }
-
-    @Override
-    protected TsvInfo getTsvInfoForTask(ExportTask task) {
-        return task.getHealthDataTsvInfoForSchema(schemaKey);
-    }
-
-    @Override
-    protected void setTsvInfoForTask(ExportTask task, TsvInfo tsvInfo) {
-        task.setHealthDataTsvInfoForSchema(schemaKey, tsvInfo);
     }
 
     @Override
@@ -311,20 +259,6 @@ public class HealthDataExportHandler extends SynapseExportHandler {
             UploadFieldType bridgeType = oneFieldDef.getType();
             JsonNode valueNode = jsonNode.get(oneFieldName);
 
-            if (BridgeExporterUtil.shouldConvertFreeformTextToAttachment(schemaKey, oneFieldName)) {
-                // special hack, see comments on shouldConvertFreeformTextToAttachment()
-                // For the purposes of this hack, the only fields in the field def that matter the field name and type
-                // (attachment).
-                oneFieldDef = new UploadFieldDefinition().name(oneFieldName).type(UploadFieldType.ATTACHMENT_V2);
-                if (valueNode != null && !valueNode.isNull() && valueNode.isTextual()) {
-                    String attachmentId = manager.getExportHelper().uploadFreeformTextAsAttachment(recordId,
-                            valueNode.textValue());
-                    valueNode = new TextNode(attachmentId);
-                } else {
-                    valueNode = null;
-                }
-            }
-
             if (bridgeType == UploadFieldType.MULTI_CHOICE) {
                 // MULTI_CHOICE serializes into multiple fields. See getSynapseTableColumnList() for details.
                 Map<String, String> serializedMultiChoiceFields = serializeMultiChoice(recordId, oneFieldDef,
@@ -352,13 +286,6 @@ public class HealthDataExportHandler extends SynapseExportHandler {
         List<String> recordIds = tsvInfo.getRecordIds();
 
         getManager().getBridgeHelper().updateRecordExporterStatus(recordIds, SynapseExporterStatus.SUCCEEDED);
-    }
-
-    // Helper method for getting the field definition list from the schema. This calls through to Bridge using the
-    // BridgeHelper, which may cache the schema for a few minutes.
-    private List<UploadFieldDefinition> getSchemaFieldDefList(Metrics metrics) throws SchemaNotFoundException {
-        UploadSchema schema = getManager().getBridgeHelper().getSchema(metrics, schemaKey);
-        return schema.getFieldDefinitions();
     }
 
     // Helper method for getting the upload metadata field def list from the study. This is similarly cached in
@@ -480,4 +407,8 @@ public class HealthDataExportHandler extends SynapseExportHandler {
 
         return ImmutableMap.of();
     }
+
+    /** Gets the field definition from the schema. Returns an empty list if not based on a schema. */
+    protected abstract List<UploadFieldDefinition> getSchemaFieldDefList(Metrics metrics)
+            throws SchemaNotFoundException;
 }

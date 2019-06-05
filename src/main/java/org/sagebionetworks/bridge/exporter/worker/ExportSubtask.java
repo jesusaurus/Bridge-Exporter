@@ -2,6 +2,7 @@ package org.sagebionetworks.bridge.exporter.worker;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.fasterxml.jackson.databind.JsonNode;
+import org.apache.commons.lang3.StringUtils;
 
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
@@ -17,13 +18,16 @@ public class ExportSubtask {
     private final ExportTask parentTask;
     private final JsonNode recordData;
     private final UploadSchemaKey schemaKey;
+    private final String studyId;
 
     // Private constructor. To build, use Builder.
-    private ExportSubtask(Item originalRecord, ExportTask parentTask, JsonNode recordData, UploadSchemaKey schemaKey) {
+    private ExportSubtask(Item originalRecord, ExportTask parentTask, JsonNode recordData, UploadSchemaKey schemaKey,
+            String studyId) {
         this.originalRecord = originalRecord;
         this.parentTask = parentTask;
         this.recordData = recordData;
         this.schemaKey = schemaKey;
+        this.studyId = studyId;
     }
 
     /** DDB health data record. */
@@ -58,12 +62,18 @@ public class ExportSubtask {
         return schemaKey;
     }
 
+    /** The study that this record comes from. */
+    public String getStudyId() {
+        return studyId;
+    }
+
     /** Subtask builder. */
     public static class Builder {
         private Item originalRecord;
         private ExportTask parentTask;
         private JsonNode recordData;
         private UploadSchemaKey schemaKey;
+        private String studyId;
 
         /** @see ExportSubtask#getOriginalRecord */
         public Builder withOriginalRecord(Item originalRecord) {
@@ -89,6 +99,12 @@ public class ExportSubtask {
             return this;
         }
 
+        /** @see ExportSubtask#getStudyId */
+        public Builder withStudyId(String studyId) {
+            this.studyId = studyId;
+            return this;
+        }
+
         /** Builds an ExportSubtask object and validates that all fields are valid (that is, non-null). */
         public ExportSubtask build() {
             // validate - all fields must be non-null
@@ -104,11 +120,11 @@ public class ExportSubtask {
                 throw new IllegalStateException("recordData must be non-null");
             }
 
-            if (schemaKey == null) {
-                throw new IllegalStateException("schemaKey must be non-null");
+            if (StringUtils.isBlank(studyId)) {
+                throw new IllegalStateException("studyId must be specified");
             }
 
-            return new ExportSubtask(originalRecord, parentTask, recordData, schemaKey);
+            return new ExportSubtask(originalRecord, parentTask, recordData, schemaKey, studyId);
         }
     }
 }

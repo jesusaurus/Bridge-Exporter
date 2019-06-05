@@ -21,6 +21,7 @@ import com.amazonaws.services.dynamodbv2.document.Table;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Stopwatch;
+import com.google.common.collect.HashBasedTable;
 import com.google.common.collect.ImmutableSet;
 import com.google.gson.JsonParseException;
 import com.google.gson.stream.MalformedJsonException;
@@ -42,10 +43,10 @@ import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterNonRetryable
 import org.sagebionetworks.bridge.exporter.exceptions.BridgeExporterTsvException;
 import org.sagebionetworks.bridge.exporter.exceptions.RestartBridgeExporterException;
 import org.sagebionetworks.bridge.exporter.exceptions.SchemaNotFoundException;
-import org.sagebionetworks.bridge.exporter.handler.AppVersionExportHandler;
 import org.sagebionetworks.bridge.exporter.handler.ExportHandler;
-import org.sagebionetworks.bridge.exporter.handler.HealthDataExportHandler;
 import org.sagebionetworks.bridge.exporter.handler.IosSurveyExportHandler;
+import org.sagebionetworks.bridge.exporter.handler.SchemaBasedExportHandler;
+import org.sagebionetworks.bridge.exporter.handler.SynapseExportHandler;
 import org.sagebionetworks.bridge.exporter.helper.BridgeHelper;
 import org.sagebionetworks.bridge.exporter.helper.ExportHelper;
 import org.sagebionetworks.bridge.exporter.metrics.Metrics;
@@ -336,9 +337,10 @@ public class ExportWorkerManager {
 
     // TASK AND HANDLER MANAGEMENT
 
-    private final Map<String, AppVersionExportHandler> appVersionHandlersByStudy = new HashMap<>();
     private ExecutorService executor;
-    private final Map<UploadSchemaKey, HealthDataExportHandler> healthDataHandlersBySchema = new HashMap<>();
+    private final com.google.common.collect.Table<String, MetaTableType, SynapseExportHandler> handlersByStudyAndType
+            = HashBasedTable.create();
+    private final Map<UploadSchemaKey, SchemaBasedExportHandler> healthDataHandlersBySchema = new HashMap<>();
     private final Map<String, IosSurveyExportHandler> surveyHandlersByStudy = new HashMap<>();
 
     /** Executor that runs our export workers. */
@@ -362,8 +364,8 @@ public class ExportWorkerManager {
      *         if the schema corresponding the record can't be found
      */
     public void addSubtaskForRecord(ExportTask task, Item record) throws IOException, SchemaNotFoundException {
+        String studyId = record.getString("studyId");
         UploadSchemaKey schemaKey = BridgeExporterUtil.getSchemaKeyForRecord(record);
-        String studyId = schemaKey.getStudyId();
 
         // Book-keeping: We need to know what study IDs this task has seen.
         task.addStudyId(studyId);
@@ -371,10 +373,10 @@ public class ExportWorkerManager {
         // Make subtask. Subtasks are immutable, so we can safely use the same one for each of the handlers.
         JsonNode recordDataNode = DefaultObjectMapper.INSTANCE.readTree(record.getString("data"));
         ExportSubtask subtask = new ExportSubtask.Builder().withOriginalRecord(record).withParentTask(task)
-                .withRecordData(recordDataNode).withSchemaKey(schemaKey).build();
+                .withRecordData(recordDataNode).withSchemaKey(schemaKey).withStudyId(studyId).build();
 
         // Multiplex on schema.
-        if (SCHEMA_IOS_SURVEY.equals(schemaKey.getSchemaId())) {
+        if (schemaKey != null && SCHEMA_IOS_SURVEY.equals(schemaKey.getSchemaId())) {
             // Special case: In the olden days, iOS surveys were processed by the Exporter instead of Bridge Server
             // Upload Validation. We don't do this anymore, but sometimes we want to re-export old uploads, so we still
             // need to handle this case.
@@ -397,18 +399,23 @@ public class ExportWorkerManager {
      *         schema key for this sub-task
      * @param subtask
      *         object representing the sub-task
-     * @throws IOException
-     *         if getting the schema for the schema key fails
      * @throws SchemaNotFoundException
      *         if getting the schema for the schema key fails
      */
     public void addHealthDataSubtask(ExportTask parentTask, String studyId, UploadSchemaKey schemaKey,
-            ExportSubtask subtask) throws IOException, SchemaNotFoundException {
-        AppVersionExportHandler appVersionHandler = getAppVersionHandlerForStudy(studyId);
+            ExportSubtask subtask) throws SchemaNotFoundException {
+        // Queue AppVersion (Health Data Summary) worker.
+        SynapseExportHandler appVersionHandler = getHandlerForStudyAndType(studyId, MetaTableType.APP_VERSION);
         queueWorker(appVersionHandler, parentTask, subtask);
 
-        HealthDataExportHandler healthDataHandler = getHealthDataHandlerForSchema(parentTask.getMetrics(), schemaKey);
-        queueWorker(healthDataHandler, parentTask, subtask);
+        // Queue data worker, depending on if there's a schema or not.
+        SynapseExportHandler dataHandler;
+        if (schemaKey != null) {
+            dataHandler = getHealthDataHandlerForSchema(parentTask.getMetrics(), schemaKey);
+        } else {
+            dataHandler = getHandlerForStudyAndType(studyId, MetaTableType.DEFAULT);
+        }
+        queueWorker(dataHandler, parentTask, subtask);
     }
 
     /**
@@ -427,25 +434,19 @@ public class ExportWorkerManager {
         parentTask.addSubtaskFuture(new ExportSubtaskFuture.Builder().withSubtask(subtask).withFuture(future).build());
     }
 
-    /**
-     * Gets the app version handler for the given study, with caching logic.
-     *
-     * @param studyId
-     *         study ID for the app version handler
-     * @return app version handler
-     */
-    private AppVersionExportHandler getAppVersionHandlerForStudy(String studyId) {
-        AppVersionExportHandler handler = appVersionHandlersByStudy.get(studyId);
+    private SynapseExportHandler getHandlerForStudyAndType(String studyId, MetaTableType type) {
+        SynapseExportHandler handler = handlersByStudyAndType.get(studyId, type);
         if (handler == null) {
-            handler = createAppVersionHandler(studyId);
-            appVersionHandlersByStudy.put(studyId, handler);
+            handler = createHandlerForStudyAndType(studyId, type);
+            handlersByStudyAndType.put(studyId, type, handler);
         }
         return handler;
     }
 
-    // Factory method for creating a new app version handler. This exists and is package-scoped to enable unit tests.
-    AppVersionExportHandler createAppVersionHandler(String studyId) {
-        AppVersionExportHandler handler = new AppVersionExportHandler();
+    // Factory method for creating a new handler for meta-tables. This exists and is package-scoped to enable unit
+    // tests.
+    SynapseExportHandler createHandlerForStudyAndType(String studyId, MetaTableType type) {
+        SynapseExportHandler handler = type.createHandlerForType();
         handler.setManager(this);
         handler.setStudyId(studyId);
         return handler;
@@ -459,14 +460,12 @@ public class ExportWorkerManager {
      * @param schemaKey
      *         schema for the health data handler
      * @return health data handler
-     * @throws IOException
-     *         if getting the schema fails
      * @throws SchemaNotFoundException
      *         if getting the schema fails
      */
-    private HealthDataExportHandler getHealthDataHandlerForSchema(Metrics metrics, UploadSchemaKey schemaKey)
-            throws IOException, SchemaNotFoundException {
-        HealthDataExportHandler handler = healthDataHandlersBySchema.get(schemaKey);
+    private SchemaBasedExportHandler getHealthDataHandlerForSchema(Metrics metrics, UploadSchemaKey schemaKey)
+            throws SchemaNotFoundException {
+        SchemaBasedExportHandler handler = healthDataHandlersBySchema.get(schemaKey);
         if (handler == null) {
             handler = createHealthDataHandler(metrics, schemaKey);
             healthDataHandlersBySchema.put(schemaKey, handler);
@@ -475,14 +474,14 @@ public class ExportWorkerManager {
     }
 
     // Factory method for creating a new health data handler. This exists and is package-scoped to enable unit tests.
-    HealthDataExportHandler createHealthDataHandler(Metrics metrics, UploadSchemaKey schemaKey)
-            throws IOException, SchemaNotFoundException {
+    SchemaBasedExportHandler createHealthDataHandler(Metrics metrics, UploadSchemaKey schemaKey)
+            throws SchemaNotFoundException {
         // Validate schema exists. This throws if schema doesn't exist. It's also cached, so we don't need to worry
         // about excessive calls to Bridge.
         bridgeHelper.getSchema(metrics, schemaKey);
 
         // create and return handler
-        HealthDataExportHandler handler = new HealthDataExportHandler();
+        SchemaBasedExportHandler handler = new SchemaBasedExportHandler();
         handler.setManager(this);
         handler.setSchemaKey(schemaKey);
         handler.setStudyId(schemaKey.getStudyId());
@@ -551,8 +550,8 @@ public class ExportWorkerManager {
                     throw new RestartBridgeExporterException("Restarting Bridge Exporter; last recordId=" + recordId +
                             ": " + originalEx.getMessage(), originalEx);
                 } else {
-                    LOG.error("Error completing subtask for schema=" + schemaKey + ", recordId=" + recordId + ": " +
-                            ex.getMessage(), ex);
+                    LOG.error("Error completing subtask for study=" + subtask.getStudyId() + " schema=" + schemaKey +
+                            ", recordId=" + recordId + ": " + ex.getMessage(), ex);
                     // We exclude TSV exceptions here. Since TSVs cause the whole table to fail, redrive the table
                     // instead of individual records.
                     if (!(originalEx instanceof BridgeExporterTsvException) && isRetryable(originalEx)) {
@@ -600,10 +599,10 @@ public class ExportWorkerManager {
         // Tell each health data handler to upload their TSVs to Synapse.
         // Use a TreeMap so we can iterate our redrives in a predictable order.
         Map<String, Set<UploadSchemaKey>> redriveTablesByStudy = new TreeMap<>();
-        for (Map.Entry<UploadSchemaKey, HealthDataExportHandler> healthDataHandlerEntry
+        for (Map.Entry<UploadSchemaKey, SchemaBasedExportHandler> healthDataHandlerEntry
                 : healthDataHandlersBySchema.entrySet()) {
             UploadSchemaKey schemaKey = healthDataHandlerEntry.getKey();
-            HealthDataExportHandler handler = healthDataHandlerEntry.getValue();
+            SchemaBasedExportHandler handler = healthDataHandlerEntry.getValue();
             try {
                 handler.uploadToSynapseForTask(task);
             } catch (BridgeExporterException | IOException | RuntimeException | SynapseException ex) {
@@ -674,21 +673,19 @@ public class ExportWorkerManager {
             }
         }
 
-        // Also, the app version handlers.
-        for (Map.Entry<String, AppVersionExportHandler> appVersionHandlerEntry
-                : appVersionHandlersByStudy.entrySet()) {
-            String studyId = appVersionHandlerEntry.getKey();
-            AppVersionExportHandler handler = appVersionHandlerEntry.getValue();
+        // Also, the meta table handlers.
+        for (com.google.common.collect.Table.Cell<String, MetaTableType, SynapseExportHandler> handlerCell
+                : handlersByStudyAndType.cellSet()) {
+            String studyId = handlerCell.getRowKey();
+            MetaTableType type = handlerCell.getColumnKey();
+            SynapseExportHandler handler = handlerCell.getValue();
             try {
+                //noinspection ConstantConditions
                 handler.uploadToSynapseForTask(task);
             } catch (BridgeExporterException | IOException | RuntimeException | SynapseException ex) {
                 // TODO: Improved error handling
-                // If uploading Bridge data succeeds and somehow the appVersion (index) table fails (including
-                // retries), we don't really have a mechanism for redriving this specific table update. Fortunately,
-                // the appVersion table is used for diagnostics and is not critical (at the moment), so we can work
-                // around it. However, we should think about how to improve this.
-                LOG.error("Error uploading app version table to Synapse for study=" + studyId + ": " + ex.getMessage(),
-                        ex);
+                LOG.error("Error uploading " + type + " table to Synapse for study=" + studyId + ": " +
+                        ex.getMessage(), ex);
             }
         }
 
