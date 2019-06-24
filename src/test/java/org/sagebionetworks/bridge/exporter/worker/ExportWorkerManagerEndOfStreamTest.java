@@ -33,7 +33,7 @@ import org.joda.time.DateTime;
 import org.joda.time.DateTimeUtils;
 import org.joda.time.LocalDate;
 import org.mockito.ArgumentCaptor;
-import org.sagebionetworks.client.exceptions.SynapseServerException;
+import org.sagebionetworks.client.exceptions.SynapseServiceUnavailable;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
@@ -583,7 +583,7 @@ public class ExportWorkerManagerEndOfStreamTest {
                 .withInt("schemaRevision", 1).withString("data", DUMMY_JSON_TEXT).withString("id", "good-record");
 
         // mock executor to throw 503 on "bad record"
-        mockRecordIdExceptions(ImmutableMap.of("bad-record", new SynapseServerException(503, "test exception")));
+        mockRecordIdExceptions(ImmutableMap.of("bad-record", new SynapseServiceUnavailable("test exception")));
 
         // There are no schema (upload TSV) or study (appVersion or status table) errors. However, we should call these
         // to mock out our dependencies.
@@ -604,8 +604,7 @@ public class ExportWorkerManagerEndOfStreamTest {
             fail("expected exception");
         } catch (RestartBridgeExporterException ex) {
             assertEquals(ex.getMessage(), "Restarting Bridge Exporter; last recordId=bad-record: test exception");
-            SynapseServerException cause = (SynapseServerException) ex.getCause();
-            assertEquals(cause.getStatusCode(), 503);
+            assertTrue(ex.getCause() instanceof SynapseServiceUnavailable);
         }
 
         // We have 4 futures, but only the first one throws and the rest are never executed.
@@ -640,7 +639,7 @@ public class ExportWorkerManagerEndOfStreamTest {
                 .withInt("schemaRevision", 1).withString("data", DUMMY_JSON_TEXT).withString("id", "good-record");
 
         // Upload TSV throws Synapse 503 on "bad schema"
-        mockSchemaIdExceptions(ImmutableMap.of("bad-schema", new SynapseServerException(503, "test exception")));
+        mockSchemaIdExceptions(ImmutableMap.of("bad-schema", new SynapseServiceUnavailable("test exception")));
 
         // Similarly, mock out the record and study stuff to mock out our dependencies.
         mockRecordIdExceptions(ImmutableMap.of());
@@ -661,8 +660,7 @@ public class ExportWorkerManagerEndOfStreamTest {
         } catch (RestartBridgeExporterException ex) {
             assertEquals(ex.getMessage(),
                     "Restarting Bridge Exporter; last schema=test-study-bad-schema-v1: test exception");
-            SynapseServerException cause = (SynapseServerException) ex.getCause();
-            assertEquals(cause.getStatusCode(), 503);
+            assertTrue(ex.getCause() instanceof SynapseServiceUnavailable);
         }
 
         // 2 records = 4 futures (health data and app version). All of these are processed.

@@ -24,8 +24,10 @@ import com.google.common.collect.ImmutableMap;
 import com.google.gson.JsonParseException;
 import com.google.gson.stream.MalformedJsonException;
 import org.mockito.ArgumentCaptor;
+import org.sagebionetworks.client.exceptions.SynapseBadRequestException;
 import org.sagebionetworks.client.exceptions.SynapseClientException;
-import org.sagebionetworks.client.exceptions.SynapseServerException;
+import org.sagebionetworks.client.exceptions.SynapseServiceUnavailable;
+import org.sagebionetworks.client.exceptions.UnknownSynapseServerException;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -426,9 +428,9 @@ public class ExportWorkerManagerTest {
                 { new IllegalArgumentException(), false },
                 { new BridgeExporterException(), false },
                 { new SynapseClientException(), false },
-                { new SynapseServerException(404), false },
-                { new SynapseServerException(500), false },
-                { new SynapseServerException(503), true },
+                { new SynapseBadRequestException(), false },
+                { new UnknownSynapseServerException(500), false },
+                { new SynapseServiceUnavailable("Service Unavailable"), true },
 
                 // branch coverage
                 { null, false },

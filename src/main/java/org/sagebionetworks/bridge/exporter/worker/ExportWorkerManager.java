@@ -25,11 +25,11 @@ import com.google.common.collect.HashBasedTable;
 import com.google.common.collect.ImmutableSet;
 import com.google.gson.JsonParseException;
 import com.google.gson.stream.MalformedJsonException;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
 import org.sagebionetworks.client.exceptions.SynapseException;
-import org.sagebionetworks.client.exceptions.SynapseServerException;
+import org.sagebionetworks.client.exceptions.SynapseServiceUnavailable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -708,7 +708,7 @@ public class ExportWorkerManager {
     //
     // Package-scoped for unit tests.
     static boolean isSynapseDown(Throwable t) {
-        return (t instanceof SynapseServerException && ((SynapseServerException)t).getStatusCode() == 503);
+        return t instanceof SynapseServiceUnavailable;
     }
 
     // For redrives, we need to know whether an exception is retryable or not. If it is, we can redrive it. If not, we
