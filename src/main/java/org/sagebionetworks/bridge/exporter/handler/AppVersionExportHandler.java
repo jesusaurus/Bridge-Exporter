@@ -6,7 +6,7 @@ import java.util.Map;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.google.common.collect.ImmutableList;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 

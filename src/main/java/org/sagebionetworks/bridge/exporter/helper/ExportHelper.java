@@ -15,7 +15,7 @@ import com.google.common.base.Charsets;
 import com.google.common.collect.ImmutableMap;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.commons.codec.digest.DigestUtils;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.sagebionetworks.repo.model.table.ColumnType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

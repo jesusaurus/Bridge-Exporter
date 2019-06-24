@@ -1,6 +1,6 @@
 package org.sagebionetworks.bridge.exporter.dynamo;
 
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * This class encapsulates study config for Bridge-EX. Note that once the Synapse tables are created and the project is
