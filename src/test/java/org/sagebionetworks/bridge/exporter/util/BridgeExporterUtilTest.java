@@ -3,6 +3,7 @@ package org.sagebionetworks.bridge.exporter.util;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 
 import java.util.HashMap;
 import java.util.List;
@@ -331,7 +332,30 @@ public class BridgeExporterUtilTest {
         // verify
         assertEquals(retMap, expectedMap);
     }
-    
+
+    @Test
+    public void canGetRowValues_NullValue() {
+        final String testStringName = "test_string";
+
+        // Create empty record.
+        Item emptyRecord = new Item();
+
+        // Create column definition.
+        ColumnDefinition columnDef = new ColumnDefinition();
+        columnDef.setName(testStringName);
+        columnDef.setMaximumSize(36);
+        columnDef.setTransferMethod(TransferMethod.STRING);
+        List<ColumnDefinition> columnDefList = ImmutableList.of(columnDef);
+
+        // Execute.
+        Map<String, String> retMap = new HashMap<>();
+        BridgeExporterUtil.getRowValuesFromRecordBasedOnColumnDefinition(retMap, emptyRecord, columnDefList,
+                "recordId");
+
+        // Map should be empty, since the value we wanted wasn't there.
+        assertTrue(retMap.isEmpty());
+    }
+
     @Test
     public void serializeSubstudyMemberships() {
         Map<String,String> map = new HashMap<>();
