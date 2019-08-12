@@ -15,6 +15,17 @@ import java.util.Set;
  * Also specifying corresponding transfer procedure.
  */
 public enum TransferMethod {
+    INT {
+        @Override
+        public String transfer(String ddbName, Item record) {
+            return String.valueOf(record.getInt(ddbName));
+        }
+
+        @Override
+        public ColumnType getColumnType() {
+            return ColumnType.INTEGER;
+        }
+    },
     STRING {
         @Override
         public String transfer(String ddbName, Item record) {

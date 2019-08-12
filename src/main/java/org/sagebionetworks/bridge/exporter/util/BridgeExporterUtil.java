@@ -208,6 +208,11 @@ public class BridgeExporterUtil {
             // use name if there is no ddbName
             final String ddbName = columnDefinition.getDdbName() == null? columnDefinition.getName() : columnDefinition.getDdbName();
 
+            // Short-cut: If the value isn't present, skip it.
+            if (!record.hasAttribute(ddbName)) {
+                continue;
+            }
+
             String valueToAdd;
             if (columnDefinition.getSanitize()) {
                 valueToAdd = sanitizeDdbValue(record, ddbName, columnDefinition.getMaximumSize(), recordId);

@@ -19,6 +19,7 @@ public class TransferMethodTest {
 
     @Test
     public void testTransfer() {
+        final String testIntName = "test_int";
         final String testStringName = "test_string";
         final String testStringSetName = "test_string_set";
         final String testDateName = "test_date";
@@ -26,6 +27,7 @@ public class TransferMethodTest {
 
         // create mock record
         Item testRecord = new Item();
+        testRecord.withInt(testIntName, 42);
         testRecord.withString(testStringName, "test_string_value");
         testRecord.withStringSet(testStringSetName, "test_string_set_value_1", "test_string_set_value_2");
         testRecord.withLong(testDateName, 1484181511);
@@ -33,6 +35,7 @@ public class TransferMethodTest {
         testRecord.withMap(testMap, ImmutableMap.of("subA", "extA", "subB", ""));
 
         // verify
+        assertEquals(TransferMethod.INT.transfer(testIntName, testRecord), "42");
         assertEquals(TransferMethod.STRING.transfer(testStringName, testRecord), "test_string_value");
         assertEquals(TransferMethod.STRINGSET.transfer(testStringSetName, testRecord), "test_string_set_value_1,test_string_set_value_2");
         assertEquals(TransferMethod.DATE.transfer(testDateName, testRecord), "1484181511");
@@ -49,6 +52,7 @@ public class TransferMethodTest {
 
     @Test
     public void testGetColumnType() {
+        assertEquals(TransferMethod.INT.getColumnType(), ColumnType.INTEGER);
         assertEquals(TransferMethod.STRING.getColumnType(), ColumnType.STRING);
         assertEquals(TransferMethod.STRINGSET.getColumnType(), ColumnType.STRING);
         assertEquals(TransferMethod.DATE.getColumnType(), ColumnType.DATE);
@@ -57,7 +61,7 @@ public class TransferMethodTest {
     }
     
     @Test
-    public void testTransferStringMap() throws Exception {
+    public void testTransferStringMap() {
         Map<String,String> map = new LinkedHashMap<>();
         map.put("substudyA", "");
         map.put("substudyB", "externalIdB");
