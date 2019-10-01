@@ -171,7 +171,7 @@ public class BridgeExporterUtil {
 
         // Check against max length, truncating and warning as necessary.
         if (maxLength != null && in.length() > maxLength) {
-            LOG.error("Truncating string for field " + fieldName + " in record " + recordId + " in study " + studyId +
+            LOG.warn("Truncating string for field " + fieldName + " in record " + recordId + " in study " + studyId +
                     ", original length " + in.length() + " to max length " + maxLength);
             in = in.substring(0, maxLength);
         }
