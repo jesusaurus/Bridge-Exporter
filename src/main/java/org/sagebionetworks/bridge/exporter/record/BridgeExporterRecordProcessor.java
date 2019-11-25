@@ -153,6 +153,7 @@ public class BridgeExporterRecordProcessor {
         // make task
         Metrics metrics = new Metrics();
         File tmpDir = fileHelper.createTempDir();
+        LOG.info("Created temp dir " + tmpDir.getAbsolutePath());
         ExportTask task = new ExportTask.Builder().withExporterDate(LocalDate.now(timeZone)).withMetrics(metrics)
                 .withRequest(request).withTmpDir(tmpDir).build();
 
