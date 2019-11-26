@@ -26,6 +26,7 @@ import java.util.Set;
 
 import com.amazonaws.services.dynamodbv2.document.Item;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.base.Charsets;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -247,6 +248,42 @@ public class SynapseExportHandlerTest {
         }
 
         postValidation();
+    }
+
+    private static class FilenameTestSynapseHandler extends TestSynapseHandler {
+        @Override
+        protected String getDdbTableKeyValue() {
+            // We only accept alphanumeric characters, dashes, and underscores, and filter out everything else.
+            return "CAPITAL_lowercase_remove+ .!@#$between_123_with-dash";
+        }
+    }
+
+    @Test
+    public void tsvFilenameTest() throws Exception {
+        SynapseExportHandler handler = new FilenameTestSynapseHandler();
+        setup(handler);
+        mockSynapseHelperUploadTsv(1);
+
+        // make subtasks
+        ExportSubtask subtask = makeSubtask(task, "foo", "test record");
+
+        // execute
+        handler.handle(subtask);
+        handler.uploadToSynapseForTask(task);
+
+        // We validate the TSV and metrics somewhere else. This test is just to test the filename.
+        String expectedFilenamePrefix = "CAPITAL_lowercase_removebetween_123_with-dash";
+        TsvInfo tsvInfo = handler.getTsvInfoForTask(task);
+        File tsvFile = tsvInfo.getFile();
+        assertTrue(tsvFile.getName().startsWith(expectedFilenamePrefix));
+        assertTrue(tsvFile.getName().endsWith(".tsv"));
+
+        verify(mockSynapseHelper).uploadTsvFileToTable(any(), any(), same(tsvFile));
+
+        // As a sanity check, verify that the TSV is non-empty and contains the our subtask.
+        String tsvString = new String(tsvBytes, Charsets.UTF_8);
+        assertTrue(tsvString.contains("foo"));
+        assertTrue(tsvString.contains("test record"));
     }
 
     @Test

@@ -16,6 +16,7 @@ import com.amazonaws.services.dynamodbv2.document.Item;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.sagebionetworks.client.exceptions.SynapseException;
 import org.sagebionetworks.client.exceptions.SynapseNotFoundException;
 import org.sagebionetworks.repo.model.table.ColumnChange;
@@ -138,7 +139,14 @@ public abstract class SynapseExportHandler extends ExportHandler {
 
             // create TSV and writer
             FileHelper fileHelper = getManager().getFileHelper();
-            File tsvFile = fileHelper.newFile(task.getTmpDir(), getDdbTableKeyValue() + ".tsv");
+
+            // For the TSV filename, replace any characters that aren't alphanumeric, dash, or underscore. Since these
+            // are temp files, we don't need to worry about readability, so don't worry about replacing these
+            // characters with anything. Also append a short random string to (probabilistically) ensure uniqueness.
+            String filename = getDdbTableKeyValue().replaceAll("[^A-Za-z0-9\\-_]", "") +
+                    RandomStringUtils.randomAlphabetic(4) + ".tsv";
+
+            File tsvFile = fileHelper.newFile(task.getTmpDir(), filename);
             Writer fileWriter = fileHelper.getWriter(tsvFile);
 
             // create TSV info
