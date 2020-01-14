@@ -13,7 +13,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Charsets;
 import com.google.common.collect.ImmutableMap;
-import org.apache.commons.codec.binary.Base64;
+import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.sagebionetworks.repo.model.table.ColumnType;
@@ -224,15 +224,15 @@ public class ExportHelper {
         attachment.withString("recordId", recordId);
         ddbAttachmentTable.putItem(attachment);
 
-        // Calculate MD5 (base64-encoded).
+        // Calculate MD5 (hex-encoded).
         byte[] bytes = text.getBytes(Charsets.UTF_8);
         byte[] md5 = md5DigestUtils.digest(bytes);
-        String md5Base64Encoded = Base64.encodeBase64String(md5);
+        String md5HexEncoded = Hex.encodeHexString(md5);
 
         // S3 Metadata must include encryption and MD5. Note that for some reason setContentMD5() doesn't work, so we
         // have to use addUserMetadata().
         ObjectMetadata metadata = new ObjectMetadata();
-        metadata.addUserMetadata(BridgeExporterUtil.KEY_CUSTOM_CONTENT_MD5, md5Base64Encoded);
+        metadata.addUserMetadata(BridgeExporterUtil.KEY_CUSTOM_CONTENT_MD5, md5HexEncoded);
         metadata.setSSEAlgorithm(ObjectMetadata.AES_256_SERVER_SIDE_ENCRYPTION);
         s3Helper.writeBytesToS3(attachmentBucket, attachmentId, bytes, metadata);
 
