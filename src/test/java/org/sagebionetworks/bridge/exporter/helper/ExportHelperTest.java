@@ -30,8 +30,8 @@ public class ExportHelperTest {
     private static final String DUMMY_RECORD_ID = "dummy-record-id";
     private static final String DUMMY_ATTACHMENT_CONTENT = "dummy attachment content";
 
-    private static final byte[] MOCK_MD5 = { 29, -23, 101, -93, -27, -88, -82, 87, 126 };
-    private static final String MOCK_MD5_BASE64_ENCODED = "Hello+World+";
+    private static final byte[] MOCK_MD5 = { -104, 10, -30, -37, 25, -113, 92, -9, 69, -118, -46, -87, 11, -14, 38, -61 };
+    private static final String MOCK_MD5_HEX_ENCODED = "980ae2db198f5cf7458ad2a90bf226c3";
 
     private static final String UPLOAD_END_DATE_TIME = "2016-05-09T23:59:59.999-0700";
 
@@ -91,7 +91,7 @@ public class ExportHelperTest {
         assertEquals(attachmentText, DUMMY_ATTACHMENT_CONTENT);
 
         ObjectMetadata metadata = metadataCaptor.getValue();
-        assertEquals(metadata.getUserMetaDataOf(BridgeExporterUtil.KEY_CUSTOM_CONTENT_MD5), MOCK_MD5_BASE64_ENCODED);
+        assertEquals(metadata.getUserMetaDataOf(BridgeExporterUtil.KEY_CUSTOM_CONTENT_MD5), MOCK_MD5_HEX_ENCODED);
         assertEquals(metadata.getSSEAlgorithm(), ObjectMetadata.AES_256_SERVER_SIDE_ENCRYPTION);
     }
 }
