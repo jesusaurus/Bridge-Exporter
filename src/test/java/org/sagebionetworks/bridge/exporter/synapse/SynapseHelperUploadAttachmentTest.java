@@ -1,10 +1,8 @@
 package org.sagebionetworks.bridge.exporter.synapse;
 
 import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -39,7 +37,7 @@ public class SynapseHelperUploadAttachmentTest {
     private ObjectMetadata s3ObjectMetadata;
 
     @BeforeMethod
-    public void before() throws Exception {
+    public void before() {
         // Mock S3 Helper.
         s3ObjectMetadata = new ObjectMetadata();
         s3ObjectMetadata.setContentLength(CONTENT_LENGTH);
@@ -53,13 +51,10 @@ public class SynapseHelperUploadAttachmentTest {
         mockClient = mock(SynapseClient.class);
 
         // Set up Synapse Helper.
-        helper = spy(new SynapseHelper());
+        helper = new SynapseHelper();
         helper.setConfig(mockConfig());
         helper.setS3Helper(mockS3Helper);
         helper.setSynapseClient(mockClient);
-
-        // Spy ensureS3StorageLocationInProject(). This is tested elsewhere.
-        doReturn(TEST_STORAGE_LOCATION_ID).when(helper).ensureS3StorageLocationInProject(TEST_PROJECT_ID);
     }
 
     @Test
@@ -103,6 +98,8 @@ public class SynapseHelperUploadAttachmentTest {
     private static Config mockConfig() {
         Config mockConfig = mock(Config.class);
         when(mockConfig.get(BridgeExporterUtil.CONFIG_KEY_ATTACHMENT_S3_BUCKET)).thenReturn(TEST_ATTACHMENTS_BUCKET);
+        when(mockConfig.get(SynapseHelper.CONFIG_KEY_SYNAPSE_STORAGE_LOCATION_ID)).thenReturn(
+                String.valueOf(TEST_STORAGE_LOCATION_ID));
 
         // Set a very high number for rate limiting, since we don't want the rate limiter to interfere with our tests.
         when(mockConfig.getInt(SynapseHelper.CONFIG_KEY_SYNAPSE_RATE_LIMIT_PER_SECOND)).thenReturn(1000);
