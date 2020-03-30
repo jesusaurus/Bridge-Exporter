@@ -19,12 +19,10 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSetMultimap;
 import com.google.common.collect.SetMultimap;
 import com.google.common.util.concurrent.RateLimiter;
-import com.jcabi.aspects.Cacheable;
 import com.jcabi.aspects.RetryOnFailure;
 import org.apache.commons.lang3.StringUtils;
 import org.sagebionetworks.client.SynapseClient;
 import org.sagebionetworks.client.exceptions.SynapseException;
-import org.sagebionetworks.client.exceptions.SynapseNotFoundException;
 import org.sagebionetworks.client.exceptions.SynapseResultNotReadyException;
 import org.sagebionetworks.repo.model.ACCESS_TYPE;
 import org.sagebionetworks.repo.model.AccessControlList;
@@ -32,12 +30,9 @@ import org.sagebionetworks.repo.model.ResourceAccess;
 import org.sagebionetworks.repo.model.file.FileHandle;
 import org.sagebionetworks.repo.model.file.S3FileHandle;
 import org.sagebionetworks.repo.model.file.UploadDestinationLocation;
-import org.sagebionetworks.repo.model.file.UploadType;
-import org.sagebionetworks.repo.model.project.ExternalS3StorageLocationSetting;
 import org.sagebionetworks.repo.model.project.ProjectSetting;
 import org.sagebionetworks.repo.model.project.ProjectSettingsType;
 import org.sagebionetworks.repo.model.project.StorageLocationSetting;
-import org.sagebionetworks.repo.model.project.UploadDestinationListSetting;
 import org.sagebionetworks.repo.model.status.StackStatus;
 import org.sagebionetworks.repo.model.status.StatusEnum;
 import org.sagebionetworks.repo.model.table.AppendableRowSet;
@@ -79,6 +74,7 @@ public class SynapseHelper {
     static final String CONFIG_KEY_SYNAPSE_RATE_LIMIT_PER_SECOND = "synapse.rate.limit.per.second";
     static final String CONFIG_KEY_SYNAPSE_GET_COLUMN_MODELS_RATE_LIMIT_PER_MINUTE =
             "synapse.get.column.models.rate.limit.per.minute";
+    static final String CONFIG_KEY_SYNAPSE_STORAGE_LOCATION_ID = "synapse.storage.location.id";
     static final String CONFIG_KEY_TEAM_BRIDGE_ADMIN = "team.bridge.admin";
     static final String CONFIG_KEY_TEAM_BRIDGE_STAFF = "team.bridge.staff";
 
@@ -176,6 +172,7 @@ public class SynapseHelper {
     private String attachmentBucket;
     private long bridgeAdminTeamId;
     private long bridgeStaffTeamId;
+    private long storageLocationId;
 
     // Spring helpers
     private S3Helper s3Helper;
@@ -202,6 +199,10 @@ public class SynapseHelper {
         String bridgeStaffTeamIdStr = config.get(CONFIG_KEY_TEAM_BRIDGE_STAFF);
         if (StringUtils.isNotBlank(bridgeStaffTeamIdStr)) {
             this.bridgeStaffTeamId = Long.parseLong(bridgeStaffTeamIdStr);
+        }
+        String storageLocationIdStr = config.get(CONFIG_KEY_SYNAPSE_STORAGE_LOCATION_ID);
+        if (StringUtils.isNotBlank(storageLocationIdStr)) {
+            this.storageLocationId = Long.parseLong(storageLocationIdStr);
         }
 
         int rateLimitPerSecond = config.getInt(CONFIG_KEY_SYNAPSE_RATE_LIMIT_PER_SECOND);
@@ -309,102 +310,6 @@ public class SynapseHelper {
 
         // If we passed all incompatibility checks, then we're compatible.
         return true;
-    }
-
-    /**
-     * Cache wrapper for getting the S3 storage location for a project. This is a separate wrapper so that we don't
-     * have to deal with weird interactions between the cache wrapper and synchronized, or interactions between the
-     * cache wrapper and unit tests.
-     */
-    @Cacheable(lifetime = 5, unit = TimeUnit.MINUTES)
-    public long ensureS3StorageLocationInProjectCached(String projectId) throws SynapseException {
-        return ensureS3StorageLocationInProject(projectId);
-    }
-
-    /**
-     * <p>
-     * Ensures that the storage location setting exists in the project, and if not, creates it. Returns the S3 storage
-     * location ID.
-     * </p>
-     * <p>
-     * Synchronized, because calling this method concurrently causes bad things to happen.
-     * </p>
-     */
-    public synchronized long ensureS3StorageLocationInProject(String projectId) throws SynapseException {
-        // Check to see if the storage location setting already exists.
-        Long storageLocationId = getS3StorageLocationIdForProject(projectId);
-        if (storageLocationId != null) {
-            return storageLocationId;
-        }
-
-        // If not, create it.
-        ExternalS3StorageLocationSetting storageLocationSetting = new ExternalS3StorageLocationSetting();
-        storageLocationSetting.setBucket(attachmentBucket);
-        storageLocationSetting.setUploadType(UploadType.S3);
-        return createOrUpdateS3StorageLocationForProject(projectId, storageLocationSetting);
-    }
-
-    /**
-     * <p>
-     * Get the S3 storage location ID for the given project. Returns null if there is no S3 storage location.
-     * </p>
-     * <p>
-     * Package-scoped for unit tests.
-     * </p>
-     */
-    Long getS3StorageLocationIdForProject(String projectId) throws SynapseException {
-        UploadDestinationLocation[] locationArray = getUploadDestinationLocationsWithRetry(projectId);
-        for (UploadDestinationLocation location : locationArray) {
-            if (location.getUploadType() == UploadType.S3 &&
-                    location.getStorageLocationId() != DEFAULT_STORAGE_LOCATION_ID) {
-                return location.getStorageLocationId();
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * <p>
-     * Creates the storage location setting and adds it to the given project. Returns the storage location ID.
-     * </p>
-     * <p>
-     * Package-scoped for unit tests.
-     * </p>
-     */
-    long createOrUpdateS3StorageLocationForProject(String projectId, StorageLocationSetting storageLocationSetting)
-            throws SynapseException {
-        // First, create the storage location setting.
-        StorageLocationSetting createdStorageLocationSetting = createStorageLocationSettingWithRetry(
-                storageLocationSetting);
-        long storageLocationId = createdStorageLocationSetting.getStorageLocationId();
-
-        // Check to see if the project has existing storage settings.
-        UploadDestinationListSetting projectSetting;
-        try {
-            projectSetting = (UploadDestinationListSetting) getProjectSettingWithRetry(projectId,
-                    ProjectSettingsType.upload);
-        } catch (SynapseNotFoundException ex) {
-            // This is normal, if the setting hasn't been created yet.
-            projectSetting = null;
-        }
-
-        if (projectSetting != null) {
-            // Project setting already exists. Add it to the list of existing storage locations.
-            projectSetting.getLocations().add(storageLocationId);
-            updateProjectSettingWithRetry(projectSetting);
-        } else {
-            // Project setting does not exist. Create one. Ensure that we include both the default storage location
-            // (Synapse) and our S3 bucket so that users can still upload files just fine.
-            UploadDestinationListSetting uploadDestinationListSetting = new UploadDestinationListSetting();
-            uploadDestinationListSetting.setLocations(ImmutableList.of(DEFAULT_STORAGE_LOCATION_ID,
-                    storageLocationId));
-            uploadDestinationListSetting.setProjectId(projectId);
-            uploadDestinationListSetting.setSettingsType(ProjectSettingsType.upload);
-            createProjectSettingWithRetry(uploadDestinationListSetting);
-        }
-
-        return storageLocationId;
     }
 
     /**
@@ -537,9 +442,6 @@ public class SynapseHelper {
      * file handles.
      */
     public String uploadFromS3ToSynapseFileHandle(String projectId, String attachmentId) throws SynapseException {
-        // Ensure that our S3 storage location exists.
-        long storageLocationId = ensureS3StorageLocationInProjectCached(projectId);
-
         // Create a Synapse S3 file handle from the S3 object metadata.
         ObjectMetadata s3ObjectMetadata = s3Helper.getObjectMetadata(attachmentBucket, attachmentId);
         if (s3ObjectMetadata.getContentLength() == 0) {
