@@ -67,7 +67,7 @@ public class IosSurveyExportHandler extends ExportHandler {
         @SuppressWarnings("UnnecessaryLocalVariable")
         String schemaId = item;
         int schemaRev = 1;
-        UploadSchemaKey surveySchemaKey = new UploadSchemaKey.Builder().withStudyId(studyId)
+        UploadSchemaKey surveySchemaKey = new UploadSchemaKey.Builder().withAppId(studyId)
                 .withSchemaId(schemaId).withRevision(schemaRev).build();
 
         // get schema and field type map, so we can process attachments

@@ -202,7 +202,7 @@ public class RecordFilterHelperTest {
     public void tableFilterAccepts() {
         // set up inputs
         Metrics metrics = new Metrics();
-        UploadSchemaKey acceptedSchemaKey = new UploadSchemaKey.Builder().withStudyId(TEST_STUDY)
+        UploadSchemaKey acceptedSchemaKey = new UploadSchemaKey.Builder().withAppId(TEST_STUDY)
                 .withSchemaId("test-schema").withRevision(3).build();
         BridgeExporterRequest request = makeRequestBuilder().withTableWhitelist(ImmutableSet.of(acceptedSchemaKey))
                 .build();
@@ -222,7 +222,7 @@ public class RecordFilterHelperTest {
     public void tableFilterExcludes() {
         // set up inputs
         Metrics metrics = new Metrics();
-        UploadSchemaKey acceptedSchemaKey = new UploadSchemaKey.Builder().withStudyId(TEST_STUDY)
+        UploadSchemaKey acceptedSchemaKey = new UploadSchemaKey.Builder().withAppId(TEST_STUDY)
                 .withSchemaId("test-schema").withRevision(3).build();
         BridgeExporterRequest request = makeRequestBuilder().withTableWhitelist(ImmutableSet.of(acceptedSchemaKey))
                 .build();
@@ -244,7 +244,7 @@ public class RecordFilterHelperTest {
     public void tableFilterExcludesSchemaless() {
         // Set up inputs.
         Metrics metrics = new Metrics();
-        UploadSchemaKey acceptedSchemaKey = new UploadSchemaKey.Builder().withStudyId(TEST_STUDY)
+        UploadSchemaKey acceptedSchemaKey = new UploadSchemaKey.Builder().withAppId(TEST_STUDY)
                 .withSchemaId("test-schema").withRevision(3).build();
         BridgeExporterRequest request = makeRequestBuilder().withTableWhitelist(ImmutableSet.of(acceptedSchemaKey))
                 .build();

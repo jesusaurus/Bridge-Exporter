@@ -31,7 +31,7 @@ public class BridgeExporterRequestTest {
     private static final Map<String, String> TEST_PROJECT_OVERRIDE_MAP = ImmutableMap.of("test-study",
             "test-project-id");
     private static final String TEST_RECORD_OVERRIDE = "test-record-override";
-    private static final UploadSchemaKey TEST_SCHEMA_KEY = new UploadSchemaKey.Builder().withStudyId("test-study")
+    private static final UploadSchemaKey TEST_SCHEMA_KEY = new UploadSchemaKey.Builder().withAppId("test-study")
             .withSchemaId("test-schema").withRevision(13).build();
     private static final String TEST_TAG = "test-tag";
 
@@ -100,9 +100,9 @@ public class BridgeExporterRequestTest {
         originalProjectOverrideMap.put("foo-study", "foo-project-id");
         originalProjectOverrideMap.put("bar-study", "bar-project-id");
 
-        UploadSchemaKey fooSchemaKey = new UploadSchemaKey.Builder().withStudyId("foo-study")
+        UploadSchemaKey fooSchemaKey = new UploadSchemaKey.Builder().withAppId("foo-study")
                 .withSchemaId("foo-schema").withRevision(3).build();
-        UploadSchemaKey barSchemaKey = new UploadSchemaKey.Builder().withStudyId("bar-study")
+        UploadSchemaKey barSchemaKey = new UploadSchemaKey.Builder().withAppId("bar-study")
                 .withSchemaId("bar-schema").withRevision(7).build();
         Set<UploadSchemaKey> originalTableWhitelist = Sets.newHashSet(fooSchemaKey, barSchemaKey);
 
@@ -395,11 +395,26 @@ public class BridgeExporterRequestTest {
         assertEquals(tableWhitelistNode.size(), 1);
         assertTrue(tableWhitelistNode.get(0).isObject());
         assertEquals(tableWhitelistNode.get(0).size(), 3);
-        assertEquals(tableWhitelistNode.get(0).get("studyId").textValue(), "test-study");
+        assertEquals(tableWhitelistNode.get(0).get("appId").textValue(), "test-study");
         assertEquals(tableWhitelistNode.get(0).get("schemaId").textValue(), "test-schema");
         assertEquals(tableWhitelistNode.get(0).get("revision").intValue(), 13);
     }
 
+    public void jsonSerializationWithAppWhitelist() throws Exception {
+        // start with JSON
+        String jsonText = "{\n" +
+                "   \"exporterDdbPrefixOverride\":\"" + TEST_DDB_PREFIX_OVERRIDE + "\",\n" +
+                "   \"recordIdS3Override\":\"" + TEST_RECORD_OVERRIDE + "\",\n" +
+                "   \"redriveCount\":2,\n" +
+                "   \"sharingMode\":\"PUBLIC_ONLY\",\n" +
+                "   \"appWhitelist\":[\"test-study\"]\n" +
+                "}";
+
+        // convert to POJO
+        BridgeExporterRequest request = DefaultObjectMapper.INSTANCE.readValue(jsonText, BridgeExporterRequest.class);
+        assertEquals(request.getStudyWhitelist(), ImmutableSet.of("test-study"));
+    }
+    
     @Test
     public void equalsVerifier() {
         EqualsVerifier.forClass(BridgeExporterRequest.class).allFieldsShouldBeUsed().verify();

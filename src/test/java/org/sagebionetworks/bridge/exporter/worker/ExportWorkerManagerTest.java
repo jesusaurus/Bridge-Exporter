@@ -299,7 +299,7 @@ public class ExportWorkerManagerTest {
         when(mockTask.getMetrics()).thenReturn(new Metrics());
 
         // mock DynamoHelper to get schema
-        UploadSchemaKey testSchemaKey = new UploadSchemaKey.Builder().withStudyId(TEST_STUDY_ID)
+        UploadSchemaKey testSchemaKey = new UploadSchemaKey.Builder().withAppId(TEST_STUDY_ID)
                 .withSchemaId(TEST_SCHEMA_ID).withRevision(TEST_SCHEMA_REV).build();
         BridgeHelper mockBridgeHelper = mock(BridgeHelper.class);
         when(mockBridgeHelper.getSchema(notNull(Metrics.class), eq(testSchemaKey))).thenReturn(

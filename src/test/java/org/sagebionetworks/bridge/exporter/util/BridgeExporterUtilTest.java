@@ -82,7 +82,7 @@ public class BridgeExporterUtilTest {
 
         // execute and validate
         UploadSchemaKey schemaKey = BridgeExporterUtil.getSchemaKeyFromSchema(schema);
-        assertEquals(schemaKey.getStudyId(), "test-study");
+        assertEquals(schemaKey.getAppId(), "test-study");
         assertEquals(schemaKey.getSchemaId(), "test-schema");
         assertEquals(schemaKey.getRevision(), 3);
     }

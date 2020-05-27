@@ -49,9 +49,9 @@ public class IosSurveyExportHandlerTest {
             .withEndDateTime(DUMMY_REQUEST_DATE_TIME).withUseLastExportTime(true).build();
     private static final String TEST_STUDY_ID = "testStudy";
     private static final UploadSchemaKey SCHEMA_KEY_PLACEHOLDER = new UploadSchemaKey.Builder()
-            .withStudyId(TEST_STUDY_ID).withSchemaId("ios-survey").withRevision(1).build();
+            .withAppId(TEST_STUDY_ID).withSchemaId("ios-survey").withRevision(1).build();
     private static final UploadSchemaKey SCHEMA_KEY_REAL = new UploadSchemaKey.Builder()
-            .withStudyId(TEST_STUDY_ID).withSchemaId("Daily-Quiz").withRevision(1).build();
+            .withAppId(TEST_STUDY_ID).withSchemaId("Daily-Quiz").withRevision(1).build();
 
     ExportSubtask.Builder subtaskBuilder;
     IosSurveyExportHandler handler;

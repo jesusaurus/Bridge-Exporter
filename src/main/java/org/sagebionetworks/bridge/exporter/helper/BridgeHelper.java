@@ -112,7 +112,7 @@ public class BridgeHelper {
     @Cacheable(lifetime = 5, unit = TimeUnit.MINUTES)
     private UploadSchema getSchemaCached(UploadSchemaKey schemaKey) {
         try {
-            return bridgeClientManager.getClient(ForWorkersApi.class).getSchemaRevisionInStudy(schemaKey.getStudyId(),
+            return bridgeClientManager.getClient(ForWorkersApi.class).getSchemaRevisionInStudy(schemaKey.getAppId(),
                     schemaKey.getSchemaId(), (long) schemaKey.getRevision()).execute().body();
         } catch (IOException ex) {
             throw new BridgeSDKException("Error getting schema from Bridge: " + ex.getMessage(), ex);

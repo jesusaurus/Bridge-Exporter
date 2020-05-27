@@ -484,7 +484,7 @@ public class ExportWorkerManager {
         SchemaBasedExportHandler handler = new SchemaBasedExportHandler();
         handler.setManager(this);
         handler.setSchemaKey(schemaKey);
-        handler.setStudyId(schemaKey.getStudyId());
+        handler.setStudyId(schemaKey.getAppId());
         return handler;
     }
 
@@ -621,7 +621,7 @@ public class ExportWorkerManager {
                             originalEx.getMessage(), originalEx);
                     if (isRetryable(originalEx)) {
                         // Similarly, track which tables (schemas) to redrive.
-                        String studyId = schemaKey.getStudyId();
+                        String studyId = schemaKey.getAppId();
                         Set<UploadSchemaKey> redriveTableSet = redriveTablesByStudy.get(studyId);
                         if (redriveTableSet == null) {
                             redriveTableSet = new HashSet<>();
