@@ -59,7 +59,7 @@ public class BridgeHelperTest {
 
     public static final UploadSchema TEST_SCHEMA = simpleSchemaBuilder().fieldDefinitions(ImmutableList.of(
             TEST_FIELD_DEF));
-    public static final UploadSchemaKey TEST_SCHEMA_KEY = new UploadSchemaKey.Builder().withStudyId(TEST_STUDY_ID)
+    public static final UploadSchemaKey TEST_SCHEMA_KEY = new UploadSchemaKey.Builder().withAppId(TEST_STUDY_ID)
             .withSchemaId(TEST_SCHEMA_ID).withRevision(TEST_SCHEMA_REV).build();
 
     public BridgeHelper bridgeHelper;

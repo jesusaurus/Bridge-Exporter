@@ -98,7 +98,7 @@ public class SynapseExportHandlerTest {
     public static final String TEST_STUDY_ID = "my-study";
     public static final String TEST_SCHEMA_ID = "my-schema";
     public static final int TEST_SCHEMA_REV = 1;
-    public static final UploadSchemaKey DUMMY_SCHEMA_KEY = new UploadSchemaKey.Builder().withStudyId(TEST_STUDY_ID)
+    public static final UploadSchemaKey DUMMY_SCHEMA_KEY = new UploadSchemaKey.Builder().withAppId(TEST_STUDY_ID)
             .withSchemaId(TEST_SCHEMA_ID).withRevision(TEST_SCHEMA_REV).build();
 
     // Misc test constants. Some are shared with other tests.

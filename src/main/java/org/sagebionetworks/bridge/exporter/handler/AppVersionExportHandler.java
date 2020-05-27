@@ -88,7 +88,7 @@ public class AppVersionExportHandler extends SynapseExportHandler {
         String originalTable;
         if (schemaKey == null) {
             originalTable = BridgeExporterUtil.DEFAULT_TABLE_NAME;
-        } else if (getManager().isStudyIdExcludedInExportForStudy(schemaKey.getStudyId())) {
+        } else if (getManager().isStudyIdExcludedInExportForStudy(schemaKey.getAppId())) {
             originalTable = schemaKey.getSchemaId() + "-v" + schemaKey.getRevision();
         } else {
             originalTable = schemaKey.toString();

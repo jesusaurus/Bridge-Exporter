@@ -4,6 +4,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
@@ -274,11 +275,12 @@ public class BridgeExporterRequest {
         }
 
         /** @see BridgeExporterRequest#getStudyWhitelist */
+        @JsonAlias("appWhitelist")
         public Builder withStudyWhitelist(Set<String> studyWhitelist) {
             this.studyWhitelist = studyWhitelist;
             return this;
         }
-
+        
         /** @see BridgeExporterRequest#getSynapseProjectOverrideMap */
         public Builder withSynapseProjectOverrideMap(Map<String, String> synapseProjectOverrideMap) {
             this.synapseProjectOverrideMap = synapseProjectOverrideMap;

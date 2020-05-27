@@ -99,12 +99,12 @@ public class ExportTaskTest {
         ExportTask task = createTask();
 
         // set values
-        UploadSchemaKey fooSchemaKey = new UploadSchemaKey.Builder().withStudyId("test-study")
+        UploadSchemaKey fooSchemaKey = new UploadSchemaKey.Builder().withAppId("test-study")
                 .withSchemaId("foo-schema").withRevision(3).build();
         TsvInfo fooTsvInfo = createTsvInfo();
         task.setHealthDataTsvInfoForSchema(fooSchemaKey, fooTsvInfo);
 
-        UploadSchemaKey barSchemaKey = new UploadSchemaKey.Builder().withStudyId("test-study")
+        UploadSchemaKey barSchemaKey = new UploadSchemaKey.Builder().withAppId("test-study")
                 .withSchemaId("bar-schema").withRevision(7).build();
         TsvInfo barTsvInfo = createTsvInfo();
         task.setHealthDataTsvInfoForSchema(barSchemaKey, barTsvInfo);

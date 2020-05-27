@@ -314,19 +314,19 @@ public class ExportWorkerManagerEndOfStreamTest {
         assertEquals(redriveTableARequest.getStartDateTime(), startDateTimeByStudy.get("study-A"));
         assertEquals(redriveTableARequest.getStudyWhitelist(), ImmutableSet.of("study-A"));
         assertEquals(redriveTableARequest.getTableWhitelist(), ImmutableSet.of(new UploadSchemaKey.Builder()
-                .withStudyId("study-A").withSchemaId("schema-A").withRevision(1).build()));
+                .withAppId("study-A").withSchemaId("schema-A").withRevision(1).build()));
 
         BridgeExporterRequest redriveTableCRequest = redriveRequestList.get(2);
         assertEquals(redriveTableCRequest.getStartDateTime(), startDateTimeByStudy.get("study-C"));
         assertEquals(redriveTableCRequest.getStudyWhitelist(), ImmutableSet.of("study-C"));
         assertEquals(redriveTableCRequest.getTableWhitelist(), ImmutableSet.of(new UploadSchemaKey.Builder()
-                .withStudyId("study-C").withSchemaId("schema-C").withRevision(1).build()));
+                .withAppId("study-C").withSchemaId("schema-C").withRevision(1).build()));
 
         BridgeExporterRequest redriveTableERequest = redriveRequestList.get(3);
         assertEquals(redriveTableERequest.getStartDateTime(), startDateTimeByStudy.get("study-E"));
         assertEquals(redriveTableERequest.getStudyWhitelist(), ImmutableSet.of("study-E"));
         assertEquals(redriveTableERequest.getTableWhitelist(), ImmutableSet.of(new UploadSchemaKey.Builder()
-                .withStudyId("study-E").withSchemaId("schema-E").withRevision(1).build()));
+                .withAppId("study-E").withSchemaId("schema-E").withRevision(1).build()));
     }
 
     @Test
@@ -417,9 +417,9 @@ public class ExportWorkerManagerEndOfStreamTest {
         assertEquals(redriveTableRequest.getSharingMode(), request.getSharingMode());
         assertEquals(redriveTableRequest.getStudyWhitelist(), ImmutableSet.of(TEST_STUDY));
         assertEquals(redriveTableRequest.getTableWhitelist(), ImmutableSet.of(
-                new UploadSchemaKey.Builder().withStudyId(TEST_STUDY).withSchemaId("schema-A").withRevision(1)
+                new UploadSchemaKey.Builder().withAppId(TEST_STUDY).withSchemaId("schema-A").withRevision(1)
                         .build(),
-                new UploadSchemaKey.Builder().withStudyId(TEST_STUDY).withSchemaId("schema-B").withRevision(1)
+                new UploadSchemaKey.Builder().withAppId(TEST_STUDY).withSchemaId("schema-B").withRevision(1)
                         .build()));
         assertEquals(redriveTableRequest.getTag(), ExportWorkerManager.REDRIVE_TAG_PREFIX + request.getTag());
         assertFalse(redriveTableRequest.getUseLastExportTime());
@@ -472,9 +472,9 @@ public class ExportWorkerManagerEndOfStreamTest {
         assertEquals(redriveTableRequest.getSharingMode(), request.getSharingMode());
         assertEquals(redriveTableRequest.getStudyWhitelist(), ImmutableSet.of(TEST_STUDY));
         assertEquals(redriveTableRequest.getTableWhitelist(), ImmutableSet.of(
-                new UploadSchemaKey.Builder().withStudyId(TEST_STUDY).withSchemaId("schema-A").withRevision(1)
+                new UploadSchemaKey.Builder().withAppId(TEST_STUDY).withSchemaId("schema-A").withRevision(1)
                         .build(),
-                new UploadSchemaKey.Builder().withStudyId(TEST_STUDY).withSchemaId("schema-B").withRevision(1)
+                new UploadSchemaKey.Builder().withAppId(TEST_STUDY).withSchemaId("schema-B").withRevision(1)
                         .build()));
         assertEquals(redriveTableRequest.getTag(), ExportWorkerManager.REDRIVE_TAG_PREFIX + request.getTag());
         assertFalse(redriveTableRequest.getUseLastExportTime());
@@ -536,7 +536,7 @@ public class ExportWorkerManagerEndOfStreamTest {
 
         Set<UploadSchemaKey> redriveTableWhitelist = redriveTableRequest.getTableWhitelist();
         assertEquals(redriveTableWhitelist.size(), 1);
-        assertTrue(redriveTableWhitelist.contains(new UploadSchemaKey.Builder().withStudyId(TEST_STUDY)
+        assertTrue(redriveTableWhitelist.contains(new UploadSchemaKey.Builder().withAppId(TEST_STUDY)
                 .withSchemaId("test-schema").withRevision(1).build()));
     }
 

@@ -70,7 +70,7 @@ public class BridgeExporterUtil {
         String studyId = record.getString("studyId");
         String schemaId = record.getString("schemaId");
         int schemaRev = record.getInt("schemaRevision");
-        return new UploadSchemaKey.Builder().withStudyId(studyId).withSchemaId(schemaId).withRevision(schemaRev)
+        return new UploadSchemaKey.Builder().withAppId(studyId).withSchemaId(schemaId).withRevision(schemaRev)
                 .build();
     }
 
@@ -88,7 +88,7 @@ public class BridgeExporterUtil {
         if (schema.getRevision() == null) {
             throw new IllegalArgumentException("revision can't be null");
         }
-        return new UploadSchemaKey.Builder().withStudyId(schema.getStudyId()).withSchemaId(schema.getSchemaId())
+        return new UploadSchemaKey.Builder().withAppId(schema.getStudyId()).withSchemaId(schema.getSchemaId())
                 .withRevision(schema.getRevision().intValue()).build();
     }
 

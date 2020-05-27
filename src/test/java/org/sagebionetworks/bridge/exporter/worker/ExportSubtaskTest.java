@@ -27,7 +27,7 @@ public class ExportSubtaskTest {
             .withTmpDir(mock(File.class)).build();
 
     private static final JsonNode DUMMY_RECORD_DATA = DefaultObjectMapper.INSTANCE.createObjectNode();
-    private static final UploadSchemaKey DUMMY_SCHEMA_KEY = new UploadSchemaKey.Builder().withStudyId("test-study")
+    private static final UploadSchemaKey DUMMY_SCHEMA_KEY = new UploadSchemaKey.Builder().withAppId("test-study")
             .withSchemaId("test-schema").withRevision(17).build();
     private static final String STUDY_ID = "my-study";
 
