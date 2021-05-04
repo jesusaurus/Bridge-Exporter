@@ -19,6 +19,7 @@ import java.util.List;
 
 import com.google.common.collect.ImmutableList;
 import org.sagebionetworks.client.exceptions.SynapseNotFoundException;
+import org.sagebionetworks.repo.model.file.FileHandle;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -145,6 +146,11 @@ public class SynapseExportHandlerNewTableTest {
                 SynapseExportHandlerTest.RAW_DATA_ATTACHMENT_ID))
                 .thenReturn(SynapseExportHandlerTest.RAW_DATA_FILEHANDLE_ID);
 
+        FileHandle mockMetadataFileHandle = mock(FileHandle.class);
+        when(mockMetadataFileHandle.getId()).thenReturn(SynapseExportHandlerTest.RAW_METADATA_FILEHANDLE_ID);
+        when(mockSynapseHelper.createFileHandleFromStringWithRetry(any(), any(), any()))
+                .thenReturn(mockMetadataFileHandle);
+
         // spy StudyInfo getters
         // These calls through to a bunch of stuff (which we test in ExportWorkerManagerTest), so to simplify our test,
         // we just use a spy here.
@@ -263,9 +269,9 @@ public class SynapseExportHandlerNewTableTest {
         List<String> tsvLineList = TestUtil.bytesToLines(tsvBytes);
         assertEquals(tsvLineList.size(), 2);
         SynapseExportHandlerTest.validateTsvHeaders(tsvLineList.get(0), "foo", "bar",
-                HealthDataExportHandler.COLUMN_NAME_RAW_DATA);
+                HealthDataExportHandler.COLUMN_NAME_RAW_DATA, HealthDataExportHandler.COLUMN_NAME_RAW_METADATA);
         SynapseExportHandlerTest.validateTsvRow(tsvLineList.get(1), "This is a string.", "42",
-                SynapseExportHandlerTest.RAW_DATA_FILEHANDLE_ID);
+                SynapseExportHandlerTest.RAW_DATA_FILEHANDLE_ID, SynapseExportHandlerTest.RAW_METADATA_FILEHANDLE_ID);
 
         validateTableCreation(handler);
     }
@@ -287,8 +293,10 @@ public class SynapseExportHandlerNewTableTest {
         // validate tsv file
         List<String> tsvLineList = TestUtil.bytesToLines(tsvBytes);
         assertEquals(tsvLineList.size(), 2);
-        SynapseExportHandlerTest.validateTsvHeaders(tsvLineList.get(0), HealthDataExportHandler.COLUMN_NAME_RAW_DATA);
-        SynapseExportHandlerTest.validateTsvRow(tsvLineList.get(1), SynapseExportHandlerTest.RAW_DATA_FILEHANDLE_ID);
+        SynapseExportHandlerTest.validateTsvHeaders(tsvLineList.get(0), HealthDataExportHandler.COLUMN_NAME_RAW_DATA,
+                HealthDataExportHandler.COLUMN_NAME_RAW_METADATA);
+        SynapseExportHandlerTest.validateTsvRow(tsvLineList.get(1), SynapseExportHandlerTest.RAW_DATA_FILEHANDLE_ID,
+                SynapseExportHandlerTest.RAW_METADATA_FILEHANDLE_ID);
 
         validateTableCreation(handler);
     }

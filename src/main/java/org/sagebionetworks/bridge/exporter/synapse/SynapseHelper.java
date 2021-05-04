@@ -1,7 +1,9 @@
 package org.sagebionetworks.bridge.exporter.synapse;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -680,6 +682,19 @@ public class SynapseHelper {
         rateLimiter.acquire();
         // Pass in forceRestart=true. Otherwise, retries will fail deterministically.
         return synapseClient.multipartUpload(file, null, null, true);
+    }
+
+    /** Uploads a string to Synapse as a file handle. This is a retry wrapper. */
+    @RetryOnFailure(attempts = 2, delay = 1, unit = TimeUnit.SECONDS,
+            types = { AmazonClientException.class, SynapseException.class }, randomize = false)
+    public FileHandle createFileHandleFromStringWithRetry(String content, String fileName, String contentType)
+            throws SynapseException {
+        byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
+
+        rateLimiter.acquire();
+        // Pass in forceRestart=true. Otherwise, retries will fail deterministically.
+        return synapseClient.multipartUpload(new ByteArrayInputStream(bytes), bytes.length, fileName, contentType,
+                null, null, true);
     }
 
     /** Creates the S3 file handle in Synapse. This is a retry wrapper. */

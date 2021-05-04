@@ -1,7 +1,9 @@
 package org.sagebionetworks.bridge.exporter.synapse;
 
+import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyLong;
 import static org.mockito.Matchers.eq;
+import static org.mockito.Matchers.isNull;
 import static org.mockito.Matchers.same;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -15,10 +17,13 @@ import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
 import java.io.File;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Set;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.io.ByteStreams;
 import org.mockito.ArgumentCaptor;
 import org.sagebionetworks.client.SynapseClient;
 import org.sagebionetworks.client.exceptions.SynapseResultNotReadyException;
@@ -279,6 +284,37 @@ public class SynapseHelperTest {
 
         // execute and validate
         FileHandle retVal = synapseHelper.createFileHandleWithRetry(mockFile);
+        assertSame(retVal, mockFileHandle);
+    }
+
+    @Test
+    public void createFileHandleFromString() throws Exception {
+        // Make input.
+        final String content = "This is test content.";
+        final String contentType = "text/plain";
+        final String fileName = "content.txt";
+
+        // Mock Synapse Client.
+        SynapseClient mockSynapseClient = mock(SynapseClient.class);
+
+        S3FileHandle mockFileHandle = mock(S3FileHandle.class);
+        when(mockSynapseClient.multipartUpload(any(), eq((long) content.length()), eq(fileName), eq(contentType),
+                isNull(Long.class), isNull(Boolean.class), eq(true))).thenReturn(mockFileHandle);
+
+        SynapseHelper synapseHelper = new SynapseHelper();
+        synapseHelper.setSynapseClient(mockSynapseClient);
+
+        // Execute and validate.
+        FileHandle retVal = synapseHelper.createFileHandleFromStringWithRetry(content, fileName, contentType);
+
+        ArgumentCaptor<InputStream> inputStreamCaptor = ArgumentCaptor.forClass(InputStream.class);
+        verify(mockSynapseClient).multipartUpload(inputStreamCaptor.capture(), eq((long) content.length()),
+                eq(fileName), eq(contentType), isNull(Long.class), isNull(Boolean.class), eq(true));
+
+        InputStream inputStream = inputStreamCaptor.getValue();
+        byte[] contentBytes = ByteStreams.toByteArray(inputStream);
+        assertEquals(new String(contentBytes, StandardCharsets.UTF_8), content);
+
         assertSame(retVal, mockFileHandle);
     }
 
