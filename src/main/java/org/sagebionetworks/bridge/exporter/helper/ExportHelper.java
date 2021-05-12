@@ -113,6 +113,9 @@ public class ExportHelper {
             throw new BridgeExporterException("Answer link in survey data must be specified");
         }
         String answerText = s3Helper.readS3FileAsString(attachmentBucket, answerLink);
+        if (StringUtils.isBlank(answerText)) {
+            throw new BridgeExporterException("Survey with blank answers file " + answerLink);
+        }
 
         JsonNode answerArrayNode;
         try {
