@@ -3,16 +3,32 @@ jdk:
 - openjdk8
 sudo: required
 before_deploy: mvn clean verify
+branches:
+  only:
+  - develop
+  - uat
+  - prod
 deploy:
   skip_cleanup: true
   provider: elasticbeanstalk
-  access_key_id: AKIAZOKKB636GOXML5BE
+  access_key_id:
+    develop: AKIAJQOD25TNB4GR4LFQ
+    uat: AKIAJQOD25TNB4GR4LFQ
+    prod: AKIAZOKKB636GOXML5BE
   secret_access_key:
-    secure: "m2pLbhytAmVF1J3/q9Ix+0722le/+1JNQp5AnxDdZ4pxr8RCEzweUsgP/JOgrgLG92lZ2WHjRqxjqcVhPUBRRRjJKdD2l7sBOL1Wi9MvmTL7mCDens9QEifyclHld7kSkWB9URe6Mp90GkdVNcFHEBBdrqgUYtMkxrBX+wiYeFE="
+    develop:
+      secure: "pNqzQgF5g5d7DetkKOO1yIlcdf9n2Y90TVC2ZyU7VWqXcMO2UWG6OvpcCH9+xbmp29bNVMoSD2NuF8YqjHIaAru5RRna6NH6HQTjc7QfXehkij7rKBs3Kl1b+PwV+DKeMTJuedoS91E3w4aH+k08Ktyeyw/WjbWFPVyq3djh5ZM="
+    uat:
+      secure: "pNqzQgF5g5d7DetkKOO1yIlcdf9n2Y90TVC2ZyU7VWqXcMO2UWG6OvpcCH9+xbmp29bNVMoSD2NuF8YqjHIaAru5RRna6NH6HQTjc7QfXehkij7rKBs3Kl1b+PwV+DKeMTJuedoS91E3w4aH+k08Ktyeyw/WjbWFPVyq3djh5ZM="
+    prod:
+      secure: "m2pLbhytAmVF1J3/q9Ix+0722le/+1JNQp5AnxDdZ4pxr8RCEzweUsgP/JOgrgLG92lZ2WHjRqxjqcVhPUBRRRjJKdD2l7sBOL1Wi9MvmTL7mCDens9QEifyclHld7kSkWB9URe6Mp90GkdVNcFHEBBdrqgUYtMkxrBX+wiYeFE="
   region: us-east-1
   app: bridge-exporter-$TRAVIS_BRANCH-application
   env: bridge-exporter-$TRAVIS_BRANCH
-  bucket_name: elasticbeanstalk-us-east-1-649232250620
+  bucket_name:
+    develop: elasticbeanstalk-us-east-1-420786776710
+    uat: elasticbeanstalk-us-east-1-420786776710
+    prod: elasticbeanstalk-us-east-1-649232250620
   zip-file: target/Bridge-Exporter-2.0.war
   on:
     all_branches: true
