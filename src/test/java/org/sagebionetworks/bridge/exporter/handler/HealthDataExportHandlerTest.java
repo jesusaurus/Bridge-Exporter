@@ -28,6 +28,8 @@ import com.fasterxml.jackson.databind.node.TextNode;
 import com.google.common.collect.ImmutableList;
 import org.joda.time.DateTime;
 import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
+
+import org.sagebionetworks.repo.model.file.FileHandle;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 import org.testng.annotations.DataProvider;
@@ -66,6 +68,7 @@ public class HealthDataExportHandlerTest {
     private static final String FIELD_VALUE = "asdf jkl;";
     private static final String RAW_DATA_ATTACHMENT_ID = "my-raw.zip";
     private static final String RAW_DATA_FILEHANDLE_ID = "my-raw-data-filehandle";
+    private static final String RAW_METADATA_FILEHANDLE_ID = "my-raw-metadata-filehandle";
 
     private static final UploadFieldDefinition MULTI_CHOICE_FIELD_DEF = new UploadFieldDefinition().name(FIELD_NAME)
             .type(UploadFieldType.MULTI_CHOICE).multiChoiceAnswerList(ImmutableList.of("foo", "bar", "baz", "true",
@@ -295,6 +298,7 @@ public class HealthDataExportHandlerTest {
         columnModelList.addAll(MOCK_COLUMN_LIST);
         columnModelList.addAll(expectedColumnList);
         columnModelList.add(HealthDataExportHandler.RAW_DATA_COLUMN);
+        columnModelList.add(HealthDataExportHandler.RAW_METADATA_COLUMN);
         when(mockSynapseHelper.getColumnModelsForTableWithRetry(SynapseExportHandlerTest.TEST_SYNAPSE_TABLE_ID))
                 .thenReturn(columnModelList);
 
@@ -303,9 +307,14 @@ public class HealthDataExportHandlerTest {
         when(mockSynapseHelper.serializeToSynapseType(any(), any(), any(), any(), any(), any(), any()))
                 .thenCallRealMethod();
 
-        // Mock uploadFromS3ToSynapseFileHandle() for raw data attachment.
+        // Mock uploadFromS3ToSynapseFileHandle() for raw data and metadata.
         when(mockSynapseHelper.uploadFromS3ToSynapseFileHandle(SynapseExportHandlerTest.TEST_SYNAPSE_PROJECT_ID,
                 RAW_DATA_ATTACHMENT_ID)).thenReturn(RAW_DATA_FILEHANDLE_ID);
+
+        FileHandle mockMetadataFileHandle = mock(FileHandle.class);
+        when(mockMetadataFileHandle.getId()).thenReturn(RAW_METADATA_FILEHANDLE_ID);
+        when(mockSynapseHelper.createFileHandleFromStringWithRetry(any(), any(), any()))
+                .thenReturn(mockMetadataFileHandle);
 
         // mock upload the TSV and capture the upload
         tsvBytes = null;
@@ -397,9 +406,11 @@ public class HealthDataExportHandlerTest {
             List<String> tsvLineList = TestUtil.bytesToLines(tsvBytes);
             assertEquals(tsvLineList.size(), 3);
             SynapseExportHandlerTest.validateTsvHeaders(tsvLineList.get(0), BridgeHelperTest.TEST_FIELD_NAME,
-                    HealthDataExportHandler.COLUMN_NAME_RAW_DATA);
-            SynapseExportHandlerTest.validateTsvRow(tsvLineList.get(1), FIELD_VALUE, RAW_DATA_FILEHANDLE_ID);
-            SynapseExportHandlerTest.validateTsvRow(tsvLineList.get(2), FIELD_VALUE, RAW_DATA_FILEHANDLE_ID);
+                    HealthDataExportHandler.COLUMN_NAME_RAW_DATA, HealthDataExportHandler.COLUMN_NAME_RAW_METADATA);
+            SynapseExportHandlerTest.validateTsvRow(tsvLineList.get(1), FIELD_VALUE,
+                    RAW_DATA_FILEHANDLE_ID, RAW_METADATA_FILEHANDLE_ID);
+            SynapseExportHandlerTest.validateTsvRow(tsvLineList.get(2), FIELD_VALUE,
+                    RAW_DATA_FILEHANDLE_ID, RAW_METADATA_FILEHANDLE_ID);
         }
 
         // Sanity check to make sure we have the expected number of getSchema calls.
@@ -524,9 +535,11 @@ public class HealthDataExportHandlerTest {
                 "   \"choose-one\":[\"C\", \"None of the above\"],\n" +
                 "   \"when\":\"" + whenStr + "\",\n" +
                 "   \"foo\":37,\n" +
-                "   \"bar\":42\n" +
+                "   \"bar\":42,\n" +
+                "   \"not-in-schema\":\"This is not in the schema\"\n" +
                 "}";
-        Item ddbRecord = SynapseExportHandlerTest.makeDdbRecord().withString("userMetadata", metadataJsonText);
+        Item ddbRecord = SynapseExportHandlerTest.makeDdbRecord()
+                .withString(HealthDataExportHandler.DDB_KEY_USER_METADATA, metadataJsonText);
 
         // make subtask
         ExportSubtask subtask = new ExportSubtask.Builder().withOriginalRecord(ddbRecord).withParentTask(task)
@@ -542,13 +555,16 @@ public class HealthDataExportHandlerTest {
         SynapseExportHandlerTest.validateTsvHeaders(tsvLineList.get(0), "metadata.choose-one.A",
                 "metadata.choose-one.B", "metadata.choose-one.C", "metadata.choose-one.other", "metadata.when",
                 "metadata.when.timezone", "metadata.foo", "metadata.bar", "record.foo", "record.baz",
-                HealthDataExportHandler.COLUMN_NAME_RAW_DATA);
+                HealthDataExportHandler.COLUMN_NAME_RAW_DATA, HealthDataExportHandler.COLUMN_NAME_RAW_METADATA);
         SynapseExportHandlerTest.validateTsvRow(tsvLineList.get(1), "false", "false", "true", "None of the above",
                 String.valueOf(whenMillis), "+0900", "37", "metadata-bar", "foo-value", "baz-value",
-                SynapseExportHandlerTest.RAW_DATA_FILEHANDLE_ID);
+                RAW_DATA_FILEHANDLE_ID, RAW_METADATA_FILEHANDLE_ID);
 
-        // Verify calls to upload raw data.
+        // Verify calls to upload raw data and metadata.
         verify(mockSynapseHelper, atLeastOnce()).uploadFromS3ToSynapseFileHandle(
                 SynapseExportHandlerTest.TEST_SYNAPSE_PROJECT_ID, RAW_DATA_ATTACHMENT_ID);
+        verify(mockSynapseHelper, atLeastOnce()).createFileHandleFromStringWithRetry(metadataJsonText,
+                HealthDataExportHandler.FILE_NAME_RAW_METADATA_JSON,
+                HealthDataExportHandler.CONTENT_TYPE_APPLICATION_JSON);
     }
 }

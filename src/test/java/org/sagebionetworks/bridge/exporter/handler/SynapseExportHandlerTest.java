@@ -34,6 +34,7 @@ import com.google.common.collect.Multiset;
 import com.google.common.collect.SetMultimap;
 import org.joda.time.DateTime;
 import org.joda.time.LocalDate;
+import org.sagebionetworks.repo.model.file.FileHandle;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 import org.testng.annotations.BeforeMethod;
@@ -84,6 +85,7 @@ public class SynapseExportHandlerTest {
     private static final long DUMMY_CREATED_ON = 7777777;
     private static final Set<String> DUMMY_DATA_GROUPS = ImmutableSet.of("foo", "bar", "baz");
     private static final String DUMMY_DATA_GROUPS_FLATTENED = "bar,baz,foo";
+    private static final String DUMMY_USER_METADATA_JSON_TEXT = "{\"metadata-key\":\"metadata-value\"}";
     private static final String DUMMY_SUBSTUDY_MEMBERSHIPS = "|subA=extA|subB=|";
     private static final String DUMMY_HEALTH_CODE = "dummy-health-code";
     private static final String DUMMY_RECORD_ID = "dummy-record-id";
@@ -107,6 +109,7 @@ public class SynapseExportHandlerTest {
     public static final Study DUMMY_STUDY = new Study().identifier(TEST_STUDY_ID).uploadMetadataFieldDefinitions(null);
     public static final String RAW_DATA_ATTACHMENT_ID = "my-raw.zip";
     public static final String RAW_DATA_FILEHANDLE_ID = "my-raw-data-filehandle";
+    public static final String RAW_METADATA_FILEHANDLE_ID = "my-raw-metadata-filehandle";
     public static final long TEST_SYNAPSE_DATA_ACCESS_TEAM_ID = 1337;
     public static final int TEST_SYNAPSE_PRINCIPAL_ID = 123456;
     public static final String TEST_SYNAPSE_PROJECT_ID = "test-synapse-project-id";
@@ -184,6 +187,11 @@ public class SynapseExportHandlerTest {
                 .thenCallRealMethod();
         when(mockSynapseHelper.uploadFromS3ToSynapseFileHandle(TEST_SYNAPSE_PROJECT_ID, RAW_DATA_ATTACHMENT_ID))
                 .thenReturn(RAW_DATA_FILEHANDLE_ID);
+
+        FileHandle mockMetadataFileHandle = mock(FileHandle.class);
+        when(mockMetadataFileHandle.getId()).thenReturn(RAW_METADATA_FILEHANDLE_ID);
+        when(mockSynapseHelper.createFileHandleFromStringWithRetry(any(), any(), any()))
+                .thenReturn(mockMetadataFileHandle);
 
         // spy StudyInfo getters
         // These calls through to a bunch of stuff (which we test in ExportWorkerManagerTest), so to simplify our test,
@@ -466,10 +474,11 @@ public class SynapseExportHandlerTest {
         validateTsvHeaders(tsvLineList.get(0), "foo", "foooo", "unbounded-foo", "bar", "submitTime",
                 "submitTime.timezone", "sports.fencing", "sports.football", "sports.running", "sports.swimming",
                 "delicious.Yes", "delicious.No", "delicious.other", "my-large-text-attachment",
-                HealthDataExportHandler.COLUMN_NAME_RAW_DATA);
+                HealthDataExportHandler.COLUMN_NAME_RAW_DATA, HealthDataExportHandler.COLUMN_NAME_RAW_METADATA);
         validateTsvRow(tsvLineList.get(1), "This is a string.", "Example (not) long string",
                 "Potentially unbounded string", "42", String.valueOf(submitTimeMillis), "+0900", "true", "false",
-                "true", "false", "true", "true", "Maybe", "This is my large text attachment", RAW_DATA_FILEHANDLE_ID);
+                "true", "false", "true", "true", "Maybe", "This is my large text attachment", RAW_DATA_FILEHANDLE_ID,
+                RAW_METADATA_FILEHANDLE_ID);
 
         // validate metrics
         Multiset<String> counterMap = task.getMetrics().getCounterMap();
@@ -513,8 +522,9 @@ public class SynapseExportHandlerTest {
         // validate tsv file
         List<String> tsvLineList = TestUtil.bytesToLines(tsvBytes);
         assertEquals(tsvLineList.size(), 2);
-        validateTsvHeaders(tsvLineList.get(0), HealthDataExportHandler.COLUMN_NAME_RAW_DATA);
-        validateTsvRow(tsvLineList.get(1), RAW_DATA_FILEHANDLE_ID);
+        validateTsvHeaders(tsvLineList.get(0), HealthDataExportHandler.COLUMN_NAME_RAW_DATA,
+                HealthDataExportHandler.COLUMN_NAME_RAW_METADATA);
+        validateTsvRow(tsvLineList.get(1), RAW_DATA_FILEHANDLE_ID, RAW_METADATA_FILEHANDLE_ID);
 
         // validate metrics
         Multiset<String> counterMap = task.getMetrics().getCounterMap();
@@ -579,6 +589,7 @@ public class SynapseExportHandlerTest {
                 .withString("id", DUMMY_RECORD_ID).withString("metadata", DUMMY_METADATA_JSON_TEXT)
                 .withStringSet("userDataGroups", DUMMY_DATA_GROUPS)
                 .withString("userExternalId", "<p>unsanitized external id</p>")
+                .withString(HealthDataExportHandler.DDB_KEY_USER_METADATA, DUMMY_USER_METADATA_JSON_TEXT)
                 .withMap("userSubstudyMemberships", ImmutableMap.of("subA", "extA", "subB", ""))
                 .withString("userSharingScope", DUMMY_USER_SHARING_SCOPE)
                 .withString(HealthDataExportHandler.DDB_KEY_RAW_DATA_ATTACHMENT_ID, RAW_DATA_ATTACHMENT_ID);

@@ -18,6 +18,7 @@ import org.joda.time.DateTime;
 import org.joda.time.format.DateTimeFormat;
 import org.joda.time.format.DateTimeFormatter;
 import org.sagebionetworks.client.exceptions.SynapseException;
+import org.sagebionetworks.repo.model.file.FileHandle;
 import org.sagebionetworks.repo.model.table.ColumnModel;
 import org.sagebionetworks.repo.model.table.ColumnType;
 import org.slf4j.Logger;
@@ -42,7 +43,11 @@ public abstract class HealthDataExportHandler extends SynapseExportHandler {
     private static final Logger LOG = LoggerFactory.getLogger(HealthDataExportHandler.class);
 
     static final String COLUMN_NAME_RAW_DATA = "rawData";
+    static final String COLUMN_NAME_RAW_METADATA = "rawMetadata";
+    static final String CONTENT_TYPE_APPLICATION_JSON = "application/json";
     static final String DDB_KEY_RAW_DATA_ATTACHMENT_ID = "rawDataAttachmentId";
+    static final String DDB_KEY_USER_METADATA = "userMetadata";
+    static final String FILE_NAME_RAW_METADATA_JSON = "rawMetadata.json";
     private static final String METADATA_FIELD_NAME_PREFIX = "metadata.";
     private static final char MULTI_CHOICE_FIELD_SEPARATOR = '.';
     private static final String OTHER_CHOICE_FIELD_SUFFIX = ".other";
@@ -56,6 +61,13 @@ public abstract class HealthDataExportHandler extends SynapseExportHandler {
         RAW_DATA_COLUMN = new ColumnModel();
         RAW_DATA_COLUMN.setName(COLUMN_NAME_RAW_DATA);
         RAW_DATA_COLUMN.setColumnType(ColumnType.FILEHANDLEID);
+    }
+
+    static final ColumnModel RAW_METADATA_COLUMN;
+    static {
+        RAW_METADATA_COLUMN = new ColumnModel();
+        RAW_METADATA_COLUMN.setName(COLUMN_NAME_RAW_METADATA);
+        RAW_METADATA_COLUMN.setColumnType(ColumnType.FILEHANDLEID);
     }
 
     @Override
@@ -138,8 +150,9 @@ public abstract class HealthDataExportHandler extends SynapseExportHandler {
             }
         }
 
-        // Add raw data field.
+        // Add raw data and metadata fields.
         columnList.add(RAW_DATA_COLUMN);
+        columnList.add(RAW_METADATA_COLUMN);
 
         return columnList;
     }
@@ -201,10 +214,11 @@ public abstract class HealthDataExportHandler extends SynapseExportHandler {
         ExportWorkerManager manager = getManager();
         ExportTask task = subtask.getParentTask();
         String synapseProjectId = manager.getSynapseProjectIdForStudyAndTask(getStudyId(), task);
+        SynapseHelper synapseHelper = manager.getSynapseHelper();
         Map<String, String> rowValueMap = new HashMap<>();
 
         // metadata columns
-        String userMetadataJsonText = subtask.getOriginalRecord().getString("userMetadata");
+        String userMetadataJsonText = subtask.getOriginalRecord().getString(DDB_KEY_USER_METADATA);
         if (StringUtils.isNotBlank(userMetadataJsonText)) {
             // extract and serialize from the raw DDB record
             JsonNode userMetadataNode = DefaultObjectMapper.INSTANCE.readTree(userMetadataJsonText);
@@ -216,6 +230,11 @@ public abstract class HealthDataExportHandler extends SynapseExportHandler {
                 // Add to the row value map, but pre-pend the metadata prefix.
                 metadataFieldMap.forEach((key, value) -> rowValueMap.put(METADATA_FIELD_NAME_PREFIX + key, value));
             }
+
+            // Upload raw metadata as a file handle.
+            FileHandle metadataFileHandle = synapseHelper.createFileHandleFromStringWithRetry(userMetadataJsonText,
+                    FILE_NAME_RAW_METADATA_JSON, CONTENT_TYPE_APPLICATION_JSON);
+            rowValueMap.put(COLUMN_NAME_RAW_METADATA, metadataFileHandle.getId());
         }
 
         // schema-specific columns - These write directly to the rowValueMap, possibly overwriting metadata if there's
@@ -228,8 +247,7 @@ public abstract class HealthDataExportHandler extends SynapseExportHandler {
         // Upload raw data. Attachment ID includes record ID, so we can use it verbatim.
         String rawDataAttachmentId = subtask.getOriginalRecord().getString(DDB_KEY_RAW_DATA_ATTACHMENT_ID);
         if (StringUtils.isNotBlank(rawDataAttachmentId)) {
-            String fileHandleId = manager.getSynapseHelper().uploadFromS3ToSynapseFileHandle(synapseProjectId,
-                    rawDataAttachmentId);
+            String fileHandleId = synapseHelper.uploadFromS3ToSynapseFileHandle(synapseProjectId, rawDataAttachmentId);
             rowValueMap.put(COLUMN_NAME_RAW_DATA, fileHandleId);
         }
 
