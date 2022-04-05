@@ -200,7 +200,7 @@ public class SpringConfig {
 
         SynapseClient synapseClient = new SynapseAdminClientImpl();
         synapseClient.setUsername(config.get("synapse.user"));
-        synapseClient.setApiKey(config.get("synapse.api.key"));
+        synapseClient.setBearerAuthorizationToken(config.get("synapse.access.token"));
         return synapseClient;
     }
 
