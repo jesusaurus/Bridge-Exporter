@@ -4,6 +4,8 @@ import java.util.List;
 
 import com.amazonaws.services.s3.event.S3EventNotification;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,6 +23,7 @@ public class S3EventNotificationCallback implements PollSqsCallback {
     private static final Logger LOG = LoggerFactory.getLogger(S3EventNotificationCallback.class);
     private static final String S3_EVENT_SOURCE = "aws:s3";
     private static final String S3_OBJECT_CREATED_EVENT_PREFIX = "ObjectCreated:";
+    private static final String SNS_KEY_MESSAGE = "Message";
 
     private static final ObjectMapper OBJECT_MAPPER;
 
@@ -38,8 +41,29 @@ public class S3EventNotificationCallback implements PollSqsCallback {
     }
 
     @Override
-    public void callback(String messageBody) throws Exception {
-        S3EventNotification notification = OBJECT_MAPPER.readValue(messageBody, S3EventNotification.class);
+    public void callback(String messageBody) {
+        JsonNode wrapperNode;
+        try {
+            wrapperNode = OBJECT_MAPPER.readTree(messageBody);
+        } catch (JsonProcessingException ex) {
+            // Malformed JSON. Log a warning and squelch.
+            LOG.warn("SNS notification is malformed JSON: " + messageBody);
+            return;
+        }
+        if (wrapperNode == null || !wrapperNode.hasNonNull(SNS_KEY_MESSAGE)) {
+            // Wrapper node doesn't exist or doesn't have a Message field. Log a warning and squelch.
+            LOG.warn("SNS notification doesn't contain an S3 notification: " + messageBody);
+            return;
+        }
+
+        S3EventNotification notification;
+        try {
+            notification = OBJECT_MAPPER.convertValue(wrapperNode.get(SNS_KEY_MESSAGE), S3EventNotification.class);
+        } catch (IllegalArgumentException ex) {
+            // Malformed S3 notification. Log a warning and squelch.
+            LOG.warn("S3 notification is malformed: " + messageBody);
+            return;
+        }
         List<S3EventNotification.S3EventNotificationRecord> recordList = notification.getRecords();
         if (recordList == null || recordList.isEmpty()) {
             // Notification w/o record list is not actionable. Log a warning and squelch.
