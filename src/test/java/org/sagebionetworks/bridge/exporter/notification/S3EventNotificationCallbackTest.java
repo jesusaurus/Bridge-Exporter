@@ -27,7 +27,9 @@ import org.sagebionetworks.bridge.rest.exceptions.BridgeSDKException;
 
 public class S3EventNotificationCallbackTest {
 
-    private static final String UPLOAD_COMPLETE_MESSAGE="{\"Records\":[{\"eventVersion\":\"2.0\",\"eventSource\":\"aws:s3\"," +
+    private static final String UPLOAD_COMPLETE_MESSAGE= "{" +
+            "  \"Message\":" +
+            "{\"Records\":[{\"eventVersion\":\"2.0\",\"eventSource\":\"aws:s3\"," +
             "\"awsRegion\":\"us-east-1\"," +
             "\"eventTime\":\"2016-07-12T22:06:54.454Z\",\"eventName\":\"ObjectCreated:Put\"," +
             "\"userIdentity\":{\"principalId\":\"AWS:AIDAJCSQZ35H7B4BFOVAW\"},\"requestParameters\":{\"sourceIPAddress\":\"54.87.180" +
@@ -36,7 +38,8 @@ public class S3EventNotificationCallbackTest {
             "\"s3\":{\"s3SchemaVersion\":\"1.0\",\"configurationId\":\"Bridge Upload Complete Notification UAT\"," +
             "\"bucket\":{\"name\":\"org-sagebridge-upload-uat\",\"ownerIdentity\":{\"principalId\":\"AZ9HQM5UC903F\"}," +
             "\"arn\":\"arn:aws:s3:::org-sagebridge-upload-uat\"},\"object\":{\"key\":\"89b40dab-4982-4d5c-ae21-d74b072d02cd\"," +
-            "\"size\":1488,\"eTag\":\"e40df5cfa5874ab353947eb48ec0cfa4\",\"sequencer\":\"00578569FE6792370C\"}}}]}";
+            "\"size\":1488,\"eTag\":\"e40df5cfa5874ab353947eb48ec0cfa4\",\"sequencer\":\"00578569FE6792370C\"}}}]}" +
+            "}";
     private static final String UPLOAD_ID = "89b40dab-4982-4d5c-ae21-d74b072d02cd";
 
     private BridgeHelper mockBridgeHelper;
@@ -52,21 +55,75 @@ public class S3EventNotificationCallbackTest {
     }
 
     @Test
-    public void testCallback_StringMessage() throws Exception {
+    public void testCallback_StringMessage() {
         callback.callback(UPLOAD_COMPLETE_MESSAGE);
 
         verify(mockBridgeHelper, times(1)).completeUpload(UPLOAD_ID);
     }
 
     @Test
-    public void testCallback_NullList() throws Exception {
+    public void testCallback_MalformedMessage() {
+        callback.callback("malformed \" message");
+        verify(mockBridgeHelper, never()).completeUpload(anyString());
+    }
+
+    @Test
+    public void testCallback_BlankWrapper() {
+        callback.callback("");
+        verify(mockBridgeHelper, never()).completeUpload(anyString());
+    }
+
+    @Test
+    public void testCallback_NullWrapper() {
+        callback.callback("null");
+        verify(mockBridgeHelper, never()).completeUpload(anyString());
+    }
+
+    @Test
+    public void testCallback_WrapperInvalidType() {
+        callback.callback("\"wrong type\"");
+        verify(mockBridgeHelper, never()).completeUpload(anyString());
+    }
+
+    @Test
+    public void testCallback_NoMessage() {
         callback.callback("{}");
         verify(mockBridgeHelper, never()).completeUpload(anyString());
     }
 
     @Test
-    public void testCallback_EmptyList() throws Exception {
-        callback.callback("{\"Records\":[]}");
+    public void testCallback_NullMessage() {
+        callback.callback("{\"Message\":null}");
+        verify(mockBridgeHelper, never()).completeUpload(anyString());
+    }
+
+    @Test
+    public void testCallback_MessageWrongType() {
+        callback.callback("{\"Message\":\"wrong type\"}");
+        verify(mockBridgeHelper, never()).completeUpload(anyString());
+    }
+
+    @Test
+    public void testCallback_NoRecordList() {
+        callback.callback("{\"Message\":{}}");
+        verify(mockBridgeHelper, never()).completeUpload(anyString());
+    }
+
+    @Test
+    public void testCallback_NullRecordList() {
+        callback.callback("{\"Message\":{\"Records\":null}}");
+        verify(mockBridgeHelper, never()).completeUpload(anyString());
+    }
+
+    @Test
+    public void testCallback_RecordListWrongType() {
+        callback.callback("{\"Message\":{\"Records\":\"wrong type\"}}");
+        verify(mockBridgeHelper, never()).completeUpload(anyString());
+    }
+
+    @Test
+    public void testCallback_EmptyList() {
+        callback.callback("{\"Message\":{\"Records\":[]}}");
         verify(mockBridgeHelper, never()).completeUpload(anyString());
     }
 
@@ -81,7 +138,7 @@ public class S3EventNotificationCallbackTest {
     }
 
     @Test(dataProvider = "propagatedExceptionDataProvider")
-    public void testCallback_PropagatesExceptions(int status) throws Exception {
+    public void testCallback_PropagatesExceptions(int status) {
         doThrow(new BridgeSDKException("test exception", status)).when(mockBridgeHelper).completeUpload(UPLOAD_ID);
 
         try {
@@ -104,14 +161,14 @@ public class S3EventNotificationCallbackTest {
     }
 
     @Test(dataProvider = "suppressedExceptionDataProvider")
-    public void testCallback_SuppressesExceptions(int status) throws Exception {
+    public void testCallback_SuppressesExceptions(int status) {
         doThrow(new BridgeSDKException("test exception", status)).when(mockBridgeHelper).completeUpload(UPLOAD_ID);
         callback.callback(UPLOAD_COMPLETE_MESSAGE);
         verify(mockBridgeHelper, times(1)).completeUpload(UPLOAD_ID);
     }
 
     @Test
-    public void testCallback_CompleteUploadForShouldProcessRecords() throws Exception {
+    public void testCallback_CompleteUploadForShouldProcessRecords() {
         String key1 = "key1";
         String key2 = "key2";
         String key3 = "key3";
