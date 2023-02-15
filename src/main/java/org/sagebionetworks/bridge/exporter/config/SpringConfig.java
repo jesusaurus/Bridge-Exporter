@@ -30,7 +30,6 @@ import org.sagebionetworks.bridge.config.Config;
 import org.sagebionetworks.bridge.config.PropertiesConfig;
 import org.sagebionetworks.bridge.dynamodb.DynamoQueryHelper;
 import org.sagebionetworks.bridge.dynamodb.DynamoScanHelper;
-import org.sagebionetworks.bridge.exporter.notification.S3EventNotificationCallback;
 import org.sagebionetworks.bridge.exporter.request.BridgeExporterSqsCallback;
 import org.sagebionetworks.bridge.exporter.synapse.ColumnDefinition;
 import org.sagebionetworks.bridge.exporter.util.BridgeExporterUtil;
@@ -177,19 +176,6 @@ public class SpringConfig {
         sqsWorker.setCallback(exporterSqsCallback);
         sqsWorker.setQueueUrl(config.get(BridgeExporterUtil.CONFIG_KEY_SQS_QUEUE_URL));
         sqsWorker.setSleepTimeMillis(config.getInt("exporter.request.sqs.sleep.time.millis"));
-        sqsWorker.setSqsHelper(sqsHelper());
-        return sqsWorker;
-    }
-
-    @Bean
-    @Autowired
-    public PollSqsWorker s3NotificationSqsWorker(S3EventNotificationCallback s3NotificationCallback) {
-        Config config = bridgeConfig();
-
-        PollSqsWorker sqsWorker = new PollSqsWorker();
-        sqsWorker.setCallback(s3NotificationCallback);
-        sqsWorker.setQueueUrl(config.get("s3.notification.sqs.queue.url"));
-        sqsWorker.setSleepTimeMillis(config.getInt("s3.notification.sqs.sleep.time.millis"));
         sqsWorker.setSqsHelper(sqsHelper());
         return sqsWorker;
     }
