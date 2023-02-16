@@ -41,22 +41,6 @@ public class BridgeHelper {
         this.bridgeClientManager = bridgeClientManager;
     }
 
-    /**
-     * Signals Bridge Server that the upload is completed and to begin processing the upload. Used by Upload
-     * Auto-Complete.
-     *
-     * @param uploadId
-     *         upload to mark completed and begin processing
-     */
-    public void completeUpload(String uploadId) {
-        try {
-            bridgeClientManager.getClient(ForWorkersApi.class).completeUploadSession(uploadId, null)
-                    .execute();
-        } catch (IOException ex) {
-            throw new BridgeSDKException("Error completing upload to Bridge: " + ex.getMessage(), ex);
-        }
-    }
-
     /** Gets the participant from Bridge for the specified study and health code. */
     @Cacheable(lifetime = 5, unit = TimeUnit.MINUTES)
     public StudyParticipant getParticipantByHealthCode(String studyId, String healthCode) {

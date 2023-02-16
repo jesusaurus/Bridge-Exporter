@@ -34,7 +34,6 @@ import org.sagebionetworks.bridge.rest.model.UploadFieldDefinition;
 import org.sagebionetworks.bridge.rest.model.UploadFieldType;
 import org.sagebionetworks.bridge.rest.model.UploadSchema;
 import org.sagebionetworks.bridge.rest.model.UploadSchemaType;
-import org.sagebionetworks.bridge.rest.model.UploadValidationStatus;
 import org.sagebionetworks.bridge.schema.UploadSchemaKey;
 
 @SuppressWarnings("unchecked")
@@ -79,17 +78,6 @@ public class BridgeHelperTest {
 
         bridgeHelper = new BridgeHelper();
         bridgeHelper.setBridgeClientManager(mockClientManager);
-    }
-
-    @Test
-    public void completeUpload() throws Exception {
-        // mock call
-        Call<UploadValidationStatus> mockCall = mock(Call.class);
-        when(mockWorkersApi.completeUploadSession("test-upload", null)).thenReturn(mockCall);
-
-        // execute and verify
-        bridgeHelper.completeUpload("test-upload");
-        verify(mockCall).execute();
     }
 
     @Test
