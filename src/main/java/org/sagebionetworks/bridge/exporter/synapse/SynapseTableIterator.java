@@ -226,7 +226,7 @@ public class SynapseTableIterator {
     @RetryOnFailure(attempts = 5, delay = 100, unit = TimeUnit.MILLISECONDS, types = SynapseException.class,
             randomize = false)
     private String queryTableAsyncStartWithRetry(String sql) throws SynapseException {
-        return synapseClient.queryTableEntityBundleAsyncStart(sql, null, null, true, SynapseClient.QUERY_PARTMASK,
+        return synapseClient.queryTableEntityBundleAsyncStart(sql, null, null, SynapseClient.QUERY_PARTMASK,
                 synapseTableId);
     }
 
