@@ -98,7 +98,7 @@ public class SynapseTableIteratorTest {
         SynapseClient mockSynapseClient = mock(SynapseClient.class);
 
         when(mockSynapseClient.queryTableEntityBundleAsyncStart("SELECT * FROM " + TEST_SYNAPSE_TABLE_ID, null, null,
-                true, SynapseClient.QUERY_PARTMASK, TEST_SYNAPSE_TABLE_ID)).thenReturn("asyncJob0");
+                SynapseClient.QUERY_PARTMASK, TEST_SYNAPSE_TABLE_ID)).thenReturn("asyncJob0");
 
         QueryResultBundle firstResultBundle = new QueryResultBundle();
         firstResultBundle.setQueryResult(results[0]);
